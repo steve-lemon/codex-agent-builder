@@ -81,14 +81,17 @@ To use OpenAI:
 2. set `OPENAI_API_KEY`
 3. optionally set `OPENAI_MODEL`
 4. set `USE_REAL_OPENAI=true`
+5. optionally set `OPENAI_STRUCTURED_PROXY_URL` to route structured parsing through an external HTTP proxy
 
 Runtime selects gateway in [`src/index.ts`](./src/index.ts).
 The OpenAI gateway is implemented against the SDK `responses.parse` structured-output flow and expects `openai@^6.27.0`.
+When `OPENAI_STRUCTURED_PROXY_URL` is set, the gateway serializes the active schema and delegates the structured parse call over HTTP.
 
 ## Environment Variables
 
 - `OPENAI_API_KEY`: API key for real gateway
 - `OPENAI_MODEL`: model name (default: `gpt-4.1-mini`)
+- `OPENAI_STRUCTURED_PROXY_URL`: optional HTTP endpoint for proxied structured parsing
 - `USE_REAL_OPENAI`: `true` or `false`
 
 ## Future Extensions

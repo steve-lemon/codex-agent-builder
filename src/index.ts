@@ -21,3 +21,4 @@ export function createRuntime(options?: Partial<AgentRuntimeOptions>) {
 
 export * from './agent/runtime';
 export * from './agent/types';
+export * from './llm/structured-schema';
