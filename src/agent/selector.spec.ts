@@ -5,29 +5,29 @@ import { MultiSkillRouter } from './skill-router';
 import { buildDefaultToolRegistry } from '../tools';
 
 describe('skill selector and router', () => {
-  it('selects research skill for research-like prompts', () => {
-    const selector = new SkillSelector();
-    const skill = selector.select('Create a research brief comparing two vendors');
-    expect(skill).toBe('research-brief-generator');
-  });
+    it('selects research skill for research-like prompts', () => {
+        const selector = new SkillSelector();
+        const skill = selector.select('Create a research brief comparing two vendors');
+        expect(skill).toBe('research-brief-generator');
+    });
 
-  it('selects ops skill for ops-like prompts', () => {
-    const selector = new SkillSelector();
-    const skill = selector.select('Run ops automation and post to Slack');
-    expect(skill).toBe('ops-automation-agent');
-  });
+    it('selects ops skill for ops-like prompts', () => {
+        const selector = new SkillSelector();
+        const skill = selector.select('Run ops automation and post to Slack');
+        expect(skill).toBe('ops-automation-agent');
+    });
 
-  it('defaults to customer support reviewer otherwise', () => {
-    const selector = new SkillSelector();
-    const skill = selector.select('Help me review this customer complaint');
-    expect(skill).toBe('customer-support-reviewer');
-  });
+    it('defaults to customer support reviewer otherwise', () => {
+        const selector = new SkillSelector();
+        const skill = selector.select('Help me review this customer complaint');
+        expect(skill).toBe('customer-support-reviewer');
+    });
 
-  it('exposes only tools allowed for selected skill', () => {
-    const router = new MultiSkillRouter(buildDefaultToolRegistry());
-    const tools = router.toolNamesForSkill('research-brief-generator');
-    expect(tools).toContain('webSearch');
-    expect(tools).not.toContain('refundOrder');
-    expect(tools).not.toContain('getCustomerById');
-  });
+    it('exposes only tools allowed for selected skill', () => {
+        const router = new MultiSkillRouter(buildDefaultToolRegistry());
+        const tools = router.toolNamesForSkill('research-brief-generator');
+        expect(tools).toContain('webSearch');
+        expect(tools).not.toContain('refundOrder');
+        expect(tools).not.toContain('getCustomerById');
+    });
 });

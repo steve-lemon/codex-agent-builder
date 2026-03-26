@@ -7,14 +7,14 @@ import { buildDefaultToolRegistry } from './tools';
 
 /** Creates the default runtime with fake or OpenAI-backed LLM wiring. */
 export function createRuntime() {
-  const useRealOpenAi = String(process.env.USE_REAL_OPENAI ?? 'false').toLowerCase() === 'true';
-  const llm = useRealOpenAi ? new OpenAiGateway() : new FakeLlmGateway();
+    const useRealOpenAi = String(process.env.USE_REAL_OPENAI ?? 'false').toLowerCase() === 'true';
+    const llm = useRealOpenAi ? new OpenAiGateway() : new FakeLlmGateway();
 
-  return new AgentRuntime({
-    llm,
-    store: new InMemoryRunStateStore(),
-    toolRegistry: buildDefaultToolRegistry()
-  });
+    return new AgentRuntime({
+        llm,
+        store: new InMemoryRunStateStore(),
+        toolRegistry: buildDefaultToolRegistry(),
+    });
 }
 
 export * from './agent/runtime';

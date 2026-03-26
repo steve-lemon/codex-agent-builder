@@ -6,13 +6,13 @@ export type RunStatePatch = Partial<RunState>;
 
 /** Persistence contract for saving, loading, and mutating run state. */
 export interface RunStateStore {
-  save(run: RunState): Promise<void>;
-  get(runId: string): Promise<RunState | undefined>;
-  update(runId: string, updater: (current: RunState) => RunStatePatch): Promise<RunState>;
-  appendStepResult(runId: string, stepResult: StepResult): Promise<RunStateResult>;
+    save(run: RunState): Promise<void>;
+    get(runId: string): Promise<RunState | undefined>;
+    update(runId: string, updater: (current: RunState) => RunStatePatch): Promise<RunState>;
+    appendStepResult(runId: string, stepResult: StepResult): Promise<RunStateResult>;
 }
 
 /** Lazy accessor that loads run state from persistence only when requested. */
 export interface RunStateContext {
-  get(): Promise<RunState>;
+    get(): Promise<RunState>;
 }

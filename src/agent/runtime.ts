@@ -20,227 +20,227 @@ import { createLazyRunStateContext } from '../state/lazy-run-state';
 
 /** Constructor dependencies required by the runtime coordinator. */
 export interface AgentRuntimeOptions {
-  llm: LlmGateway;
-  store: RunStateStore;
-  toolRegistry: ToolRegistry;
-  tracer?: AgentTracer;
+    llm: LlmGateway;
+    store: RunStateStore;
+    toolRegistry: ToolRegistry;
+    tracer?: AgentTracer;
 }
 
 /** Orchestrates selection, planning, execution, persistence, approvals, and tracing. */
 export class AgentRuntime {
-  private readonly selector = new SkillSelector();
-  private readonly router: MultiSkillRouter;
-  private readonly planner: Planner;
-  private readonly reflector: Reflector;
-  private readonly finalizer: Finalizer;
-  private readonly executor: StepExecutor;
-  private readonly tracer: AgentTracer;
+    private readonly selector = new SkillSelector();
+    private readonly router: MultiSkillRouter;
+    private readonly planner: Planner;
+    private readonly reflector: Reflector;
+    private readonly finalizer: Finalizer;
+    private readonly executor: StepExecutor;
+    private readonly tracer: AgentTracer;
 
-  constructor(private readonly options: AgentRuntimeOptions) {
-    this.tracer = options.tracer ?? new AgentTracer();
-    this.router = new MultiSkillRouter(options.toolRegistry);
-    this.planner = new Planner(options.llm);
-    this.reflector = new Reflector(options.llm);
-    this.finalizer = new Finalizer(options.llm);
-    this.executor = new StepExecutor(options.toolRegistry, this.router, this.tracer);
-  }
-
-  getTracer(): AgentTracer {
-    return this.tracer;
-  }
-
-  async run(userInput: string): Promise<RuntimeRunResult> {
-    const runId = randomUUID();
-    const traceId = this.tracer.startTrace(runId);
-    this.tracer.log(runId, 'run_start', { userInput });
-
-    const skillName = this.selector.select(userInput);
-    const skillInstructions = this.loadSkillInstructions(skillName);
-    const allowedTools = this.router.toolNamesForSkill(skillName);
-
-    this.tracer.log(runId, 'skill_selected', { skillName, allowedTools });
-    this.tracer.log(runId, 'planner_call', {});
-
-    const plan = await this.planner.createPlan({
-      userInput,
-      skillName,
-      skillInstructions,
-      allowedTools
-    });
-
-    const currentTime = now();
-    const initialState: RunState = {
-      runId,
-      traceId,
-      userInput,
-      skillName,
-      skillInstructions,
-      allowedTools,
-      plan,
-      currentStepIndex: 0,
-      resultNo: 0,
-      stepResults: [],
-      status: 'running',
-      createdAt: currentTime,
-      updatedAt: currentTime
-    };
-
-    await this.options.store.save(initialState);
-    const result = await this.executeUntilPauseOrComplete(runId);
-    this.tracer.log(runId, 'run_end', { status: result.status });
-    if (result.status !== 'waiting_for_approval') {
-      await this.tracer.flush(runId);
-    }
-    return { ...result, trace: this.tracer.getEvents(runId) };
-  }
-
-  async resume(runId: string, decision: ApprovalDecision): Promise<RuntimeRunResult> {
-    const run = await this.options.store.get(runId);
-    if (!run) {
-      throw new AgentError(`Run not found: ${runId}`);
+    constructor(private readonly options: AgentRuntimeOptions) {
+        this.tracer = options.tracer ?? new AgentTracer();
+        this.router = new MultiSkillRouter(options.toolRegistry);
+        this.planner = new Planner(options.llm);
+        this.reflector = new Reflector(options.llm);
+        this.finalizer = new Finalizer(options.llm);
+        this.executor = new StepExecutor(options.toolRegistry, this.router, this.tracer);
     }
 
-    this.tracer.startTrace(runId, run.traceId);
-    if (run.status !== 'waiting_for_approval' || !run.pendingApproval) {
-      throw new AgentError(`Run ${runId} is not waiting for approval`);
+    getTracer(): AgentTracer {
+        return this.tracer;
     }
 
-    this.tracer.log(runId, 'approval_decision', {
-      decision: decision.decision,
-      stepIndex: run.pendingApproval.stepIndex
-    });
+    async run(userInput: string): Promise<RuntimeRunResult> {
+        const runId = randomUUID();
+        const traceId = this.tracer.startTrace(runId);
+        this.tracer.log(runId, 'run_start', { userInput });
 
-    const resolved = resolveApprovalArgs(run.pendingApproval, decision);
+        const skillName = this.selector.select(userInput);
+        const skillInstructions = this.loadSkillInstructions(skillName);
+        const allowedTools = this.router.toolNamesForSkill(skillName);
 
-    if (!resolved.approved) {
-      await this.options.store.appendStepResult(runId, resolved.syntheticResult!);
-      await this.options.store.update(runId, (current) => ({
-        pendingApproval: undefined,
-        status: 'running',
-        currentStepIndex: current.currentStepIndex + 1,
-        updatedAt: now()
-      }));
-    } else {
-      const approvedStep = run.plan.steps[run.pendingApproval.stepIndex];
-      const stepResult = await this.executor.executeApprovedTool({
-        runId,
-        skillName: run.skillName,
-        stepId: approvedStep?.id ?? `step-${run.pendingApproval.stepIndex}`,
-        toolName: run.pendingApproval.toolCall.toolName,
-        args: resolved.args,
-        runState: this.createRunStateContext(runId)
-      });
+        this.tracer.log(runId, 'skill_selected', { skillName, allowedTools });
+        this.tracer.log(runId, 'planner_call', {});
 
-      await this.options.store.appendStepResult(runId, stepResult);
-      await this.options.store.update(runId, (current) => ({
-        pendingApproval: undefined,
-        status: 'running',
-        currentStepIndex: current.currentStepIndex + 1,
-        updatedAt: now()
-      }));
-    }
-
-    const result = await this.executeUntilPauseOrComplete(runId);
-    this.tracer.log(runId, 'run_end', { status: result.status });
-    if (result.status !== 'waiting_for_approval') {
-      await this.tracer.flush(runId);
-    }
-    return { ...result, trace: this.tracer.getEvents(runId) };
-  }
-
-  private async executeUntilPauseOrComplete(runId: string): Promise<RuntimeRunResult> {
-    let run = await this.options.store.get(runId);
-    if (!run) {
-      throw new AgentError(`Run not found: ${runId}`);
-    }
-
-    while (run.currentStepIndex < run.plan.steps.length) {
-      const stepIndex = run.currentStepIndex;
-      const step = run.plan.steps[stepIndex];
-
-      try {
-        const result = await this.executor.executeStep({
-          runId,
-          skillName: run.skillName,
-          step,
-          context: {
-            runId,
-            stepIndex,
-            allowParallel: true,
-            runState: this.createRunStateContext(runId)
-          }
+        const plan = await this.planner.createPlan({
+            userInput,
+            skillName,
+            skillInstructions,
+            allowedTools,
         });
 
-        if (result.pendingApproval) {
-          run = await this.options.store.update(runId, (current) => ({
-            pendingApproval: result.pendingApproval,
-            status: 'waiting_for_approval',
-            updatedAt: now()
-          }));
-
-          return {
+        const currentTime = now();
+        const initialState: RunState = {
             runId,
-            status: run.status,
-            waitingApproval: run.pendingApproval,
-            trace: this.tracer.getEvents(runId)
-          };
+            traceId,
+            userInput,
+            skillName,
+            skillInstructions,
+            allowedTools,
+            plan,
+            currentStepIndex: 0,
+            resultNo: 0,
+            stepResults: [],
+            status: 'running',
+            createdAt: currentTime,
+            updatedAt: currentTime,
+        };
+
+        await this.options.store.save(initialState);
+        const result = await this.executeUntilPauseOrComplete(runId);
+        this.tracer.log(runId, 'run_end', { status: result.status });
+        if (result.status !== 'waiting_for_approval') {
+            await this.tracer.flush(runId);
+        }
+        return { ...result, trace: this.tracer.getEvents(runId) };
+    }
+
+    async resume(runId: string, decision: ApprovalDecision): Promise<RuntimeRunResult> {
+        const run = await this.options.store.get(runId);
+        if (!run) {
+            throw new AgentError(`Run not found: ${runId}`);
         }
 
-        await this.options.store.appendStepResult(runId, result.stepResult!);
-        run = await this.options.store.update(runId, (current) => ({
-          currentStepIndex: current.currentStepIndex + 1,
-          updatedAt: now()
-        }));
-      } catch (error) {
-        const agentError = AgentError.from(error);
-        this.tracer.log(runId, 'error', {
-          message: agentError.message,
-          stepIndex
+        this.tracer.startTrace(runId, run.traceId);
+        if (run.status !== 'waiting_for_approval' || !run.pendingApproval) {
+            throw new AgentError(`Run ${runId} is not waiting for approval`);
+        }
+
+        this.tracer.log(runId, 'approval_decision', {
+            decision: decision.decision,
+            stepIndex: run.pendingApproval.stepIndex,
         });
-        run = await this.options.store.update(runId, () => ({
-          status: 'failed',
-          updatedAt: now()
-        }));
-        return {
-          runId,
-          status: run.status,
-          trace: this.tracer.getEvents(runId)
-        };
-      }
+
+        const resolved = resolveApprovalArgs(run.pendingApproval, decision);
+
+        if (!resolved.approved) {
+            await this.options.store.appendStepResult(runId, resolved.syntheticResult!);
+            await this.options.store.update(runId, current => ({
+                pendingApproval: undefined,
+                status: 'running',
+                currentStepIndex: current.currentStepIndex + 1,
+                updatedAt: now(),
+            }));
+        } else {
+            const approvedStep = run.plan.steps[run.pendingApproval.stepIndex];
+            const stepResult = await this.executor.executeApprovedTool({
+                runId,
+                skillName: run.skillName,
+                stepId: approvedStep?.id ?? `step-${run.pendingApproval.stepIndex}`,
+                toolName: run.pendingApproval.toolCall.toolName,
+                args: resolved.args,
+                runState: this.createRunStateContext(runId),
+            });
+
+            await this.options.store.appendStepResult(runId, stepResult);
+            await this.options.store.update(runId, current => ({
+                pendingApproval: undefined,
+                status: 'running',
+                currentStepIndex: current.currentStepIndex + 1,
+                updatedAt: now(),
+            }));
+        }
+
+        const result = await this.executeUntilPauseOrComplete(runId);
+        this.tracer.log(runId, 'run_end', { status: result.status });
+        if (result.status !== 'waiting_for_approval') {
+            await this.tracer.flush(runId);
+        }
+        return { ...result, trace: this.tracer.getEvents(runId) };
     }
 
-    this.tracer.log(runId, 'reflector_call', {});
-    const reflection = await this.reflector.reflect({
-      userInput: run.userInput,
-      stepResults: run.stepResults
-    });
+    private async executeUntilPauseOrComplete(runId: string): Promise<RuntimeRunResult> {
+        let run = await this.options.store.get(runId);
+        if (!run) {
+            throw new AgentError(`Run not found: ${runId}`);
+        }
 
-    this.tracer.log(runId, 'finalizer_call', { isComplete: reflection.isComplete });
-    const final = await this.finalizer.finalize({
-      userInput: run.userInput,
-      skillName: run.skillName,
-      stepResults: run.stepResults
-    });
+        while (run.currentStepIndex < run.plan.steps.length) {
+            const stepIndex = run.currentStepIndex;
+            const step = run.plan.steps[stepIndex];
 
-    run = await this.options.store.update(runId, () => ({
-      status: 'completed',
-      updatedAt: now()
-    }));
+            try {
+                const result = await this.executor.executeStep({
+                    runId,
+                    skillName: run.skillName,
+                    step,
+                    context: {
+                        runId,
+                        stepIndex,
+                        allowParallel: true,
+                        runState: this.createRunStateContext(runId),
+                    },
+                });
 
-    return {
-      runId,
-      status: run.status,
-      finalResult: final,
-      trace: this.tracer.getEvents(runId)
-    };
-  }
+                if (result.pendingApproval) {
+                    run = await this.options.store.update(runId, current => ({
+                        pendingApproval: result.pendingApproval,
+                        status: 'waiting_for_approval',
+                        updatedAt: now(),
+                    }));
 
-  private loadSkillInstructions(skillName: SkillName): string {
-    const filePath = join(process.cwd(), 'src', 'skills', skillName, 'SKILL.md');
-    return readFileSync(filePath, 'utf-8');
-  }
+                    return {
+                        runId,
+                        status: run.status,
+                        waitingApproval: run.pendingApproval,
+                        trace: this.tracer.getEvents(runId),
+                    };
+                }
 
-  private createRunStateContext(runId: string) {
-    return createLazyRunStateContext(this.options.store, runId);
-  }
+                await this.options.store.appendStepResult(runId, result.stepResult!);
+                run = await this.options.store.update(runId, current => ({
+                    currentStepIndex: current.currentStepIndex + 1,
+                    updatedAt: now(),
+                }));
+            } catch (error) {
+                const agentError = AgentError.from(error);
+                this.tracer.log(runId, 'error', {
+                    message: agentError.message,
+                    stepIndex,
+                });
+                run = await this.options.store.update(runId, () => ({
+                    status: 'failed',
+                    updatedAt: now(),
+                }));
+                return {
+                    runId,
+                    status: run.status,
+                    trace: this.tracer.getEvents(runId),
+                };
+            }
+        }
+
+        this.tracer.log(runId, 'reflector_call', {});
+        const reflection = await this.reflector.reflect({
+            userInput: run.userInput,
+            stepResults: run.stepResults,
+        });
+
+        this.tracer.log(runId, 'finalizer_call', { isComplete: reflection.isComplete });
+        const final = await this.finalizer.finalize({
+            userInput: run.userInput,
+            skillName: run.skillName,
+            stepResults: run.stepResults,
+        });
+
+        run = await this.options.store.update(runId, () => ({
+            status: 'completed',
+            updatedAt: now(),
+        }));
+
+        return {
+            runId,
+            status: run.status,
+            finalResult: final,
+            trace: this.tracer.getEvents(runId),
+        };
+    }
+
+    private loadSkillInstructions(skillName: SkillName): string {
+        const filePath = join(process.cwd(), 'src', 'skills', skillName, 'SKILL.md');
+        return readFileSync(filePath, 'utf-8');
+    }
+
+    private createRunStateContext(runId: string) {
+        return createLazyRunStateContext(this.options.store, runId);
+    }
 }

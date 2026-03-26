@@ -23,6 +23,13 @@
   },
   "devDependencies": {
     "@types/node": "^24.6.1",
+    "@typescript-eslint/eslint-plugin": "^5.22.0",
+    "@typescript-eslint/parser": "^5.22.0",
+    "eslint": "^8.14.0",
+    "eslint-config-prettier": "^8.5.0",
+    "eslint-plugin-prettier": "^4.0.0",
+    "lint-staged": "^13.1.0",
+    "prettier": "^2.6.2",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
     "vitest": "^0.34.6"

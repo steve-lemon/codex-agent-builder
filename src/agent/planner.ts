@@ -4,15 +4,15 @@ import type { LlmGateway } from '../llm/types';
 
 /** Validates planner output returned from the configured LLM gateway. */
 export class Planner {
-  constructor(private readonly llm: LlmGateway) {}
+    constructor(private readonly llm: LlmGateway) {}
 
-  async createPlan(input: {
-    userInput: string;
-    skillName: string;
-    skillInstructions: string;
-    allowedTools: string[];
-  }): Promise<Plan> {
-    const plan = await this.llm.plan(input);
-    return PlanSchema.parse(plan);
-  }
+    async createPlan(input: {
+        userInput: string;
+        skillName: string;
+        skillInstructions: string;
+        allowedTools: string[];
+    }): Promise<Plan> {
+        const plan = await this.llm.plan(input);
+        return PlanSchema.parse(plan);
+    }
 }
