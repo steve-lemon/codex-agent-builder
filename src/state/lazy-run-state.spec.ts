@@ -7,6 +7,7 @@ import type { RunState } from '../agent/types';
 function makeRunState(runId: string): RunState {
   return {
     runId,
+    traceId: runId,
     userInput: 'hello',
     skillName: 'customer-support-reviewer',
     skillInstructions: 'instructions',

@@ -47,6 +47,7 @@ export interface RunStateResult {
 /** Durable runtime state used for persistence, tracing, and resume flow. */
 export interface RunState {
   runId: string;
+  traceId: string;
   userInput: string;
   skillName: string;
   skillInstructions: string;

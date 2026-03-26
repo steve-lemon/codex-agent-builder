@@ -51,6 +51,7 @@ export class AgentRuntime {
 
   async run(userInput: string): Promise<RuntimeRunResult> {
     const runId = randomUUID();
+    const traceId = this.tracer.startTrace(runId);
     this.tracer.log(runId, 'run_start', { userInput });
 
     const skillName = this.selector.select(userInput);
@@ -70,6 +71,7 @@ export class AgentRuntime {
     const currentTime = now();
     const initialState: RunState = {
       runId,
+      traceId,
       userInput,
       skillName,
       skillInstructions,
@@ -86,7 +88,10 @@ export class AgentRuntime {
     await this.options.store.save(initialState);
     const result = await this.executeUntilPauseOrComplete(runId);
     this.tracer.log(runId, 'run_end', { status: result.status });
-    return result;
+    if (result.status !== 'waiting_for_approval') {
+      await this.tracer.flush(runId);
+    }
+    return { ...result, trace: this.tracer.getEvents(runId) };
   }
 
   async resume(runId: string, decision: ApprovalDecision): Promise<RuntimeRunResult> {
@@ -95,6 +100,7 @@ export class AgentRuntime {
       throw new AgentError(`Run not found: ${runId}`);
     }
 
+    this.tracer.startTrace(runId, run.traceId);
     if (run.status !== 'waiting_for_approval' || !run.pendingApproval) {
       throw new AgentError(`Run ${runId} is not waiting for approval`);
     }
@@ -136,7 +142,10 @@ export class AgentRuntime {
 
     const result = await this.executeUntilPauseOrComplete(runId);
     this.tracer.log(runId, 'run_end', { status: result.status });
-    return result;
+    if (result.status !== 'waiting_for_approval') {
+      await this.tracer.flush(runId);
+    }
+    return { ...result, trace: this.tracer.getEvents(runId) };
   }
 
   private async executeUntilPauseOrComplete(runId: string): Promise<RuntimeRunResult> {

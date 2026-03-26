@@ -65,6 +65,7 @@ export class InMemoryRunStateStore implements RunStateStore {
   private toStoredRun(run: RunState): Omit<RunState, 'stepResults'> {
     return {
       runId: run.runId,
+      traceId: run.traceId,
       userInput: run.userInput,
       skillName: run.skillName,
       skillInstructions: run.skillInstructions,
