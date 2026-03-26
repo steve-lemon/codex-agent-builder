@@ -1,17 +1,21 @@
 // LLM gateway interfaces and implementations.
-import OpenAI from 'openai';
-import { zodTextFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 import { parsePlanResponse, PlanResponseSchema, ReflectorOutputSchema } from '../agent/schemas';
 import { FinalResultSchema } from '../agent/types';
 import type { LlmGateway, PlannerInput, ReflectorInput, FinalizerInput } from './types';
 import { AgentError } from '../errors/agent-error';
+import { defineStructuredSchema, type StructuredSchema } from './structured-schema';
 import {
-    defineStructuredSchema,
-    deserializeStructuredSchema,
-    type SerializedStructuredSchema,
-    type StructuredSchema,
-} from './structured-schema';
+    loadOpenAiSdk,
+    loadOpenAiZodHelpers,
+    type OpenAiSdkLoader,
+    type OpenAiZodHelpersLoader,
+} from './openai-loader';
+import {
+    LocalOpenAiStructuredResponseParser,
+    ProxyStructuredResponseParser,
+    type StructuredResponseParser,
+} from './structured-response-parser';
 
 /** Configuration used to initialize the OpenAI-backed gateway. */
 export interface OpenAiGatewayOptions {
@@ -19,25 +23,30 @@ export interface OpenAiGatewayOptions {
     model?: string;
     proxyUrl?: string;
     fetchImpl?: typeof fetch;
+    loadSdk?: OpenAiSdkLoader;
+    loadZodHelpers?: OpenAiZodHelpersLoader;
+    parser?: StructuredResponseParser;
 }
 
-/** Real LLM gateway that delegates structured generation to the OpenAI SDK. */
+/** Real LLM gateway that delegates structured generation through a pluggable parser strategy. */
 export class OpenAiGateway implements LlmGateway {
-    private readonly client: OpenAI;
     private readonly model: string;
-    private readonly proxyUrl?: string;
-    private readonly fetchImpl?: typeof fetch;
+    private readonly parser: StructuredResponseParser;
 
     constructor(options: OpenAiGatewayOptions = {}) {
-        const apiKey = options.apiKey ?? process.env.OPENAI_API_KEY;
-        if (!apiKey) {
-            throw new AgentError('OPENAI_API_KEY is required for OpenAiGateway');
-        }
-
-        this.client = new OpenAI({ apiKey });
         this.model = options.model ?? process.env.OPENAI_MODEL ?? 'gpt-4.1-mini';
-        this.proxyUrl = options.proxyUrl ?? process.env.OPENAI_STRUCTURED_PROXY_URL;
-        this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
+        this.parser =
+            options.parser ??
+            (options.proxyUrl ?? process.env.OPENAI_STRUCTURED_PROXY_URL
+                ? new ProxyStructuredResponseParser({
+                      proxyUrl: options.proxyUrl ?? process.env.OPENAI_STRUCTURED_PROXY_URL!,
+                      fetchImpl: options.fetchImpl ?? globalThis.fetch,
+                  })
+                : new LocalOpenAiStructuredResponseParser({
+                      apiKey: options.apiKey ?? process.env.OPENAI_API_KEY,
+                      loadSdk: options.loadSdk ?? loadOpenAiSdk,
+                      loadZodHelpers: options.loadZodHelpers ?? loadOpenAiZodHelpers,
+                  }));
     }
 
     async plan(input: PlannerInput) {
@@ -75,15 +84,17 @@ export class OpenAiGateway implements LlmGateway {
         );
     }
 
-    /** Uses the local SDK or an HTTP proxy to obtain structured model output from the same schema contract. */
+    /** Normalizes parser errors and re-validates output against the requested schema. */
     private async parseStructuredResponse<TSchema extends z.ZodTypeAny>(
         input: Array<{ role: 'system' | 'user'; content: string }>,
         schema: StructuredSchema<TSchema>,
     ): Promise<z.output<TSchema>> {
         try {
-            const output = this.proxyUrl
-                ? await this.parseStructuredResponseViaProxy(input, schema)
-                : await this.parseStructuredResponseLocally(input, schema);
+            const output = await this.parser.parse({
+                model: this.model,
+                input,
+                schema,
+            });
 
             return schema.parse(output);
         } catch (error) {
@@ -93,74 +104,4 @@ export class OpenAiGateway implements LlmGateway {
             });
         }
     }
-
-    /** Performs the structured parse locally through the OpenAI SDK. */
-    private async parseStructuredResponseLocally<TSchema extends z.ZodTypeAny>(
-        input: Array<{ role: 'system' | 'user'; content: string }>,
-        schema: StructuredSchema<TSchema>,
-    ): Promise<unknown> {
-        const response = await this.client.responses.parse({
-            model: this.model,
-            input,
-            text: {
-                // The SDK helper has very deep conditional types in v6, so keep this boundary shallow.
-                format: zodTextFormat(schema.schema as never, schema.name),
-            },
-        });
-
-        if (response.output_parsed === null) {
-            throw new AgentError('OpenAI returned no structured output', {
-                cause: response,
-                code: 'OPENAI_STRUCTURED_OUTPUT_MISSING',
-            });
-        }
-
-        return response.output_parsed;
-    }
-
-    /** Proxies structured parsing to an external HTTP service using serialized schema metadata. */
-    private async parseStructuredResponseViaProxy<TSchema extends z.ZodTypeAny>(
-        input: Array<{ role: 'system' | 'user'; content: string }>,
-        schema: StructuredSchema<TSchema>,
-    ): Promise<unknown> {
-        if (!this.fetchImpl) {
-            throw new AgentError('fetch is required when using OPENAI_STRUCTURED_PROXY_URL', {
-                code: 'OPENAI_PROXY_FETCH_MISSING',
-            });
-        }
-
-        const serializedSchema = schema.serialize();
-        const response = await this.fetchImpl(this.proxyUrl!, {
-            method: 'POST',
-            headers: {
-                'content-type': 'application/json',
-            },
-            body: JSON.stringify({
-                model: this.model,
-                input,
-                schema: serializedSchema,
-            } satisfies StructuredParseProxyRequest),
-        });
-
-        if (!response.ok) {
-            throw new AgentError(`Structured proxy request failed with status ${response.status}`, {
-                code: 'OPENAI_PROXY_HTTP_ERROR',
-            });
-        }
-
-        const payload = StructuredParseProxyResponseSchema.parse(await response.json());
-        const deserializedSchema = deserializeStructuredSchema(serializedSchema);
-        return deserializedSchema.parse(payload.output);
-    }
 }
-
-/** Transport payload sent to an external structured-output proxy server. */
-export interface StructuredParseProxyRequest {
-    model: string;
-    input: Array<{ role: 'system' | 'user'; content: string }>;
-    schema: SerializedStructuredSchema;
-}
-
-const StructuredParseProxyResponseSchema = z.object({
-    output: z.unknown(),
-});

@@ -1,6 +1,5 @@
 // Vitest specs for core runtime behaviors.
 import { describe, expect, it } from 'vitest';
-import { zodResponseFormat } from 'openai/helpers/zod';
 import {
     parsePlanResponse,
     PlanResponseSchema,
@@ -9,9 +8,11 @@ import {
     StepModeSchema,
     ToolCallSchema,
 } from './schemas';
+import { loadOpenAiZodHelpers } from '../llm/openai-loader';
 
 describe('agent schemas', () => {
-    it('builds an OpenAI response_format for PlanResponseSchema with a stable schema name', () => {
+    it('builds an OpenAI response_format for PlanResponseSchema with a stable schema name', async () => {
+        const { zodResponseFormat } = await loadOpenAiZodHelpers();
         const responseFormat = zodResponseFormat(PlanResponseSchema as never, 'Plan');
 
         expect(responseFormat).toEqual(
@@ -31,7 +32,8 @@ describe('agent schemas', () => {
         );
     });
 
-    it('builds an OpenAI response_format for ReflectorOutputSchema', () => {
+    it('builds an OpenAI response_format for ReflectorOutputSchema', async () => {
+        const { zodResponseFormat } = await loadOpenAiZodHelpers();
         const responseFormat = zodResponseFormat(ReflectorOutputSchema as never, 'ReflectorOutput');
 
         expect(responseFormat.json_schema.name).toBe('ReflectorOutput');
