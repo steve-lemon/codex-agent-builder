@@ -7,6 +7,7 @@ import { InMemoryRunStateStore } from '../state/memory-store';
 import { ToolRegistry } from '../tools/registry';
 import { buildDefaultToolRegistry } from '../tools';
 import type { LlmGateway } from '../llm/types';
+import { now } from '../time/now';
 
 function buildDefaultRuntime() {
   return new AgentRuntime({
@@ -41,9 +42,9 @@ describe('runtime flow', () => {
         requiresConfirmation: false,
         parallelSafe: true,
         execute: async () => {
-          timeline.push({ name: 'getCustomerById:start', ts: Date.now() });
+          timeline.push({ name: 'getCustomerById:start', ts: now() });
           await new Promise((r) => setTimeout(r, 120));
-          timeline.push({ name: 'getCustomerById:end', ts: Date.now() });
+          timeline.push({ name: 'getCustomerById:end', ts: now() });
           return { ok: true };
         }
       },
@@ -56,9 +57,9 @@ describe('runtime flow', () => {
         requiresConfirmation: false,
         parallelSafe: true,
         execute: async () => {
-          timeline.push({ name: 'getOrdersByCustomer:start', ts: Date.now() });
+          timeline.push({ name: 'getOrdersByCustomer:start', ts: now() });
           await new Promise((r) => setTimeout(r, 120));
-          timeline.push({ name: 'getOrdersByCustomer:end', ts: Date.now() });
+          timeline.push({ name: 'getOrdersByCustomer:end', ts: now() });
           return { ok: true };
         }
       },
@@ -99,9 +100,9 @@ describe('runtime flow', () => {
       toolRegistry: registry
     });
 
-    const started = Date.now();
+    const started = now();
     const result = await runtime.run('customer question');
-    const duration = Date.now() - started;
+    const duration = now() - started;
 
     expect(result.status).toBe('completed');
     expect(duration).toBeLessThan(230);

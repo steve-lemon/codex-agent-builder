@@ -2,6 +2,7 @@
 import type { ToolDefinition } from '../tools/types';
 import type { ToolExecutionPolicy } from '../agent/types';
 
+/** Resolves execution policy knobs from tool risk metadata. */
 export function resolveToolExecutionPolicy(tool: ToolDefinition): ToolExecutionPolicy {
   if (tool.riskLevel === 'read-only') {
     return {

@@ -2,6 +2,7 @@
 import { FinalResultSchema, type FinalResult } from './types';
 import type { LlmGateway } from '../llm/types';
 
+/** Validates and returns the final structured result for a completed run. */
 export class Finalizer {
   constructor(private readonly llm: LlmGateway) {}
 

@@ -2,6 +2,7 @@
 import { ReflectorOutputSchema, type ReflectorOutput } from './schemas';
 import type { LlmGateway } from '../llm/types';
 
+/** Validates reflector output before the runtime decides to finalize a run. */
 export class Reflector {
   constructor(private readonly llm: LlmGateway) {}
 

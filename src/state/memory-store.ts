@@ -2,6 +2,7 @@
 import type { RunState } from '../agent/types';
 import type { RunStateStore } from './types';
 
+/** In-memory implementation of the run store for local execution and tests. */
 export class InMemoryRunStateStore implements RunStateStore {
   private readonly runs = new Map<string, RunState>();
 

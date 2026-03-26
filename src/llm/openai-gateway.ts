@@ -5,11 +5,13 @@ import { PlanSchema, ReflectorOutputSchema } from '../agent/schemas';
 import { FinalResultSchema } from '../agent/types';
 import type { LlmGateway, PlannerInput, ReflectorInput, FinalizerInput } from './types';
 
+/** Configuration used to initialize the OpenAI-backed gateway. */
 export interface OpenAiGatewayOptions {
   apiKey?: string;
   model?: string;
 }
 
+/** Real LLM gateway that delegates structured generation to the OpenAI SDK. */
 export class OpenAiGateway implements LlmGateway {
   private readonly client: OpenAI;
   private readonly model: string;

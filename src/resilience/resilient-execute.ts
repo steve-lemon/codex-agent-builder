@@ -5,6 +5,7 @@ import { withTimeout } from './timeout';
 import type { RetryOptions } from './types';
 import type { CircuitBreaker } from './circuit-breaker';
 
+/** Applies timeout, retry, and circuit breaker behavior to an async execution. */
 export async function resilientExecute<T>(params: {
   key: string;
   execute: () => Promise<T>;

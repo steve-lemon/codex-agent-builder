@@ -1,4 +1,5 @@
 // Resilience utilities for timeout, retry, and circuit breaking.
+/** Heuristically classifies whether an error should be retried. */
 export function isRetryableError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;

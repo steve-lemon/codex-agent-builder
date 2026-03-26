@@ -1,7 +1,9 @@
 // Tool metadata, registration, and mock implementations.
 import { z } from 'zod';
 import type { ToolCall, ToolDefinition, ToolResult } from './types';
+import { now } from '../time/now';
 
+/** Stores tool definitions and provides argument validation plus execution helpers. */
 export class ToolRegistry {
   private readonly tools = new Map<string, ToolDefinition>();
 
@@ -53,7 +55,7 @@ export class ToolRegistry {
       const parsedArgs = this.parseArgs(call.toolName, call.args);
       const data = await tool.execute(parsedArgs, {
         runId,
-        now: new Date().toISOString()
+        now: now()
       });
       return { toolName: call.toolName, ok: true, data };
     } catch (error) {
@@ -66,4 +68,5 @@ export class ToolRegistry {
   }
 }
 
+/** Fallback schema for generic tool arguments with unknown field shapes. */
 export const AnyArgsSchema = z.record(z.unknown());

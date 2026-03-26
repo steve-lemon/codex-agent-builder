@@ -212,7 +212,7 @@ describe('tools modules', () => {
       expect.objectContaining({
         value: 'hello',
         runId: 'r-1',
-        now: expect.any(String)
+        now: expect.any(Number)
       })
     );
   });

@@ -3,6 +3,7 @@ import type { LlmGateway, PlannerInput, ReflectorInput, FinalizerInput } from '.
 import type { Plan } from '../agent/schemas';
 import type { FinalResult } from '../agent/types';
 
+/** Deterministic gateway that returns stable plans and summaries for tests and demos. */
 export class FakeLlmGateway implements LlmGateway {
   async plan(input: PlannerInput): Promise<Plan> {
     const text = input.userInput.toLowerCase();

@@ -14,6 +14,7 @@ export interface StepExecutorResult {
   pendingApproval?: PendingApproval;
 }
 
+/** Executes each plan step while enforcing tool policy and approval semantics. */
 export class StepExecutor {
   private readonly circuitBreaker = new CircuitBreaker({
     failureThreshold: 2,

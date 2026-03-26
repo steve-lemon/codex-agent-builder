@@ -3,6 +3,7 @@ import type { ToolDefinition } from '../tools/types';
 import type { ToolRegistry } from '../tools/registry';
 import type { SkillName } from './skill-selector';
 
+/** Exposes only the subset of tools allowed for the selected skill. */
 export class MultiSkillRouter {
   constructor(private readonly registry: ToolRegistry) {}
 

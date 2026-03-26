@@ -1,5 +1,6 @@
 // Resilience utilities for timeout, retry, and circuit breaking.
 import type { CircuitBreakerOptions } from './types';
+import { now } from '../time/now';
 
 type CircuitState = 'closed' | 'open';
 
@@ -9,6 +10,7 @@ interface Entry {
   openedAt?: number;
 }
 
+/** Protects repeatedly failing execution paths with a temporary open state. */
 export class CircuitBreaker {
   private readonly entries = new Map<string, Entry>();
 
@@ -20,8 +22,8 @@ export class CircuitBreaker {
       return true;
     }
 
-    const now = Date.now();
-    if (entry.openedAt && now - entry.openedAt >= this.options.coolDownMs) {
+    const currentTime = now();
+    if (entry.openedAt && currentTime - entry.openedAt >= this.options.coolDownMs) {
       this.entries.set(key, { state: 'closed', failures: 0 });
       return true;
     }
@@ -37,7 +39,7 @@ export class CircuitBreaker {
     const current = this.entries.get(key) ?? { state: 'closed' as const, failures: 0 };
     const failures = current.failures + 1;
     if (failures >= this.options.failureThreshold) {
-      this.entries.set(key, { state: 'open', failures, openedAt: Date.now() });
+      this.entries.set(key, { state: 'open', failures, openedAt: now() });
       return;
     }
 

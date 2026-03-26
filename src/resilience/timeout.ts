@@ -1,4 +1,5 @@
 // Resilience utilities for timeout, retry, and circuit breaking.
+/** Rejects an async operation when it exceeds the allowed execution time. */
 export async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {

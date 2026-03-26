@@ -2,6 +2,7 @@
 import { PlanSchema, type Plan } from './schemas';
 import type { LlmGateway } from '../llm/types';
 
+/** Validates planner output returned from the configured LLM gateway. */
 export class Planner {
   constructor(private readonly llm: LlmGateway) {}
 

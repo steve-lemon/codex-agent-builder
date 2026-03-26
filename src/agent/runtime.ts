@@ -14,7 +14,9 @@ import type { RuntimeRunResult, RunState, ApprovalDecision } from './types';
 import type { RunStateStore } from '../state/types';
 import type { ToolRegistry } from '../tools/registry';
 import { AgentTracer } from '../observability/tracer';
+import { now } from '../time/now';
 
+/** Constructor dependencies required by the runtime coordinator. */
 export interface AgentRuntimeOptions {
   llm: LlmGateway;
   store: RunStateStore;
@@ -22,6 +24,7 @@ export interface AgentRuntimeOptions {
   tracer?: AgentTracer;
 }
 
+/** Orchestrates selection, planning, execution, persistence, approvals, and tracing. */
 export class AgentRuntime {
   private readonly selector = new SkillSelector();
   private readonly router: MultiSkillRouter;
@@ -62,7 +65,7 @@ export class AgentRuntime {
       allowedTools
     });
 
-    const now = new Date().toISOString();
+    const currentTime = now();
     const initialState: RunState = {
       runId,
       userInput,
@@ -73,8 +76,8 @@ export class AgentRuntime {
       currentStepIndex: 0,
       stepResults: [],
       status: 'running',
-      createdAt: now,
-      updatedAt: now
+      createdAt: currentTime,
+      updatedAt: currentTime
     };
 
     await this.options.store.save(initialState);
@@ -107,7 +110,7 @@ export class AgentRuntime {
         status: 'running',
         currentStepIndex: current.currentStepIndex + 1,
         stepResults: [...current.stepResults, resolved.syntheticResult!],
-        updatedAt: new Date().toISOString()
+        updatedAt: now()
       }));
     } else {
       const approvedStep = run.plan.steps[run.pendingApproval.stepIndex];
@@ -125,7 +128,7 @@ export class AgentRuntime {
         status: 'running',
         currentStepIndex: current.currentStepIndex + 1,
         stepResults: [...current.stepResults, stepResult],
-        updatedAt: new Date().toISOString()
+        updatedAt: now()
       }));
     }
 
@@ -161,7 +164,7 @@ export class AgentRuntime {
             ...current,
             pendingApproval: result.pendingApproval,
             status: 'waiting_for_approval',
-            updatedAt: new Date().toISOString()
+            updatedAt: now()
           }));
 
           return {
@@ -176,7 +179,7 @@ export class AgentRuntime {
           ...current,
           currentStepIndex: current.currentStepIndex + 1,
           stepResults: [...current.stepResults, result.stepResult!],
-          updatedAt: new Date().toISOString()
+          updatedAt: now()
         }));
       } catch (error) {
         this.tracer.log(runId, 'error', {
@@ -186,7 +189,7 @@ export class AgentRuntime {
         run = await this.options.store.update(runId, (current) => ({
           ...current,
           status: 'failed',
-          updatedAt: new Date().toISOString()
+          updatedAt: now()
         }));
         return {
           runId,
@@ -212,7 +215,7 @@ export class AgentRuntime {
     run = await this.options.store.update(runId, (current) => ({
       ...current,
       status: 'completed',
-      updatedAt: new Date().toISOString()
+      updatedAt: now()
     }));
 
     return {

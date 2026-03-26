@@ -1,6 +1,7 @@
 // Agent runtime flow and data contracts.
 import type { ApprovalDecision, PendingApproval, StepResult } from './types';
 
+/** Creates the persisted approval payload for a tool call that must pause execution. */
 export function buildPendingApproval(stepIndex: number, toolName: string, args: Record<string, unknown>): PendingApproval {
   return {
     stepIndex,
@@ -9,6 +10,7 @@ export function buildPendingApproval(stepIndex: number, toolName: string, args: 
   };
 }
 
+/** Converts an operator decision into executable args or a synthetic rejection result. */
 export function resolveApprovalArgs(
   pending: PendingApproval,
   decision: ApprovalDecision

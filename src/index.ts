@@ -5,6 +5,7 @@ import { OpenAiGateway } from './llm/openai-gateway';
 import { InMemoryRunStateStore } from './state/memory-store';
 import { buildDefaultToolRegistry } from './tools';
 
+/** Creates the default runtime with fake or OpenAI-backed LLM wiring. */
 export function createRuntime() {
   const useRealOpenAi = String(process.env.USE_REAL_OPENAI ?? 'false').toLowerCase() === 'true';
   const llm = useRealOpenAi ? new OpenAiGateway() : new FakeLlmGateway();

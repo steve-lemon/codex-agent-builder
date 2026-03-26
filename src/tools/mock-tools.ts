@@ -15,6 +15,7 @@ const orders: Record<string, { orderId: string; status: string; total: number }[
   c_2: [{ orderId: 'o_200', status: 'delayed', total: 59.0 }]
 };
 
+/** Returns deterministic mock tools used for demos, tests, and local development. */
 export function createMockTools(): ToolDefinition[] {
   return [
     {
