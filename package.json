@@ -1,0 +1,30 @@
+{
+  "name": "llm-agent-runtime-ts",
+  "version": "1.0.0",
+  "description": "Production-style TypeScript LLM agent runtime with approvals, resilience, and observability",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "demo": "tsx src/demo.ts"
+  },
+  "keywords": [
+    "agent",
+    "llm",
+    "openai",
+    "typescript"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "openai": "^5.20.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^0.34.6"
+  }
+}
