@@ -3,6 +3,9 @@ import { z, type ZodTypeAny } from 'zod';
 import type { RunStateContext } from '../state/types';
 
 export type ToolRiskLevel = 'read-only' | 'side-effecting' | 'approval-required';
+type ToolExecutor<TArgs> = {
+    bivarianceHack(args: TArgs, context: ToolContext): Promise<unknown> | unknown;
+}['bivarianceHack'];
 
 /** Runtime context injected into each tool call. */
 export interface ToolContext {
@@ -35,7 +38,7 @@ export interface ToolDefinition<TSchema extends ZodTypeAny = ZodTypeAny> {
     allowedSkills: string[];
     requiresConfirmation: boolean;
     parallelSafe: boolean;
-    execute: (args: z.infer<TSchema>, context: ToolContext) => Promise<unknown> | unknown;
+    execute: ToolExecutor<z.infer<TSchema>>;
 }
 
 /** Preserves tool parameter inference when defining registry entries. */

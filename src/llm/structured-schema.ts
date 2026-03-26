@@ -1,5 +1,6 @@
 // Serializable schema wrappers for structured LLM IO and proxy transport.
 import { z } from 'zod';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import { AgentError } from '../errors/agent-error';
 
 /** JSON-compatible schema payload that can cross process or network boundaries. */
@@ -29,9 +30,20 @@ export function defineStructuredSchema<TSchema extends z.ZodTypeAny>(
         name,
         schema,
         serialize() {
+            const serializeSchema = zodToJsonSchema as unknown as (
+                inputSchema: unknown,
+                options: unknown,
+            ) => Record<string, unknown> & {
+                definitions?: Record<string, Record<string, unknown>>;
+            };
+            const document = serializeSchema(schema, {
+                name,
+                $refStrategy: 'none',
+            });
+
             return {
                 name,
-                jsonSchema: z.toJSONSchema(schema) as Record<string, unknown>,
+                jsonSchema: (document.definitions?.[name] as Record<string, unknown> | undefined) ?? document,
             };
         },
         parse(input) {

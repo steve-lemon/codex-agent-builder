@@ -97,10 +97,7 @@ describe('structured schema transport', () => {
                         additionalProperties: expect.objectContaining({ type: 'string' }),
                     }),
                     note: expect.objectContaining({
-                        anyOf: expect.arrayContaining([
-                            expect.objectContaining({ type: 'string' }),
-                            expect.objectContaining({ type: 'null' }),
-                        ]),
+                        type: expect.arrayContaining(['string', 'null']),
                     }),
                 }),
             }),
@@ -126,7 +123,7 @@ describe('structured schema transport', () => {
                     summary: expect.objectContaining({ type: 'string' }),
                     retryCount: expect.objectContaining({ type: 'number' }),
                 }),
-                required: expect.arrayContaining(['mode', 'retryCount']),
+                required: expect.arrayContaining(['retryCount']),
             }),
         );
     });
