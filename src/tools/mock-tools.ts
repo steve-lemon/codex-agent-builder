@@ -1,6 +1,6 @@
 // Tool metadata, registration, and mock implementations.
 import { z } from 'zod';
-import type { ToolDefinition } from './types';
+import { defineTool, type ToolDefinition } from './types';
 
 const customers: Record<string, { id: string; name: string; tier: string }> = {
     c_1: { id: 'c_1', name: 'Kim Mina', tier: 'gold' },
@@ -18,7 +18,7 @@ const orders: Record<string, { orderId: string; status: string; total: number }[
 /** Returns deterministic mock tools used for demos, tests, and local development. */
 export function createMockTools(): ToolDefinition[] {
     return [
-        {
+        defineTool({
             name: 'getCustomerById',
             description: 'Fetch customer profile by id',
             parameters: z.object({ customerId: z.string() }),
@@ -27,8 +27,8 @@ export function createMockTools(): ToolDefinition[] {
             requiresConfirmation: false,
             parallelSafe: true,
             execute: async ({ customerId }) => customers[customerId] ?? null,
-        },
-        {
+        }),
+        defineTool({
             name: 'getOrdersByCustomer',
             description: 'List orders for customer',
             parameters: z.object({ customerId: z.string() }),
@@ -37,8 +37,8 @@ export function createMockTools(): ToolDefinition[] {
             requiresConfirmation: false,
             parallelSafe: true,
             execute: async ({ customerId }) => orders[customerId] ?? [],
-        },
-        {
+        }),
+        defineTool({
             name: 'getRefundPolicy',
             description: 'Return refund policy text',
             parameters: z.object({}),
@@ -50,8 +50,8 @@ export function createMockTools(): ToolDefinition[] {
                 version: '2026.01',
                 text: 'Refund available within 30 days for eligible orders.',
             }),
-        },
-        {
+        }),
+        defineTool({
             name: 'webSearch',
             description: 'Deterministic web search mock',
             parameters: z.object({ query: z.string() }),
@@ -66,8 +66,8 @@ export function createMockTools(): ToolDefinition[] {
                     { title: 'Result B', snippet: 'Mock result B.' },
                 ],
             }),
-        },
-        {
+        }),
+        defineTool({
             name: 'createTicket',
             description: 'Create support ticket in ticketing system',
             parameters: z.object({ customerId: z.string(), reason: z.string() }),
@@ -81,8 +81,8 @@ export function createMockTools(): ToolDefinition[] {
                 reason,
                 status: 'created',
             }),
-        },
-        {
+        }),
+        defineTool({
             name: 'sendSlackMessage',
             description: 'Send operational Slack message',
             parameters: z.object({ channel: z.string(), message: z.string() }),
@@ -95,8 +95,8 @@ export function createMockTools(): ToolDefinition[] {
                 message,
                 delivered: true,
             }),
-        },
-        {
+        }),
+        defineTool({
             name: 'refundOrder',
             description: 'Trigger refund for order',
             parameters: z.object({ orderId: z.string(), amount: z.number() }),
@@ -109,6 +109,6 @@ export function createMockTools(): ToolDefinition[] {
                 amount,
                 status: 'refunded',
             }),
-        },
+        }),
     ];
 }

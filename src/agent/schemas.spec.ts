@@ -12,7 +12,7 @@ import {
 
 describe('agent schemas', () => {
     it('builds an OpenAI response_format for PlanResponseSchema with a stable schema name', () => {
-        const responseFormat = zodResponseFormat(PlanResponseSchema, 'Plan');
+        const responseFormat = zodResponseFormat(PlanResponseSchema as never, 'Plan');
 
         expect(responseFormat).toEqual(
             expect.objectContaining({
@@ -32,7 +32,7 @@ describe('agent schemas', () => {
     });
 
     it('builds an OpenAI response_format for ReflectorOutputSchema', () => {
-        const responseFormat = zodResponseFormat(ReflectorOutputSchema, 'ReflectorOutput');
+        const responseFormat = zodResponseFormat(ReflectorOutputSchema as never, 'ReflectorOutput');
 
         expect(responseFormat.json_schema.name).toBe('ReflectorOutput');
         expect(responseFormat.json_schema.schema).toEqual(

@@ -7,7 +7,7 @@ export const StepModeSchema = z.enum(['parallel-tools', 'single-tool', 'reasonin
 /** Normalized tool call embedded in a plan step. */
 export const ToolCallSchema = z.object({
     toolName: z.string().min(1),
-    args: z.record(z.unknown()).default({}),
+    args: z.record(z.string(), z.unknown()).default({}),
 });
 
 /** Validated plan step consumed by the step executor. */

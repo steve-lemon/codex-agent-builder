@@ -64,4 +64,4 @@ export class ToolRegistry {
 }
 
 /** Fallback schema for generic tool arguments with unknown field shapes. */
-export const AnyArgsSchema = z.record(z.unknown());
+export const AnyArgsSchema = z.record(z.string(), z.unknown());

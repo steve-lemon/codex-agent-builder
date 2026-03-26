@@ -7,6 +7,7 @@ import { InMemoryRunStateStore } from '../state/memory-store';
 import { buildDefaultToolRegistry } from '../tools';
 import { ToolRegistry } from '../tools/registry';
 import type { LlmGateway } from '../llm/types';
+import { defineTool } from '../tools/types';
 
 describe('approval flow', () => {
     it('suspends run when tool requires approval', async () => {
@@ -56,7 +57,7 @@ describe('approval flow', () => {
         const executedAmounts: number[] = [];
 
         registry.registerMany([
-            {
+            defineTool({
                 name: 'getCustomerById',
                 description: 'customer lookup',
                 parameters: z.object({ customerId: z.string() }),
@@ -65,8 +66,8 @@ describe('approval flow', () => {
                 requiresConfirmation: false,
                 parallelSafe: true,
                 execute: async () => ({ id: 'c_1' }),
-            },
-            {
+            }),
+            defineTool({
                 name: 'getOrdersByCustomer',
                 description: 'order lookup',
                 parameters: z.object({ customerId: z.string() }),
@@ -75,8 +76,8 @@ describe('approval flow', () => {
                 requiresConfirmation: false,
                 parallelSafe: true,
                 execute: async () => [{ orderId: 'o_100' }],
-            },
-            {
+            }),
+            defineTool({
                 name: 'getRefundPolicy',
                 description: 'policy lookup',
                 parameters: z.object({}),
@@ -85,8 +86,8 @@ describe('approval flow', () => {
                 requiresConfirmation: false,
                 parallelSafe: true,
                 execute: async () => ({ version: '2026.01' }),
-            },
-            {
+            }),
+            defineTool({
                 name: 'refundOrder',
                 description: 'refund',
                 parameters: z.object({ orderId: z.string(), amount: z.number() }),
@@ -98,7 +99,7 @@ describe('approval flow', () => {
                     executedAmounts.push(amount);
                     return { status: 'refunded', amount };
                 },
-            },
+            }),
         ]);
 
         const llm: LlmGateway = {

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { buildDefaultToolRegistry } from '.';
 import { createMockTools } from './mock-tools';
 import { AnyArgsSchema, ToolRegistry } from './registry';
-import type { ToolDefinition } from './types';
+import { defineTool, type ToolDefinition } from './types';
 import type { ToolContext } from './types';
 
 function makeToolContext(runId = 'test-run'): ToolContext {
@@ -20,7 +20,7 @@ function makeToolContext(runId = 'test-run'): ToolContext {
 }
 
 function makeTestTool(overrides: Partial<ToolDefinition> = {}): ToolDefinition {
-    return {
+    return defineTool({
         name: 'echoTool',
         description: 'Echo args back to caller',
         parameters: z.object({ value: z.string() }),
@@ -29,12 +29,12 @@ function makeTestTool(overrides: Partial<ToolDefinition> = {}): ToolDefinition {
         requiresConfirmation: false,
         parallelSafe: true,
         execute: async (args, context) => ({
-            ...args,
+            ...(args as Record<string, unknown>),
             runId: context.runId,
             now: context.now,
         }),
         ...overrides,
-    };
+    });
 }
 
 describe('tools modules', () => {

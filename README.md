@@ -7,7 +7,7 @@ Production-style TypeScript agent runtime demonstrating skill selection, tool ro
 This project is a practical baseline for building an LLM agent runtime that can run in two modes:
 
 - deterministic fake gateway for tests and local demos
-- real OpenAI gateway for API-backed behavior
+- real OpenAI gateway for API-backed behavior via the official OpenAI Node SDK
 
 ## Architecture Overview
 
@@ -83,6 +83,7 @@ To use OpenAI:
 4. set `USE_REAL_OPENAI=true`
 
 Runtime selects gateway in [`src/index.ts`](./src/index.ts).
+The OpenAI gateway is implemented against the SDK `responses.parse` structured-output flow and expects `openai@^6.27.0`.
 
 ## Environment Variables
 

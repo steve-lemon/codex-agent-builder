@@ -37,3 +37,8 @@ export interface ToolDefinition<TSchema extends ZodTypeAny = ZodTypeAny> {
     parallelSafe: boolean;
     execute: (args: z.infer<TSchema>, context: ToolContext) => Promise<unknown> | unknown;
 }
+
+/** Preserves tool parameter inference when defining registry entries. */
+export function defineTool<TSchema extends ZodTypeAny>(tool: ToolDefinition<TSchema>): ToolDefinition<TSchema> {
+    return tool;
+}

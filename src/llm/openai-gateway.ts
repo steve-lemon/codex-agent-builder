@@ -1,6 +1,7 @@
 // LLM gateway interfaces and implementations.
 import OpenAI from 'openai';
-import { zodResponseFormat } from 'openai/helpers/zod';
+import { zodTextFormat } from 'openai/helpers/zod';
+import { z } from 'zod';
 import { parsePlanResponse, PlanResponseSchema, ReflectorOutputSchema } from '../agent/schemas';
 import { FinalResultSchema } from '../agent/types';
 import type { LlmGateway, PlannerInput, ReflectorInput, FinalizerInput } from './types';
@@ -28,47 +29,65 @@ export class OpenAiGateway implements LlmGateway {
     }
 
     async plan(input: PlannerInput) {
-        const completion = await this.client.chat.completions.parse({
-            model: this.model,
-            messages: [
+        const parsed = await this.parseStructuredResponse(
+            [
                 {
                     role: 'system',
                     content: 'Return a concise executable plan for an agent runtime. Use only provided tools.',
                 },
                 { role: 'user', content: JSON.stringify(input) },
             ],
-            response_format: zodResponseFormat(PlanResponseSchema, 'Plan'),
-        });
+            PlanResponseSchema,
+            'plan',
+        );
 
-        const parsed = completion.choices[0]?.message?.parsed;
         return parsePlanResponse(parsed);
     }
 
     async reflect(input: ReflectorInput) {
-        const completion = await this.client.chat.completions.parse({
-            model: this.model,
-            messages: [
+        return this.parseStructuredResponse(
+            [
                 { role: 'system', content: 'Decide whether run is complete.' },
                 { role: 'user', content: JSON.stringify(input) },
             ],
-            response_format: zodResponseFormat(ReflectorOutputSchema, 'ReflectorOutput'),
-        });
-
-        const parsed = completion.choices[0]?.message?.parsed;
-        return ReflectorOutputSchema.parse(parsed);
+            ReflectorOutputSchema,
+            'reflector_output',
+        );
     }
 
     async finalize(input: FinalizerInput) {
-        const completion = await this.client.chat.completions.parse({
-            model: this.model,
-            messages: [
+        return this.parseStructuredResponse(
+            [
                 { role: 'system', content: 'Return final concise agent result.' },
                 { role: 'user', content: JSON.stringify(input) },
             ],
-            response_format: zodResponseFormat(FinalResultSchema, 'FinalResult'),
+            FinalResultSchema,
+            'final_result',
+        );
+    }
+
+    /** Uses the recommended Responses API structured parsing flow for new SDK integrations. */
+    private async parseStructuredResponse<TSchema extends z.ZodTypeAny>(
+        input: Array<{ role: 'system' | 'user'; content: string }>,
+        schema: TSchema,
+        schemaName: string,
+    ): Promise<z.output<TSchema>> {
+        const response = await this.client.responses.parse({
+            model: this.model,
+            input,
+            text: {
+                // The SDK helper has very deep conditional types in v6, so keep this boundary shallow.
+                format: zodTextFormat(schema as never, schemaName),
+            },
         });
 
-        const parsed = completion.choices[0]?.message?.parsed;
-        return FinalResultSchema.parse(parsed);
+        if (response.output_parsed === null) {
+            throw new AgentError('OpenAI returned no structured output', {
+                cause: response,
+                code: 'OPENAI_STRUCTURED_OUTPUT_MISSING',
+            });
+        }
+
+        return schema.parse(response.output_parsed) as z.output<TSchema>;
     }
 }
