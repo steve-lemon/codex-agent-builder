@@ -14,6 +14,7 @@ function makeRunState(runId: string): RunState {
       steps: [{ id: 's1', mode: 'reasoning', description: 'reasoning' }]
     },
     currentStepIndex: 0,
+    resultNo: 0,
     stepResults: [],
     status: 'running',
     createdAt: 1,
@@ -44,20 +45,19 @@ describe('InMemoryRunStateStore.update', () => {
     const original = makeRunState('run-2');
     await store.save(original);
 
+    await store.appendStepResult('run-2', {
+      stepId: 's1',
+      mode: 'reasoning',
+      output: { ok: true }
+    });
+
     const updated = await store.update('run-2', (current) => ({
       currentStepIndex: current.currentStepIndex + 1,
-      stepResults: [
-        ...current.stepResults,
-        {
-          stepId: 's1',
-          mode: 'reasoning',
-          output: { ok: true }
-        }
-      ],
       updatedAt: 3
     }));
 
     expect(updated.currentStepIndex).toBe(1);
+    expect(updated.resultNo).toBe(1);
     expect(updated.stepResults).toEqual([
       {
         stepId: 's1',
@@ -67,5 +67,29 @@ describe('InMemoryRunStateStore.update', () => {
     ]);
     expect(updated.status).toBe('running');
     expect(updated.createdAt).toBe(1);
+  });
+
+  it('stores step results as child records and hydrates them through get', async () => {
+    const store = new InMemoryRunStateStore();
+    await store.save(makeRunState('run-3'));
+
+    const resultRecord = await store.appendStepResult('run-3', {
+      stepId: 's1',
+      mode: 'reasoning',
+      output: { size: 'large-payload-placeholder' }
+    });
+
+    const hydrated = await store.get('run-3');
+
+    expect(resultRecord.id).toBe('run-3:result:1');
+    expect(resultRecord.resultNo).toBe(1);
+    expect(hydrated?.resultNo).toBe(1);
+    expect(hydrated?.stepResults).toEqual([
+      {
+        stepId: 's1',
+        mode: 'reasoning',
+        output: { size: 'large-payload-placeholder' }
+      }
+    ]);
   });
 });

@@ -35,6 +35,15 @@ export interface StepResult {
   toolResults?: ToolResult[];
 }
 
+/** Child record used to persist a step result outside the main run state object. */
+export interface RunStateResult {
+  id: string;
+  runId: string;
+  resultNo: number;
+  stepResult: StepResult;
+  createdAt: number;
+}
+
 /** Durable runtime state used for persistence, tracing, and resume flow. */
 export interface RunState {
   runId: string;
@@ -44,6 +53,7 @@ export interface RunState {
   allowedTools: string[];
   plan: Plan;
   currentStepIndex: number;
+  resultNo: number;
   stepResults: StepResult[];
   pendingApproval?: PendingApproval;
   status: RunStatus;

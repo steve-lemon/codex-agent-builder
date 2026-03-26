@@ -76,6 +76,7 @@ export class AgentRuntime {
       allowedTools,
       plan,
       currentStepIndex: 0,
+      resultNo: 0,
       stepResults: [],
       status: 'running',
       createdAt: currentTime,
@@ -106,11 +107,11 @@ export class AgentRuntime {
     const resolved = resolveApprovalArgs(run.pendingApproval, decision);
 
     if (!resolved.approved) {
+      await this.options.store.appendStepResult(runId, resolved.syntheticResult!);
       await this.options.store.update(runId, (current) => ({
         pendingApproval: undefined,
         status: 'running',
         currentStepIndex: current.currentStepIndex + 1,
-        stepResults: [...current.stepResults, resolved.syntheticResult!],
         updatedAt: now()
       }));
     } else {
@@ -124,11 +125,11 @@ export class AgentRuntime {
         runState: this.createRunStateContext(runId)
       });
 
+      await this.options.store.appendStepResult(runId, stepResult);
       await this.options.store.update(runId, (current) => ({
         pendingApproval: undefined,
         status: 'running',
         currentStepIndex: current.currentStepIndex + 1,
-        stepResults: [...current.stepResults, stepResult],
         updatedAt: now()
       }));
     }
@@ -176,9 +177,9 @@ export class AgentRuntime {
           };
         }
 
+        await this.options.store.appendStepResult(runId, result.stepResult!);
         run = await this.options.store.update(runId, (current) => ({
           currentStepIndex: current.currentStepIndex + 1,
-          stepResults: [...current.stepResults, result.stepResult!],
           updatedAt: now()
         }));
       } catch (error) {

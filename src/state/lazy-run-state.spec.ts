@@ -15,6 +15,7 @@ function makeRunState(runId: string): RunState {
       steps: [{ id: 's1', mode: 'reasoning', description: 'reasoning' }]
     },
     currentStepIndex: 0,
+    resultNo: 0,
     stepResults: [],
     status: 'running',
     createdAt: 1,
@@ -33,6 +34,9 @@ describe('createLazyRunStateContext', () => {
       },
       async update() {
         throw new Error('not used');
+      },
+      async appendStepResult() {
+        throw new Error('not used');
       }
     };
 
@@ -50,6 +54,9 @@ describe('createLazyRunStateContext', () => {
         return makeRunState('run-1');
       },
       async update() {
+        throw new Error('not used');
+      },
+      async appendStepResult() {
         throw new Error('not used');
       }
     };
@@ -70,6 +77,9 @@ describe('createLazyRunStateContext', () => {
         return undefined;
       },
       async update() {
+        throw new Error('not used');
+      },
+      async appendStepResult() {
         throw new Error('not used');
       }
     };
