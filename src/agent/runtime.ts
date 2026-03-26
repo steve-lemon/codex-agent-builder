@@ -15,6 +15,7 @@ import type { RunStateStore } from '../state/types';
 import type { ToolRegistry } from '../tools/registry';
 import { AgentTracer } from '../observability/tracer';
 import { now } from '../time/now';
+import { AgentError } from '../errors/agent-error';
 
 /** Constructor dependencies required by the runtime coordinator. */
 export interface AgentRuntimeOptions {
@@ -89,11 +90,11 @@ export class AgentRuntime {
   async resume(runId: string, decision: ApprovalDecision): Promise<RuntimeRunResult> {
     const run = await this.options.store.get(runId);
     if (!run) {
-      throw new Error(`Run not found: ${runId}`);
+      throw new AgentError(`Run not found: ${runId}`);
     }
 
     if (run.status !== 'waiting_for_approval' || !run.pendingApproval) {
-      throw new Error(`Run ${runId} is not waiting for approval`);
+      throw new AgentError(`Run ${runId} is not waiting for approval`);
     }
 
     this.tracer.log(runId, 'approval_decision', {
@@ -140,7 +141,7 @@ export class AgentRuntime {
   private async executeUntilPauseOrComplete(runId: string): Promise<RuntimeRunResult> {
     let run = await this.options.store.get(runId);
     if (!run) {
-      throw new Error(`Run not found: ${runId}`);
+      throw new AgentError(`Run not found: ${runId}`);
     }
 
     while (run.currentStepIndex < run.plan.steps.length) {
@@ -182,8 +183,9 @@ export class AgentRuntime {
           updatedAt: now()
         }));
       } catch (error) {
+        const agentError = AgentError.from(error);
         this.tracer.log(runId, 'error', {
-          message: error instanceof Error ? error.message : String(error),
+          message: agentError.message,
           stepIndex
         });
         run = await this.options.store.update(runId, (current) => ({

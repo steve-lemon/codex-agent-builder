@@ -4,6 +4,7 @@ import { isRetryableError } from './retry-classifier';
 import { withTimeout } from './timeout';
 import type { RetryOptions } from './types';
 import type { CircuitBreaker } from './circuit-breaker';
+import { AgentError } from '../errors/agent-error';
 
 /** Applies timeout, retry, and circuit breaker behavior to an async execution. */
 export async function resilientExecute<T>(params: {
@@ -17,7 +18,7 @@ export async function resilientExecute<T>(params: {
   const { key, execute, timeoutMs, retry, circuitBreaker, enableCircuitBreaker } = params;
 
   if (enableCircuitBreaker && circuitBreaker && !circuitBreaker.canExecute(key)) {
-    throw new Error(`Circuit breaker is open for ${key}`);
+    throw new AgentError(`Circuit breaker is open for ${key}`);
   }
 
   let lastError: unknown;
@@ -29,12 +30,12 @@ export async function resilientExecute<T>(params: {
       }
       return result;
     } catch (error) {
-      lastError = error;
+      lastError = AgentError.from(error);
       if (enableCircuitBreaker && circuitBreaker) {
         circuitBreaker.onFailure(key);
       }
 
-      const canRetry = attempt < retry.maxAttempts && isRetryableError(error);
+      const canRetry = attempt < retry.maxAttempts && isRetryableError(lastError);
       if (!canRetry) {
         break;
       }
@@ -43,5 +44,5 @@ export async function resilientExecute<T>(params: {
     }
   }
 
-  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  throw AgentError.from(lastError);
 }

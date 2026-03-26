@@ -1,6 +1,7 @@
 // Persistence abstraction and in-memory run state store.
 import type { RunState } from '../agent/types';
 import type { RunStateStore } from './types';
+import { AgentError } from '../errors/agent-error';
 
 /** In-memory implementation of the run store for local execution and tests. */
 export class InMemoryRunStateStore implements RunStateStore {
@@ -18,7 +19,7 @@ export class InMemoryRunStateStore implements RunStateStore {
   async update(runId: string, updater: (current: RunState) => RunState): Promise<RunState> {
     const current = this.runs.get(runId);
     if (!current) {
-      throw new Error(`Run not found: ${runId}`);
+      throw new AgentError(`Run not found: ${runId}`);
     }
     const updated = updater({ ...current, stepResults: [...current.stepResults] });
     this.runs.set(runId, updated);

@@ -4,6 +4,7 @@ import { zodResponseFormat } from 'openai/helpers/zod';
 import { PlanSchema, ReflectorOutputSchema } from '../agent/schemas';
 import { FinalResultSchema } from '../agent/types';
 import type { LlmGateway, PlannerInput, ReflectorInput, FinalizerInput } from './types';
+import { AgentError } from '../errors/agent-error';
 
 /** Configuration used to initialize the OpenAI-backed gateway. */
 export interface OpenAiGatewayOptions {
@@ -19,7 +20,7 @@ export class OpenAiGateway implements LlmGateway {
   constructor(options: OpenAiGatewayOptions = {}) {
     const apiKey = options.apiKey ?? process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      throw new Error('OPENAI_API_KEY is required for OpenAiGateway');
+      throw new AgentError('OPENAI_API_KEY is required for OpenAiGateway');
     }
 
     this.client = new OpenAI({ apiKey });

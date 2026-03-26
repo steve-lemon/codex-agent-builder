@@ -8,6 +8,7 @@ import { resilientExecute } from '../resilience/resilient-execute';
 import { CircuitBreaker } from '../resilience/circuit-breaker';
 import type { ExecuteStepContext, PendingApproval, StepResult } from './types';
 import { buildPendingApproval } from './approval';
+import { AgentError } from '../errors/agent-error';
 
 export interface StepExecutorResult {
   stepResult?: StepResult;
@@ -61,12 +62,12 @@ export class StepExecutor {
 
     const executeOne = async (toolName: string, args: Record<string, unknown>) => {
       if (!allowedToolNames.has(toolName)) {
-        throw new Error(`Tool ${toolName} is not allowed for skill ${skillName}`);
+        throw new AgentError(`Tool ${toolName} is not allowed for skill ${skillName}`);
       }
 
       const tool = this.registry.get(toolName);
       if (!tool) {
-        throw new Error(`Tool ${toolName} not found`);
+        throw new AgentError(`Tool ${toolName} not found`);
       }
 
       if (tool.requiresConfirmation) {
@@ -85,11 +86,9 @@ export class StepExecutor {
         execute: async () => {
           const execution = await this.registry.execute({ toolName, args }, runId);
           if (!execution.ok) {
-            const err = new Error(execution.error ?? 'Tool execution failed');
-            (err as { transient?: boolean }).transient = /timeout|temporar|network/i.test(
-              execution.error ?? ''
-            );
-            throw err;
+            throw new AgentError(execution.error ?? 'Tool execution failed', {
+              transient: /timeout|temporar|network/i.test(execution.error ?? '')
+            });
           }
           return execution;
         }
@@ -102,7 +101,7 @@ export class StepExecutor {
     if (step.mode === 'single-tool') {
       const call = toolCalls[0];
       if (!call) {
-        throw new Error(`Step ${step.id} expected one tool call`);
+        throw new AgentError(`Step ${step.id} expected one tool call`);
       }
 
       const outcome = await executeOne(call.toolName, call.args);
@@ -132,7 +131,7 @@ export class StepExecutor {
     );
 
     if (blockedCalls.length > 0) {
-      throw new Error(
+      throw new AgentError(
         `parallel-tools step includes non parallel-safe/read-only tools: ${blockedCalls
           .map((c) => c.toolName)
           .join(', ')}`
@@ -143,7 +142,7 @@ export class StepExecutor {
       parallelCalls.map(async (call) => {
         const outcome = await executeOne(call.toolName, call.args);
         if (outcome.pendingApproval) {
-          throw new Error('parallel-tools cannot contain approval-required tools');
+          throw new AgentError('parallel-tools cannot contain approval-required tools');
         }
         return outcome.result;
       })
@@ -170,12 +169,12 @@ export class StepExecutor {
     const allowedToolNames = new Set(this.skillRouter.toolNamesForSkill(skillName as never));
 
     if (!allowedToolNames.has(toolName)) {
-      throw new Error(`Tool ${toolName} is not allowed for skill ${skillName}`);
+      throw new AgentError(`Tool ${toolName} is not allowed for skill ${skillName}`);
     }
 
     const tool = this.registry.get(toolName);
     if (!tool) {
-      throw new Error(`Tool ${toolName} not found`);
+      throw new AgentError(`Tool ${toolName} not found`);
     }
 
     const policy = resolveToolExecutionPolicy(tool);
@@ -188,7 +187,7 @@ export class StepExecutor {
       execute: async () => {
         const execution = await this.registry.execute({ toolName, args }, runId);
         if (!execution.ok) {
-          throw new Error(execution.error ?? 'Tool execution failed');
+          throw new AgentError(execution.error ?? 'Tool execution failed');
         }
         return execution;
       }

@@ -2,6 +2,7 @@
 import { z } from 'zod';
 import type { ToolCall, ToolDefinition, ToolResult } from './types';
 import { now } from '../time/now';
+import { AgentError } from '../errors/agent-error';
 
 /** Stores tool definitions and provides argument validation plus execution helpers. */
 export class ToolRegistry {
@@ -32,11 +33,11 @@ export class ToolRegistry {
   parseArgs(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
     const tool = this.get(toolName);
     if (!tool) {
-      throw new Error(`Tool not found: ${toolName}`);
+      throw new AgentError(`Tool not found: ${toolName}`);
     }
     const parsed = tool.parameters.safeParse(args);
     if (!parsed.success) {
-      throw new Error(
+      throw new AgentError(
         `Invalid args for ${toolName}: ${parsed.error.issues
           .map((i) => i.message)
           .join(', ')}`
@@ -59,10 +60,11 @@ export class ToolRegistry {
       });
       return { toolName: call.toolName, ok: true, data };
     } catch (error) {
+      const agentError = AgentError.from(error);
       return {
         toolName: call.toolName,
         ok: false,
-        error: error instanceof Error ? error.message : String(error)
+        error: agentError.message
       };
     }
   }
