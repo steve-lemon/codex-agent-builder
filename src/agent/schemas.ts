@@ -24,12 +24,38 @@ export const PlanSchema = z.object({
     steps: z.array(PlanStepSchema).min(1),
 });
 
+/** OpenAI-compatible plan step schema where every field is required by the API. */
+export const PlanStepResponseSchema = z.object({
+    id: z.string().min(1),
+    mode: StepModeSchema,
+    description: z.string().min(1),
+    toolCalls: z.array(ToolCallSchema).nullable(),
+    reasoning: z.string().nullable(),
+});
+
+/** OpenAI-compatible planner schema used for response_format generation. */
+export const PlanResponseSchema = z.object({
+    steps: z.array(PlanStepResponseSchema).min(1),
+});
+
 /** Reflector output describing completeness and missing work. */
 export const ReflectorOutputSchema = z.object({
     isComplete: z.boolean(),
     reason: z.string(),
     missingItems: z.array(z.string()).default([]),
 });
+
+/** Normalizes a gateway planner payload into the runtime Plan shape. */
+export function parsePlanResponse(input: unknown): Plan {
+    const parsed = PlanResponseSchema.parse(input);
+    return PlanSchema.parse({
+        steps: parsed.steps.map(step => ({
+            ...step,
+            toolCalls: step.toolCalls ?? undefined,
+            reasoning: step.reasoning ?? undefined,
+        })),
+    });
+}
 
 export type Plan = z.infer<typeof PlanSchema>;
 export type PlanStep = z.infer<typeof PlanStepSchema>;

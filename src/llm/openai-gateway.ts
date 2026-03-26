@@ -1,7 +1,7 @@
 // LLM gateway interfaces and implementations.
 import OpenAI from 'openai';
 import { zodResponseFormat } from 'openai/helpers/zod';
-import { PlanSchema, ReflectorOutputSchema } from '../agent/schemas';
+import { parsePlanResponse, PlanResponseSchema, ReflectorOutputSchema } from '../agent/schemas';
 import { FinalResultSchema } from '../agent/types';
 import type { LlmGateway, PlannerInput, ReflectorInput, FinalizerInput } from './types';
 import { AgentError } from '../errors/agent-error';
@@ -37,11 +37,11 @@ export class OpenAiGateway implements LlmGateway {
                 },
                 { role: 'user', content: JSON.stringify(input) },
             ],
-            response_format: zodResponseFormat(PlanSchema, 'Plan'),
+            response_format: zodResponseFormat(PlanResponseSchema, 'Plan'),
         });
 
         const parsed = completion.choices[0]?.message?.parsed;
-        return PlanSchema.parse(parsed);
+        return parsePlanResponse(parsed);
     }
 
     async reflect(input: ReflectorInput) {
