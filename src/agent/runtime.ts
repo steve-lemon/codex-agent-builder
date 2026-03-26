@@ -16,6 +16,7 @@ import type { ToolRegistry } from '../tools/registry';
 import { AgentTracer } from '../observability/tracer';
 import { now } from '../time/now';
 import { AgentError } from '../errors/agent-error';
+import { createLazyRunStateContext } from '../state/lazy-run-state';
 
 /** Constructor dependencies required by the runtime coordinator. */
 export interface AgentRuntimeOptions {
@@ -106,7 +107,6 @@ export class AgentRuntime {
 
     if (!resolved.approved) {
       await this.options.store.update(runId, (current) => ({
-        ...current,
         pendingApproval: undefined,
         status: 'running',
         currentStepIndex: current.currentStepIndex + 1,
@@ -120,11 +120,11 @@ export class AgentRuntime {
         skillName: run.skillName,
         stepId: approvedStep?.id ?? `step-${run.pendingApproval.stepIndex}`,
         toolName: run.pendingApproval.toolCall.toolName,
-        args: resolved.args
+        args: resolved.args,
+        runState: this.createRunStateContext(runId)
       });
 
       await this.options.store.update(runId, (current) => ({
-        ...current,
         pendingApproval: undefined,
         status: 'running',
         currentStepIndex: current.currentStepIndex + 1,
@@ -156,13 +156,13 @@ export class AgentRuntime {
           context: {
             runId,
             stepIndex,
-            allowParallel: true
+            allowParallel: true,
+            runState: this.createRunStateContext(runId)
           }
         });
 
         if (result.pendingApproval) {
           run = await this.options.store.update(runId, (current) => ({
-            ...current,
             pendingApproval: result.pendingApproval,
             status: 'waiting_for_approval',
             updatedAt: now()
@@ -177,7 +177,6 @@ export class AgentRuntime {
         }
 
         run = await this.options.store.update(runId, (current) => ({
-          ...current,
           currentStepIndex: current.currentStepIndex + 1,
           stepResults: [...current.stepResults, result.stepResult!],
           updatedAt: now()
@@ -188,8 +187,7 @@ export class AgentRuntime {
           message: agentError.message,
           stepIndex
         });
-        run = await this.options.store.update(runId, (current) => ({
-          ...current,
+        run = await this.options.store.update(runId, () => ({
           status: 'failed',
           updatedAt: now()
         }));
@@ -214,8 +212,7 @@ export class AgentRuntime {
       stepResults: run.stepResults
     });
 
-    run = await this.options.store.update(runId, (current) => ({
-      ...current,
+    run = await this.options.store.update(runId, () => ({
       status: 'completed',
       updatedAt: now()
     }));
@@ -231,5 +228,9 @@ export class AgentRuntime {
   private loadSkillInstructions(skillName: SkillName): string {
     const filePath = join(process.cwd(), 'src', 'skills', skillName, 'SKILL.md');
     return readFileSync(filePath, 'utf-8');
+  }
+
+  private createRunStateContext(runId: string) {
+    return createLazyRunStateContext(this.options.store, runId);
   }
 }

@@ -9,6 +9,7 @@ import { CircuitBreaker } from '../resilience/circuit-breaker';
 import type { ExecuteStepContext, PendingApproval, StepResult } from './types';
 import { buildPendingApproval } from './approval';
 import { AgentError } from '../errors/agent-error';
+import { now } from '../time/now';
 
 export interface StepExecutorResult {
   stepResult?: StepResult;
@@ -84,7 +85,14 @@ export class StepExecutor {
         circuitBreaker: this.circuitBreaker,
         enableCircuitBreaker: policy.useCircuitBreaker,
         execute: async () => {
-          const execution = await this.registry.execute({ toolName, args }, runId);
+          const execution = await this.registry.execute(
+            { toolName, args },
+            {
+              runId,
+              now: now(),
+              runState: context.runState
+            }
+          );
           if (!execution.ok) {
             throw new AgentError(execution.error ?? 'Tool execution failed', {
               transient: /timeout|temporar|network/i.test(execution.error ?? '')
@@ -164,8 +172,9 @@ export class StepExecutor {
     stepId: string;
     toolName: string;
     args: Record<string, unknown>;
+    runState: ExecuteStepContext['runState'];
   }): Promise<StepResult> {
-    const { runId, skillName, stepId, toolName, args } = params;
+    const { runId, skillName, stepId, toolName, args, runState } = params;
     const allowedToolNames = new Set(this.skillRouter.toolNamesForSkill(skillName as never));
 
     if (!allowedToolNames.has(toolName)) {
@@ -185,7 +194,14 @@ export class StepExecutor {
       circuitBreaker: this.circuitBreaker,
       enableCircuitBreaker: policy.useCircuitBreaker,
       execute: async () => {
-        const execution = await this.registry.execute({ toolName, args }, runId);
+        const execution = await this.registry.execute(
+          { toolName, args },
+          {
+            runId,
+            now: now(),
+            runState
+          }
+        );
         if (!execution.ok) {
           throw new AgentError(execution.error ?? 'Tool execution failed');
         }

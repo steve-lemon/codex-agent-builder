@@ -1,5 +1,6 @@
 // Tool metadata, registration, and mock implementations.
 import { z, type ZodTypeAny } from 'zod';
+import type { RunStateContext } from '../state/types';
 
 export type ToolRiskLevel = 'read-only' | 'side-effecting' | 'approval-required';
 
@@ -7,6 +8,7 @@ export type ToolRiskLevel = 'read-only' | 'side-effecting' | 'approval-required'
 export interface ToolContext {
   runId: string;
   now: number;
+  runState: RunStateContext;
 }
 
 /** Generic tool call envelope used across planning and execution. */

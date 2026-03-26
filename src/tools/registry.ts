@@ -1,8 +1,8 @@
 // Tool metadata, registration, and mock implementations.
 import { z } from 'zod';
 import type { ToolCall, ToolDefinition, ToolResult } from './types';
-import { now } from '../time/now';
 import { AgentError } from '../errors/agent-error';
+import type { ToolContext } from './types';
 
 /** Stores tool definitions and provides argument validation plus execution helpers. */
 export class ToolRegistry {
@@ -46,7 +46,7 @@ export class ToolRegistry {
     return parsed.data as Record<string, unknown>;
   }
 
-  async execute(call: ToolCall, runId: string): Promise<ToolResult> {
+  async execute(call: ToolCall, context: ToolContext): Promise<ToolResult> {
     const tool = this.get(call.toolName);
     if (!tool) {
       return { toolName: call.toolName, ok: false, error: 'Tool not found' };
@@ -54,10 +54,7 @@ export class ToolRegistry {
 
     try {
       const parsedArgs = this.parseArgs(call.toolName, call.args);
-      const data = await tool.execute(parsedArgs, {
-        runId,
-        now: now()
-      });
+      const data = await tool.execute(parsedArgs, context);
       return { toolName: call.toolName, ok: true, data };
     } catch (error) {
       const agentError = AgentError.from(error);

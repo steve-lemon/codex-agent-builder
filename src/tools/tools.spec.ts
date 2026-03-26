@@ -5,6 +5,19 @@ import { buildDefaultToolRegistry } from '.';
 import { createMockTools } from './mock-tools';
 import { AnyArgsSchema, ToolRegistry } from './registry';
 import type { ToolDefinition } from './types';
+import type { ToolContext } from './types';
+
+function makeToolContext(runId = 'test-run'): ToolContext {
+  return {
+    runId,
+    now: 1234567890,
+    runState: {
+      async get() {
+        throw new Error('runState.get() should not have been called in this test');
+      }
+    }
+  };
+}
 
 function makeTestTool(overrides: Partial<ToolDefinition> = {}): ToolDefinition {
   return {
@@ -69,13 +82,16 @@ describe('tools modules', () => {
 
     const customer = await registry.execute(
       { toolName: 'getCustomerById', args: { customerId: 'c_1' } },
-      'run-tools-1'
+      makeToolContext('run-tools-1')
     );
     const orders = await registry.execute(
       { toolName: 'getOrdersByCustomer', args: { customerId: 'c_1' } },
-      'run-tools-1'
+      makeToolContext('run-tools-1')
     );
-    const policy = await registry.execute({ toolName: 'getRefundPolicy', args: {} }, 'run-tools-1');
+    const policy = await registry.execute(
+      { toolName: 'getRefundPolicy', args: {} },
+      makeToolContext('run-tools-1')
+    );
 
     expect(customer).toEqual({
       toolName: 'getCustomerById',
@@ -102,11 +118,11 @@ describe('tools modules', () => {
 
     const customer = await registry.execute(
       { toolName: 'getCustomerById', args: { customerId: 'missing' } },
-      'run-tools-unknown'
+      makeToolContext('run-tools-unknown')
     );
     const orders = await registry.execute(
       { toolName: 'getOrdersByCustomer', args: { customerId: 'missing' } },
-      'run-tools-unknown'
+      makeToolContext('run-tools-unknown')
     );
 
     expect(customer).toEqual({
@@ -129,18 +145,18 @@ describe('tools modules', () => {
         toolName: 'createTicket',
         args: { customerId: 'c_1', reason: 'Escalation requested by agent' }
       },
-      'run-tools-2'
+      makeToolContext('run-tools-2')
     );
     const refund = await registry.execute(
       { toolName: 'refundOrder', args: { orderId: 'o_100', amount: 25 } },
-      'run-tools-2'
+      makeToolContext('run-tools-2')
     );
     const slack = await registry.execute(
       {
         toolName: 'sendSlackMessage',
         args: { channel: '#ops', message: 'Daily automation summary ready.' }
       },
-      'run-tools-2'
+      makeToolContext('run-tools-2')
     );
 
     expect(ticket).toEqual({
@@ -204,7 +220,10 @@ describe('tools modules', () => {
     const registry = new ToolRegistry();
     registry.register(makeTestTool());
 
-    const result = await registry.execute({ toolName: 'echoTool', args: { value: 'hello' } }, 'r-1');
+    const result = await registry.execute(
+      { toolName: 'echoTool', args: { value: 'hello' } },
+      makeToolContext('r-1')
+    );
 
     expect(result.toolName).toBe('echoTool');
     expect(result.ok).toBe(true);
@@ -228,14 +247,16 @@ describe('tools modules', () => {
       })
     );
 
-    await expect(registry.execute({ toolName: 'missingTool', args: {} }, 'r-2')).resolves.toEqual({
+    await expect(
+      registry.execute({ toolName: 'missingTool', args: {} }, makeToolContext('r-2'))
+    ).resolves.toEqual({
       toolName: 'missingTool',
       ok: false,
       error: 'Tool not found'
     });
 
     await expect(
-      registry.execute({ toolName: 'brokenTool', args: { value: 123 } }, 'r-2')
+      registry.execute({ toolName: 'brokenTool', args: { value: 123 } }, makeToolContext('r-2'))
     ).resolves.toEqual({
       toolName: 'brokenTool',
       ok: false,
@@ -243,7 +264,7 @@ describe('tools modules', () => {
     });
 
     await expect(
-      registry.execute({ toolName: 'brokenTool', args: { value: 'ok' } }, 'r-2')
+      registry.execute({ toolName: 'brokenTool', args: { value: 'ok' } }, makeToolContext('r-2'))
     ).resolves.toEqual({
       toolName: 'brokenTool',
       ok: false,

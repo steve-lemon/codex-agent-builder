@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { ToolCall, ToolResult, ToolRiskLevel } from '../tools/types';
 import type { Plan, PlanStep } from './schemas';
 import type { TraceEvent } from '../observability/types';
+import type { RunStateContext } from '../state/types';
 
 export type RunStatus =
   | 'idle'
@@ -78,6 +79,7 @@ export interface ExecuteStepContext {
   runId: string;
   stepIndex: number;
   allowParallel: boolean;
+  runState: RunStateContext;
 }
 
 /** Concrete timeout and retry settings resolved for a tool. */
