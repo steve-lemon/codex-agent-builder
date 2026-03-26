@@ -41,7 +41,8 @@ Core flow:
 │  ├─ policy/
 │  ├─ resilience/
 │  ├─ state/
-│  ├─ observability/
+│  └─ observability/
+├─ data/
 │  └─ skills/
 └─ tests/
 ```

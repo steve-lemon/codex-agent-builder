@@ -236,7 +236,7 @@ export class AgentRuntime {
     }
 
     private loadSkillInstructions(skillName: SkillName): string {
-        const filePath = join(process.cwd(), 'src', 'skills', skillName, 'SKILL.md');
+        const filePath = join(process.cwd(), 'data', 'skills', skillName, 'SKILL.md');
         return readFileSync(filePath, 'utf-8');
     }
 
