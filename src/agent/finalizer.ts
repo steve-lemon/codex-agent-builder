@@ -8,6 +8,6 @@ export class Finalizer {
 
     async finalize(input: { userInput: string; skillName: string; stepResults: unknown[] }): Promise<FinalResult> {
         const result = await this.llm.finalize(input);
-        return FinalResultSchema.parse(result);
+        return FinalResultSchema.parse(result) as FinalResult;
     }
 }
