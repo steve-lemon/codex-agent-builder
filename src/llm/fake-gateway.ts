@@ -7,6 +7,14 @@ import type { FinalResult } from '../agent/types';
 export class FakeLlmGateway implements LlmGateway {
     async plan(input: PlannerInput): Promise<Plan> {
         const text = input.userInput.toLowerCase();
+        const availableToolNames = new Set(input.toolManifests.map(tool => tool.name));
+
+        const ensureToolAvailable = (toolName: string) => {
+            if (!availableToolNames.has(toolName)) {
+                throw new Error(`Fake planner attempted unavailable tool: ${toolName}`);
+            }
+            return toolName;
+        };
 
         if (input.skillName === 'research-brief-generator') {
             return {
@@ -15,7 +23,7 @@ export class FakeLlmGateway implements LlmGateway {
                         id: 's1',
                         mode: 'single-tool',
                         description: 'Collect research facts',
-                        toolCalls: [{ toolName: 'webSearch', args: { query: input.userInput } }],
+                        toolCalls: [{ toolName: ensureToolAvailable('webSearch'), args: { query: input.userInput } }],
                     },
                     {
                         id: 's2',
@@ -40,8 +48,8 @@ export class FakeLlmGateway implements LlmGateway {
                         mode: 'parallel-tools',
                         description: 'Read policy and context in parallel',
                         toolCalls: [
-                            { toolName: 'getRefundPolicy', args: {} },
-                            { toolName: 'webSearch', args: { query: 'ops status' } },
+                            { toolName: ensureToolAvailable('getRefundPolicy'), args: {} },
+                            { toolName: ensureToolAvailable('webSearch'), args: { query: 'ops status' } },
                         ],
                     },
                     {
@@ -50,7 +58,7 @@ export class FakeLlmGateway implements LlmGateway {
                         description: 'Notify channel',
                         toolCalls: [
                             {
-                                toolName: 'sendSlackMessage',
+                                toolName: ensureToolAvailable('sendSlackMessage'),
                                 args: { channel: '#ops', message: 'Daily automation summary ready.' },
                             },
                         ],
@@ -68,9 +76,9 @@ export class FakeLlmGateway implements LlmGateway {
                 mode: 'parallel-tools',
                 description: 'Load customer context in parallel',
                 toolCalls: [
-                    { toolName: 'getCustomerById', args: { customerId: 'c_1' } },
-                    { toolName: 'getOrdersByCustomer', args: { customerId: 'c_1' } },
-                    { toolName: 'getRefundPolicy', args: {} },
+                    { toolName: ensureToolAvailable('getCustomerById'), args: { customerId: 'c_1' } },
+                    { toolName: ensureToolAvailable('getOrdersByCustomer'), args: { customerId: 'c_1' } },
+                    { toolName: ensureToolAvailable('getRefundPolicy'), args: {} },
                 ],
             },
             {
@@ -88,9 +96,9 @@ export class FakeLlmGateway implements LlmGateway {
                 description: 'Execute approval-required action',
                 toolCalls: [
                     text.includes('refund')
-                        ? { toolName: 'refundOrder', args: { orderId: 'o_100', amount: 25 } }
+                        ? { toolName: ensureToolAvailable('refundOrder'), args: { orderId: 'o_100', amount: 25 } }
                         : {
-                              toolName: 'createTicket',
+                              toolName: ensureToolAvailable('createTicket'),
                               args: { customerId: 'c_1', reason: 'Escalation requested by agent' },
                           },
                 ],

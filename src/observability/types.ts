@@ -5,7 +5,7 @@ export interface TraceEvent {
     seq: number;
     ts: number;
     type: string;
-    stage: string;
+    stage: TraceStage;
     message: string;
     runId: string;
     data?: Record<string, unknown>;
@@ -21,10 +21,29 @@ export interface TraceDocument {
 
 /** WebSocket-like connection contract for real-time trace delivery. */
 export interface TraceConnection {
-    send(payload: string): void;
+    send(event: TraceEvent): void;
 }
 
 /** External storage abstraction for persisted traces. */
 export interface TraceStore {
     save(document: TraceDocument): Promise<string>;
 }
+
+/** Stages for structured tracing. */
+export type TraceStage =
+    | 'run'
+    | 'planner'
+    | 'step'
+    | 'tool'
+    | 'approval'
+    | 'reflector'
+    | 'finalizer'
+    | 'trace'
+    | 'error'
+    | 'runtime';
+
+/** state of run condition */
+export type RunStatus = 'idle' | 'running' | 'waiting_for_approval' | 'completed' | 'failed';
+
+/** approval-decistion-type */
+export type ApprovalDecisionType = 'approve' | 'reject' | 'edit-and-approve';

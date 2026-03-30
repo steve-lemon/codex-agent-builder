@@ -17,6 +17,8 @@ import { AgentTracer } from '../observability/tracer';
 import { now } from '../time/now';
 import { AgentError } from '../errors/agent-error';
 import { createLazyRunStateContext } from '../state/lazy-run-state';
+import { buildToolManifest } from '../tools/types';
+import { TraceStore } from '../observability/types';
 
 /** Constructor dependencies required by the runtime coordinator. */
 export interface AgentRuntimeOptions {
@@ -24,17 +26,18 @@ export interface AgentRuntimeOptions {
     store: RunStateStore;
     toolRegistry: ToolRegistry;
     tracer?: AgentTracer;
+    traceStore?: TraceStore;
 }
 
 /** Orchestrates selection, planning, execution, persistence, approvals, and tracing. */
 export class AgentRuntime {
+    public readonly tracer: AgentTracer;
     private readonly selector = new SkillSelector();
     private readonly router: MultiSkillRouter;
     private readonly planner: Planner;
     private readonly reflector: Reflector;
     private readonly finalizer: Finalizer;
     private readonly executor: StepExecutor;
-    private readonly tracer: AgentTracer;
 
     constructor(private readonly options: AgentRuntimeOptions) {
         this.tracer = options.tracer ?? new AgentTracer();
@@ -54,9 +57,11 @@ export class AgentRuntime {
         const traceId = this.tracer.startTrace(runId);
         this.tracer.log(runId, 'run_start', { userInput });
 
-        const skillName = this.selector.select(userInput);
+        const skillName = await this.selector.select(userInput);
         const skillInstructions = this.loadSkillInstructions(skillName);
-        const allowedTools = this.router.toolNamesForSkill(skillName);
+        const allowedToolDefinitions = this.router.toolsForSkill(skillName);
+        const allowedTools = allowedToolDefinitions.map(tool => tool.name);
+        const toolManifests = allowedToolDefinitions.map(buildToolManifest);
 
         this.tracer.log(runId, 'skill_selected', { skillName, allowedTools });
         this.tracer.log(runId, 'planner_call', {});
@@ -66,6 +71,8 @@ export class AgentRuntime {
             skillName,
             skillInstructions,
             allowedTools,
+            toolManifests,
+            toolDefinitions: allowedToolDefinitions,
         });
 
         const currentTime = now();

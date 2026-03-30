@@ -6,7 +6,7 @@ export type SkillName = (typeof SKILL_NAMES)[number];
 
 /** Maps user intent to a single skill using deterministic keyword rules. */
 export class SkillSelector {
-    select(userInput: string): SkillName {
+    async select(userInput: string): Promise<SkillName> {
         const text = userInput.toLowerCase();
 
         if (

@@ -1,7 +1,7 @@
 // Structured tracing types and tracer implementation.
 import { now } from '../time/now';
 import { FileTraceStore } from './file-trace-store';
-import type { TraceConnection, TraceDocument, TraceEvent, TraceStore } from './types';
+import type { TraceConnection, TraceDocument, TraceEvent, TraceStage, TraceStore } from './types';
 
 interface TraceSession {
     traceId: string;
@@ -14,6 +14,8 @@ interface TraceSession {
 /** Collects, streams, and flushes structured trace sessions per run. */
 export class AgentTracer {
     private readonly sessions = new Map<string, TraceSession>();
+
+    private connection: TraceConnection | null = null;
 
     constructor(private readonly traceStore: TraceStore = new FileTraceStore()) {}
 
@@ -47,9 +49,11 @@ export class AgentTracer {
         session.seq = event.seq;
         session.events.push(event);
 
-        const payload = JSON.stringify(event);
+        //* report with default
+        this.connection?.send(event);
+
         for (const connection of session.connections) {
-            connection.send(payload);
+            connection.send(event);
         }
     }
 
@@ -59,6 +63,11 @@ export class AgentTracer {
         }
 
         return [...(this.sessions.get(runId)?.events ?? [])];
+    }
+
+    /** set the default connection */
+    setConnection(connection: TraceConnection) {
+        this.connection = connection;
     }
 
     attachConnection(runId: string, connection: TraceConnection): void {
@@ -78,7 +87,7 @@ export class AgentTracer {
             events: [...session.events],
         };
 
-        await this.traceStore.save(document);
+        await this.traceStore?.save(document);
         return document;
     }
 
@@ -91,7 +100,7 @@ export class AgentTracer {
         return this.sessions.get(runId)!;
     }
 
-    private inferStage(type: string): string {
+    private inferStage(type: string): TraceStage {
         if (type.startsWith('run_')) return 'run';
         if (type.startsWith('planner')) return 'planner';
         if (type.startsWith('step_')) return 'step';

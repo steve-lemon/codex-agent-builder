@@ -54,7 +54,8 @@ export class OpenAiGateway implements LlmGateway {
             [
                 {
                     role: 'system',
-                    content: 'Return a concise executable plan for an agent runtime. Use only provided tools.',
+                    content:
+                        'Return a concise executable plan for an agent runtime. Use only provided tools and generate tool args that satisfy each tool parameter schema.',
                 },
                 { role: 'user', content: JSON.stringify(input) },
             ],

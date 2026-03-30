@@ -1,6 +1,7 @@
 // LLM gateway interfaces and implementations.
 import type { Plan, ReflectorOutput } from '../agent/schemas';
 import type { FinalResult } from '../agent/types';
+import type { ToolManifest } from '../tools/types';
 
 /** Payload sent to a planner-capable LLM gateway. */
 export interface PlannerInput {
@@ -8,6 +9,7 @@ export interface PlannerInput {
     skillName: string;
     skillInstructions: string;
     allowedTools: string[];
+    toolManifests: ToolManifest[];
 }
 
 /** Payload sent to a reflector-capable LLM gateway. */

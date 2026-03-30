@@ -148,7 +148,7 @@ describe('runtime flow', () => {
         expect(result.trace.some(event => event.type === 'error')).toBe(true);
     });
 
-    it('fails the run when planner returns a tool not allowed for the selected skill', async () => {
+    it('rejects the run when planner returns a tool not allowed for the selected skill', async () => {
         const llm: LlmGateway = {
             plan: async () => ({
                 steps: [
@@ -171,18 +171,37 @@ describe('runtime flow', () => {
             toolRegistry: buildDefaultToolRegistry(),
         });
 
-        const result = await runtime.run('Please review this customer complaint.');
+        await expect(runtime.run('Please review this customer complaint.')).rejects.toThrow(
+            /Planner returned tool webSearch that is not available in this run/,
+        );
+    });
 
-        expect(result.status).toBe('failed');
-        expect(
-            result.trace.some(
-                event =>
-                    event.type === 'error' &&
-                    String(event.data?.message).includes(
-                        'Tool webSearch is not allowed for skill customer-support-reviewer',
-                    ),
-            ),
-        ).toBe(true);
+    it('rejects the run before execution when planner returns args that violate the tool schema', async () => {
+        const llm: LlmGateway = {
+            plan: async () => ({
+                steps: [
+                    {
+                        id: 'bad-args',
+                        mode: 'single-tool',
+                        description: 'attempt invalid args',
+                        toolCalls: [{ toolName: 'refundOrder', args: { orderId: 'o_100', amount: '25' } }],
+                    },
+                    { id: 'f', mode: 'finalize', description: 'done' },
+                ],
+            }),
+            reflect: async () => ({ isComplete: true, reason: 'ok', missingItems: [] }),
+            finalize: async () => ({ summary: 'done', success: true, nextActions: [] }),
+        };
+
+        const runtime = new AgentRuntime({
+            llm,
+            store: new InMemoryRunStateStore(),
+            toolRegistry: buildDefaultToolRegistry(),
+        });
+
+        await expect(runtime.run('Please refund this customer order now.')).rejects.toThrow(
+            /Planner returned invalid args for refundOrder/,
+        );
     });
 
     it('fails the run when a parallel step includes a non parallel-safe tool', async () => {

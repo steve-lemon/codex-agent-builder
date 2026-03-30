@@ -29,8 +29,8 @@ describe('AgentTracer', () => {
         const tracer = new AgentTracer();
         const received: string[] = [];
         const connection = {
-            send(payload: string) {
-                received.push(payload);
+            send(payload: any) {
+                received.push(JSON.stringify(payload));
             },
         };
 
@@ -50,7 +50,7 @@ describe('AgentTracer', () => {
 
     it('flushes JSON-compatible trace output to external storage', async () => {
         const outputDir = await mkdtemp(join(tmpdir(), 'agent-trace-'));
-        const tracer = new AgentTracer(new FileTraceStore(outputDir));
+        const tracer = new AgentTracer(new FileTraceStore(outputDir, false));
 
         tracer.startTrace('run-flush');
         tracer.log('run-flush', 'run_start', { userInput: 'hello' });
