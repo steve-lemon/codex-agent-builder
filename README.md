@@ -68,6 +68,7 @@ npm run demo
 ```
 
 All npm scripts are wrapped through [`scripts/with-project-node.sh`](/Users/dujung/Documents/Codex/scripts/with-project-node.sh), which sources `nvm` and uses the version from [.nvmrc](/Users/dujung/Documents/Codex/.nvmrc).
+The project targets Node.js `22.15.1` or newer and is intended to remain compatible with later major versions.
 
 Demo shows:
 
@@ -99,7 +100,7 @@ To use Gemini:
 4. set `LLM_PROVIDER=gemini` or `USE_REAL_GEMINI=true`
 
 The Gemini gateway is implemented against `@google/genai@^1.28.0` and uses `responseMimeType=application/json` with `responseJsonSchema`.
-The Gemini SDK requires Node.js 20 or newer for real API execution.
+The Gemini SDK requires Node.js 20 or newer for real API execution, and this project standardizes on Node.js 22+.
 
 ## Environment Variables
 

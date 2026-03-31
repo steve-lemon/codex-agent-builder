@@ -4,14 +4,14 @@
     "description": "Production-style TypeScript LLM agent runtime with approvals, resilience, and observability",
     "main": "dist/index.js",
     "engines": {
-        "node": ">=22.15.1 <23"
+        "node": ">=22.15.1"
     },
     "scripts": {
-        "build": "bash ./scripts/with-project-node.sh ./node_modules/.bin/tsc -p tsconfig.json",
-        "typecheck": "bash ./scripts/with-project-node.sh ./node_modules/.bin/tsc --noEmit",
-        "test": "bash ./scripts/with-project-node.sh ./node_modules/.bin/vitest run",
-        "test:watch": "bash ./scripts/with-project-node.sh ./node_modules/.bin/vitest watch",
-        "demo": "bash ./scripts/with-project-node.sh ./node_modules/.bin/tsx src/demo.ts"
+        "build": "tsc -p tsconfig.json",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run",
+        "test:watch": "vitest watch",
+        "demo": "tsx src/demo.ts"
     },
     "keywords": [
         "agent",
