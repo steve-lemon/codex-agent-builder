@@ -1,6 +1,6 @@
 // LLM gateway interfaces and implementations.
 import { z } from 'zod';
-import { parsePlanResponse, PlanResponseSchema, ReflectorOutputSchema } from '../agent/schemas';
+import { createOpenAiPlanResponseSchema, parsePlanResponse, ReflectorOutputSchema } from '../agent/schemas';
 import { FinalResultSchema } from '../agent/types';
 import type { LlmGateway, PlannerInput, ReflectorInput, FinalizerInput } from './types';
 import { AgentError } from '../errors/agent-error';
@@ -50,6 +50,7 @@ export class OpenAiGateway implements LlmGateway {
     }
 
     async plan(input: PlannerInput) {
+        const planResponseSchema = createOpenAiPlanResponseSchema(input.toolDefinitions);
         const parsed = await this.parseStructuredResponse(
             [
                 {
@@ -57,9 +58,18 @@ export class OpenAiGateway implements LlmGateway {
                     content:
                         'Return a concise executable plan for an agent runtime. Use only provided tools and generate tool args that satisfy each tool parameter schema.',
                 },
-                { role: 'user', content: JSON.stringify(input) },
+                {
+                    role: 'user',
+                    content: JSON.stringify({
+                        userInput: input.userInput,
+                        skillName: input.skillName,
+                        skillInstructions: input.skillInstructions,
+                        allowedTools: input.allowedTools,
+                        toolManifests: input.toolManifests,
+                    }),
+                },
             ],
-            defineStructuredSchema('plan', PlanResponseSchema),
+            defineStructuredSchema('plan', planResponseSchema),
         );
 
         return parsePlanResponse(parsed);

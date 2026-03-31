@@ -7,6 +7,7 @@ import {
     type StructuredSchema,
 } from './structured-schema';
 import type { OpenAiClientLike, OpenAiSdkLoader, OpenAiZodHelpersLoader } from './openai-loader';
+import { validateOpenAiTextFormat } from './openai-schema-validator';
 
 /** Shared request shape for structured parsing regardless of transport. */
 export interface StructuredParseRequest<TSchema extends z.ZodTypeAny = z.ZodTypeAny> {
@@ -46,12 +47,14 @@ export class LocalOpenAiStructuredResponseParser implements StructuredResponsePa
     async parse<TSchema extends z.ZodTypeAny>(request: StructuredParseRequest<TSchema>): Promise<unknown> {
         const client = await this.getClient();
         const { zodTextFormat } = await this.options.loadZodHelpers();
+        const format = zodTextFormat(request.schema.schema as never, request.schema.name);
+        validateOpenAiTextFormat(format);
         const response = await client.responses.parse({
             model: request.model,
             input: request.input,
             text: {
                 // Keep helper typing shallow to avoid deep generic instantiation in the SDK boundary.
-                format: zodTextFormat(request.schema.schema as never, request.schema.name),
+                format,
             },
         });
 

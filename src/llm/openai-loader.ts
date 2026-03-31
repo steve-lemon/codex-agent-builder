@@ -1,5 +1,6 @@
 // Dynamic OpenAI SDK loading helpers so fake-mode can run without the package installed.
 import { AgentError } from '../errors/agent-error';
+import type { OpenAiTextFormat } from './openai-schema-validator';
 
 /** Minimal shape used from the OpenAI SDK client. */
 export interface OpenAiClientLike {
@@ -15,7 +16,7 @@ export interface OpenAiConstructorLike {
 
 /** Minimal helper shape used from `openai/helpers/zod`. */
 export interface OpenAiZodHelpersLike {
-    zodTextFormat(schema: unknown, schemaName: string): unknown;
+    zodTextFormat(schema: unknown, schemaName: string): OpenAiTextFormat;
     zodResponseFormat(
         schema: unknown,
         schemaName: string,

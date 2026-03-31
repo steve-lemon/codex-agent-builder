@@ -21,7 +21,20 @@ describe('structured response parsers', () => {
                 },
         );
         const loadZodHelpers = vi.fn(async () => ({
-            zodTextFormat: vi.fn(() => ({ type: 'json_schema' })),
+            zodTextFormat: vi.fn(() => ({
+                type: 'json_schema' as const,
+                name: 'reflector_output',
+                strict: true,
+                schema: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                        isComplete: { type: 'boolean' },
+                        reason: { type: 'string' },
+                    },
+                    required: ['isComplete', 'reason'],
+                },
+            })),
             zodResponseFormat: vi.fn(),
         }));
         const parser = new LocalOpenAiStructuredResponseParser({
@@ -58,7 +71,19 @@ describe('structured response parsers', () => {
             apiKey: undefined,
             loadSdk,
             loadZodHelpers: async () => ({
-                zodTextFormat: vi.fn(),
+                zodTextFormat: vi.fn(() => ({
+                    type: 'json_schema' as const,
+                    name: 'reflector_output',
+                    strict: true,
+                    schema: {
+                        type: 'object',
+                        additionalProperties: false,
+                        properties: {
+                            ok: { type: 'boolean' },
+                        },
+                        required: ['ok'],
+                    },
+                })),
                 zodResponseFormat: vi.fn(),
             }),
         });
@@ -71,6 +96,49 @@ describe('structured response parsers', () => {
             }),
         ).rejects.toThrowError(AgentError);
         expect(loadSdk).not.toHaveBeenCalled();
+    });
+
+    it('local parser rejects OpenAI-incompatible helper schemas before sending the request', async () => {
+        const loadSdk = vi.fn(
+            async () =>
+                class FakeOpenAI {
+                    responses = {
+                        parse: vi.fn(async () => ({
+                            output_parsed: {
+                                ok: true,
+                            },
+                        })),
+                    };
+                },
+        );
+        const loadZodHelpers = vi.fn(async () => ({
+            zodTextFormat: vi.fn(() => ({
+                type: 'json_schema' as const,
+                name: 'bad_schema',
+                strict: true,
+                schema: {
+                    type: 'object',
+                    properties: {
+                        ok: { type: 'boolean' },
+                    },
+                    required: ['ok'],
+                },
+            })),
+            zodResponseFormat: vi.fn(),
+        }));
+        const parser = new LocalOpenAiStructuredResponseParser({
+            apiKey: 'test-key',
+            loadSdk,
+            loadZodHelpers,
+        });
+
+        await expect(
+            parser.parse({
+                model: 'gpt-4.1-mini',
+                input: [{ role: 'user', content: 'hello' }],
+                schema: defineStructuredSchema('bad_schema', z.object({ ok: z.boolean() })),
+            }),
+        ).rejects.toThrow(/additionalProperties=false/);
     });
 
     it('proxy parser posts serialized schema metadata and validates the proxy output', async () => {

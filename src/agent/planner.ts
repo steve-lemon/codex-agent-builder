@@ -22,6 +22,7 @@ export class Planner {
             skillInstructions: input.skillInstructions,
             allowedTools: input.allowedTools,
             toolManifests: input.toolManifests,
+            toolDefinitions: input.toolDefinitions,
         });
         return this.validatePlan(plan, input.toolDefinitions);
     }

@@ -2,8 +2,8 @@
 import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import {
+    createOpenAiPlanResponseSchema,
     parsePlanResponse,
-    PlanResponseSchema,
     PlanStepSchema,
     ReflectorOutputSchema,
     StepModeSchema,
@@ -11,11 +11,27 @@ import {
 } from './schemas';
 import { loadOpenAiZodHelpers } from '../llm/openai-loader';
 import { defineStructuredSchema, deserializeStructuredSchema } from '../llm/structured-schema';
+import { defineTool } from '../tools/types';
+import { validateOpenAiTextFormat } from '../llm/openai-schema-validator';
 
 describe('agent schemas', () => {
-    it('builds an OpenAI response_format for PlanResponseSchema with a stable schema name', async () => {
+    it('builds an OpenAI response_format for the dynamic plan schema with a stable schema name', async () => {
         const { zodResponseFormat } = await loadOpenAiZodHelpers();
-        const responseFormat = zodResponseFormat(PlanResponseSchema as never, 'Plan');
+        const responseFormat = zodResponseFormat(
+            createOpenAiPlanResponseSchema([
+                defineTool({
+                    name: 'getCustomerById',
+                    description: 'Fetch customer',
+                    parameters: z.object({ customerId: z.string() }),
+                    riskLevel: 'read-only',
+                    allowedSkills: ['customer-support-reviewer'],
+                    requiresConfirmation: false,
+                    parallelSafe: true,
+                    execute: async () => ({ id: 'c_1' }),
+                }),
+            ]) as never,
+            'Plan',
+        );
 
         expect(responseFormat).toEqual(
             expect.objectContaining({
@@ -30,6 +46,32 @@ describe('agent schemas', () => {
             expect.objectContaining({
                 type: 'object',
                 required: expect.arrayContaining(['steps']),
+            }),
+        );
+        expect(responseFormat.json_schema.schema).toEqual(
+            expect.objectContaining({
+                properties: expect.objectContaining({
+                    steps: expect.objectContaining({
+                        items: expect.objectContaining({
+                            properties: expect.objectContaining({
+                                toolCalls: expect.objectContaining({
+                                    anyOf: expect.arrayContaining([
+                                        expect.objectContaining({
+                                            items: expect.objectContaining({
+                                                properties: expect.objectContaining({
+                                                    args: expect.objectContaining({
+                                                        type: 'object',
+                                                        additionalProperties: false,
+                                                    }),
+                                                }),
+                                            }),
+                                        }),
+                                    ]),
+                                }),
+                            }),
+                        }),
+                    }),
+                }),
             }),
         );
     });
@@ -128,7 +170,30 @@ describe('agent schemas', () => {
             schema: eSchema,
             strict: true,
         });
-        // expect(JSON.stringify(helpers.zodTextFormat(restored.schema, restored.name))).toEqual('');
+    });
+
+    it('validates the dynamic OpenAI plan text format against the local compatibility validator', async () => {
+        const helpers = await loadOpenAiZodHelpers();
+        const format = helpers.zodTextFormat(
+            createOpenAiPlanResponseSchema([
+                defineTool({
+                    name: 'refundOrder',
+                    description: 'Refund order',
+                    parameters: z.object({
+                        orderId: z.string(),
+                        amount: z.number(),
+                    }),
+                    riskLevel: 'approval-required',
+                    allowedSkills: ['customer-support-reviewer'],
+                    requiresConfirmation: true,
+                    parallelSafe: false,
+                    execute: async () => ({ ok: true }),
+                }),
+            ]),
+            'Plan',
+        );
+
+        expect(() => validateOpenAiTextFormat(format)).not.toThrow();
     });
 
     it('parses a valid mock planner response into executable steps', () => {
