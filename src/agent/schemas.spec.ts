@@ -10,7 +10,7 @@ import {
     ToolCallSchema,
 } from './schemas';
 import { loadOpenAiZodHelpers } from '../llm/openai-loader';
-import { defineStructuredSchema } from '../llm/structured-schema';
+import { defineStructuredSchema, deserializeStructuredSchema } from '../llm/structured-schema';
 
 describe('agent schemas', () => {
     it('builds an OpenAI response_format for PlanResponseSchema with a stable schema name', async () => {
@@ -58,54 +58,77 @@ describe('agent schemas', () => {
                 note: z.string().nullable(),
             }),
         );
+        const eSchema = {
+            $schema: 'http://json-schema.org/draft-07/schema#',
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                metadata: {
+                    additionalProperties: {
+                        type: 'string',
+                    },
+                    type: 'object',
+                },
+                note: {
+                    nullable: true,
+                    type: 'string',
+                },
+            },
+            required: ['metadata', 'note'],
+        };
+
+        //* test of serialize & deserialize
+        expect(schema.serialize()).toEqual({
+            name: 'record_payload',
+            jsonSchema: {
+                ...eSchema,
+                $schema: undefined,
+                properties: {
+                    ...eSchema.properties,
+                    note: {
+                        type: ['string', 'null'],
+                    },
+                },
+            },
+        });
+
+        const restored = deserializeStructuredSchema(schema.serialize());
+        expect(restored.serialize()).toEqual({
+            name: 'record_payload',
+            jsonSchema: {
+                ...eSchema,
+                $schema: undefined,
+                properties: {
+                    ...eSchema.properties,
+                    note: {
+                        type: ['string', 'null'],
+                    },
+                },
+            },
+        });
+
+        //* test of schema format.
         expect(helpers.zodResponseFormat(schema.schema, schema.name)).toEqual({
             type: 'json_schema',
             json_schema: {
                 name: 'record_payload',
-                schema: {
-                    $schema: 'http://json-schema.org/draft-07/schema#',
-                    additionalProperties: false,
-                    properties: {
-                        metadata: {
-                            additionalProperties: {
-                                type: 'string',
-                            },
-                            type: 'object',
-                        },
-                        note: {
-                            nullable: true,
-                            type: 'string',
-                        },
-                    },
-                    required: ['metadata', 'note'],
-                    type: 'object',
-                },
+                schema: eSchema,
                 strict: true,
             },
         });
         expect(helpers.zodTextFormat(schema.schema, schema.name)).toEqual({
             type: 'json_schema',
             name: 'record_payload',
+            schema: eSchema,
             strict: true,
-            schema: {
-                $schema: 'http://json-schema.org/draft-07/schema#',
-                additionalProperties: false,
-                properties: {
-                    metadata: {
-                        additionalProperties: {
-                            type: 'string',
-                        },
-                        type: 'object',
-                    },
-                    note: {
-                        nullable: true,
-                        type: 'string',
-                    },
-                },
-                required: ['metadata', 'note'],
-                type: 'object',
-            },
         });
+        expect(helpers.zodTextFormat(restored.schema, restored.name)).toEqual({
+            type: 'json_schema',
+            name: 'record_payload',
+            schema: eSchema,
+            strict: true,
+        });
+        // expect(JSON.stringify(helpers.zodTextFormat(restored.schema, restored.name))).toEqual('');
     });
 
     it('parses a valid mock planner response into executable steps', () => {
