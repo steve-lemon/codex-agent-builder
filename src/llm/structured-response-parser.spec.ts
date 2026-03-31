@@ -3,24 +3,22 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { AgentError } from '../errors/agent-error';
 import { defineStructuredSchema } from './structured-schema';
-import {
-    LocalOpenAiStructuredResponseParser,
-    ProxyStructuredResponseParser,
-} from './structured-response-parser';
+import { LocalOpenAiStructuredResponseParser, ProxyStructuredResponseParser } from './structured-response-parser';
 
 describe('structured response parsers', () => {
     it('local parser uses the SDK loader and helper loader to produce structured output', async () => {
-        const loadSdk = vi.fn(async () =>
-            class FakeOpenAI {
-                responses = {
-                    parse: vi.fn(async () => ({
-                        output_parsed: {
-                            isComplete: true,
-                            reason: 'local-ok',
-                        },
-                    })),
-                };
-            },
+        const loadSdk = vi.fn(
+            async () =>
+                class FakeOpenAI {
+                    responses = {
+                        parse: vi.fn(async () => ({
+                            output_parsed: {
+                                isComplete: true,
+                                reason: 'local-ok',
+                            },
+                        })),
+                    };
+                },
         );
         const loadZodHelpers = vi.fn(async () => ({
             zodTextFormat: vi.fn(() => ({ type: 'json_schema' })),
