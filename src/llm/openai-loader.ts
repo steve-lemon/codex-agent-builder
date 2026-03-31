@@ -51,7 +51,8 @@ export async function loadOpenAiSdk(): Promise<OpenAiConstructorLike> {
 /** Dynamically imports OpenAI zod helpers only when structured SDK formatting is needed. */
 export async function loadOpenAiZodHelpers(): Promise<OpenAiZodHelpersLike> {
     try {
-        return (await import('openai/helpers/zod')) as OpenAiZodHelpersLike;
+        const newLocal_1 = 'openai/helpers/zod';
+        return (await import(newLocal_1)) as OpenAiZodHelpersLike;
     } catch (error) {
         throw new AgentError('openai/helpers/zod is required for local structured OpenAI execution', {
             code: 'OPENAI_ZOD_HELPERS_MISSING',

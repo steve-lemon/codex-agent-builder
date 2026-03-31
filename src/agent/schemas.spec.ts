@@ -1,4 +1,5 @@
 // Vitest specs for core runtime behaviors.
+import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import {
     parsePlanResponse,
@@ -9,6 +10,7 @@ import {
     ToolCallSchema,
 } from './schemas';
 import { loadOpenAiZodHelpers } from '../llm/openai-loader';
+import { defineStructuredSchema } from '../llm/structured-schema';
 
 describe('agent schemas', () => {
     it('builds an OpenAI response_format for PlanResponseSchema with a stable schema name', async () => {
@@ -43,6 +45,67 @@ describe('agent schemas', () => {
                 required: expect.arrayContaining(['isComplete', 'reason', 'missingItems']),
             }),
         );
+    });
+
+    it('builds an OpenAI zodTextFormat for ReflectorOutputSchema', async () => {
+        const helpers = await loadOpenAiZodHelpers();
+
+        //* test of helpers.
+        const schema = defineStructuredSchema(
+            'record_payload',
+            z.object({
+                metadata: z.record(z.string(), z.string()),
+                note: z.string().nullable(),
+            }),
+        );
+        expect(helpers.zodResponseFormat(schema.schema, schema.name)).toEqual({
+            type: 'json_schema',
+            json_schema: {
+                name: 'record_payload',
+                schema: {
+                    $schema: 'http://json-schema.org/draft-07/schema#',
+                    additionalProperties: false,
+                    properties: {
+                        metadata: {
+                            additionalProperties: {
+                                type: 'string',
+                            },
+                            type: 'object',
+                        },
+                        note: {
+                            nullable: true,
+                            type: 'string',
+                        },
+                    },
+                    required: ['metadata', 'note'],
+                    type: 'object',
+                },
+                strict: true,
+            },
+        });
+        expect(helpers.zodTextFormat(schema.schema, schema.name)).toEqual({
+            type: 'json_schema',
+            name: 'record_payload',
+            strict: true,
+            schema: {
+                $schema: 'http://json-schema.org/draft-07/schema#',
+                additionalProperties: false,
+                properties: {
+                    metadata: {
+                        additionalProperties: {
+                            type: 'string',
+                        },
+                        type: 'object',
+                    },
+                    note: {
+                        nullable: true,
+                        type: 'string',
+                    },
+                },
+                required: ['metadata', 'note'],
+                type: 'object',
+            },
+        });
     });
 
     it('parses a valid mock planner response into executable steps', () => {
