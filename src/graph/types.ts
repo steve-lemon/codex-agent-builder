@@ -135,3 +135,139 @@ export interface GraphExecutionPlan {
     /** True when the original graph contained at least one cycle. */
     hasCycles: boolean;
 }
+
+/** Runtime status for one scheduled execution unit. */
+export type GraphExecutionStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+/**
+ * Input passed to the application-defined node executor.
+ *
+ * The executor receives the current node together with the broader plan and the
+ * already available upstream results so it can make deterministic decisions.
+ */
+export interface GraphNodeExecutionInput<TResult = unknown> {
+    /** Stable id for the overall graph run. */
+    runId: string;
+
+    /** Stable id for the current execution unit. */
+    executionId: string;
+
+    /** Parent execution id when this node was delegated from an upstream branch. */
+    parentExecutionId?: string;
+
+    /** Depth in the execution tree. Root executions start at depth `0`. */
+    depth: number;
+
+    /** The node currently being executed. */
+    node: GraphNode;
+
+    /** The component that owns the current node. */
+    component: GraphComponent;
+
+    /** The original graph being executed. */
+    graph: DirectedGraph;
+
+    /** The precomputed execution plan for this graph. */
+    plan: GraphExecutionPlan;
+
+    /** Direct predecessor results that are available for this node. */
+    predecessorResults: Record<string, TResult>;
+
+    /** Snapshot of all completed node results at the time this node starts. */
+    resultsByNode: Record<string, TResult>;
+}
+
+/** Application-provided callback that performs the real work for one graph node. */
+export type GraphNodeExecutor<TResult = unknown> = (input: GraphNodeExecutionInput<TResult>) => Promise<TResult>;
+
+/**
+ * One execution record in the runtime tree.
+ *
+ * A record represents the scheduling and lifecycle of one planned component.
+ * When a node branches into multiple successors, each branch may create child
+ * execution records under the current one.
+ */
+export interface GraphExecutionRecord {
+    /** Stable execution id for this scheduled unit. */
+    executionId: string;
+
+    /** Parent execution id when this execution was spawned from another execution. */
+    parentExecutionId?: string;
+
+    /** Planned component id handled by this execution unit. */
+    componentId: string;
+
+    /** Node ids executed by this unit. Cycle components may contain multiple nodes. */
+    nodeIds: string[];
+
+    /** Depth in the execution tree. */
+    depth: number;
+
+    /** Current lifecycle status of the execution unit. */
+    status: GraphExecutionStatus;
+
+    /** Component ids that had to complete before this execution became runnable. */
+    dependencyComponentIds: string[];
+
+    /** Child execution ids spawned from this execution. */
+    childExecutionIds: string[];
+
+    /** Unix timestamp in milliseconds when the execution started. */
+    startedAt?: number;
+
+    /** Unix timestamp in milliseconds when the execution finished. */
+    completedAt?: number;
+
+    /** Error message captured when the execution failed. */
+    error?: string;
+}
+
+/** Runtime options that control how the graph execution engine behaves. */
+export interface GraphExecutionEngineConfig {
+    /** Maximum number of components that may run at the same time. */
+    maxConcurrency?: number;
+
+    /** Function used to generate timestamps for execution metadata. */
+    now?: () => number;
+
+    /** Optional prefix used when generating run and execution ids. */
+    idPrefix?: string;
+}
+
+/**
+ * Final result returned by the graph execution engine.
+ *
+ * This captures the graph, the derived plan, the execution tree, and the node
+ * outputs so callers can inspect both behavior and business results.
+ */
+export interface GraphRunResult<TResult = unknown> {
+    /** Stable id for this graph run. */
+    runId: string;
+
+    /** Final status of the graph run. */
+    status: 'completed' | 'failed';
+
+    /** Original graph that was executed. */
+    graph: DirectedGraph;
+
+    /** Execution plan used for scheduling. */
+    plan: GraphExecutionPlan;
+
+    /** Final result of each completed node keyed by node id. */
+    results: Record<string, TResult>;
+
+    /** Execution records describing parent-child delegation across the run. */
+    executions: GraphExecutionRecord[];
+
+    /** Node ids in the order they completed. */
+    executionOrder: string[];
+
+    /** Unix timestamp in milliseconds when the run started. */
+    startedAt: number;
+
+    /** Unix timestamp in milliseconds when the run finished. */
+    completedAt: number;
+
+    /** Error message when the run fails. */
+    error?: string;
+}
