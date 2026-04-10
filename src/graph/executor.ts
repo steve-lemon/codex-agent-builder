@@ -8,6 +8,7 @@ import type {
     GraphExecutionEngineConfig,
     GraphExecutionPlan,
     GraphExecutionRecord,
+    GraphExecutionScope,
     GraphNode,
     GraphNodeExecutionInput,
     GraphNodeExecutor,
@@ -56,8 +57,26 @@ export class GraphExecutionEngine<TResult = unknown> {
     }
 
     async execute(graph: DirectedGraph, plan = planGraphExecution(graph)): Promise<GraphRunResult<TResult>> {
+        return await this.executeScoped(graph, {}, plan);
+    }
+
+    async executeFrom(
+        graph: DirectedGraph,
+        scope: GraphExecutionScope,
+        plan?: GraphExecutionPlan,
+    ): Promise<GraphRunResult<TResult>> {
+        return await this.executeScoped(graph, scope, plan);
+    }
+
+    private async executeScoped(
+        sourceGraph: DirectedGraph,
+        scope: GraphExecutionScope,
+        providedPlan?: GraphExecutionPlan,
+    ): Promise<GraphRunResult<TResult>> {
         const startedAt = this.now();
         const runId = `${this.idPrefix}:${startedAt}`;
+        const { graph, startNodeIds } = this.buildExecutionGraph(sourceGraph, scope);
+        const plan = providedPlan ?? planGraphExecution(graph);
         const state = this.prepare(graph, plan);
         const readyQueue: SchedulerTask[] = state.plan.components
             .filter(component => (state.incomingRemaining.get(component.id) ?? 0) === 0)
@@ -116,7 +135,9 @@ export class GraphExecutionEngine<TResult = unknown> {
                     runId,
                     status: 'failed',
                     graph,
+                    sourceGraph,
                     plan,
+                    startNodeIds,
                     results: Object.fromEntries(state.results),
                     executions: snapshotExecutions(),
                     executionOrder: [...state.executionOrder],
@@ -143,7 +164,9 @@ export class GraphExecutionEngine<TResult = unknown> {
                     runId,
                     status: 'completed',
                     graph,
+                    sourceGraph,
                     plan,
+                    startNodeIds,
                     results: Object.fromEntries(state.results),
                     executions: snapshotExecutions(),
                     executionOrder: [...state.executionOrder],
@@ -250,6 +273,75 @@ export class GraphExecutionEngine<TResult = unknown> {
 
             pump();
         });
+    }
+
+    private buildExecutionGraph(
+        sourceGraph: DirectedGraph,
+        scope: GraphExecutionScope,
+    ): {
+        graph: DirectedGraph;
+        startNodeIds: string[];
+    } {
+        const requestedStartNodeIds = [...new Set(scope.startNodeIds ?? [])];
+        if (requestedStartNodeIds.length === 0) {
+            return {
+                graph: sourceGraph,
+                startNodeIds: sourceGraph.nodes
+                    .filter(node => sourceGraph.edges.every(edge => edge.target !== node.id))
+                    .map(node => node.id)
+                    .sort(),
+            };
+        }
+
+        const nodeById = new Map(sourceGraph.nodes.map(node => [node.id, node]));
+        const outgoingByNode = new Map<string, string[]>();
+
+        for (const node of sourceGraph.nodes) {
+            outgoingByNode.set(node.id, []);
+        }
+
+        for (const edge of sourceGraph.edges) {
+            if (!nodeById.has(edge.source) || !nodeById.has(edge.target)) {
+                continue;
+            }
+            outgoingByNode.get(edge.source)?.push(edge.target);
+        }
+
+        for (const nodeId of requestedStartNodeIds) {
+            if (!nodeById.has(nodeId)) {
+                throw new AgentError(`Graph start node not found: ${nodeId}`);
+            }
+        }
+
+        const includedNodeIds = new Set<string>();
+        const queue = [...requestedStartNodeIds];
+
+        while (queue.length > 0) {
+            const nodeId = queue.shift()!;
+            if (includedNodeIds.has(nodeId)) {
+                continue;
+            }
+            includedNodeIds.add(nodeId);
+            for (const nextNodeId of outgoingByNode.get(nodeId) ?? []) {
+                if (!includedNodeIds.has(nextNodeId)) {
+                    queue.push(nextNodeId);
+                }
+            }
+        }
+
+        if (includedNodeIds.size === 0) {
+            throw new AgentError('Graph execution scope did not include any nodes');
+        }
+
+        return {
+            graph: {
+                nodes: sourceGraph.nodes.filter(node => includedNodeIds.has(node.id)),
+                edges: sourceGraph.edges.filter(
+                    edge => includedNodeIds.has(edge.source) && includedNodeIds.has(edge.target),
+                ),
+            },
+            startNodeIds: [...requestedStartNodeIds].sort(),
+        };
     }
 
     private prepare(graph: DirectedGraph, plan: GraphExecutionPlan): PreparedGraphState<TResult> {
@@ -377,4 +469,14 @@ export async function executeGraph<TResult>(
     config?: GraphExecutionEngineConfig,
 ): Promise<GraphRunResult<TResult>> {
     return await new GraphExecutionEngine(executeNode, config).execute(graph);
+}
+
+/** Convenience helper for executing only the selected start nodes and their downstream graph. */
+export async function executeGraphFrom<TResult>(
+    graph: DirectedGraph,
+    scope: GraphExecutionScope,
+    executeNode: GraphNodeExecutor<TResult>,
+    config?: GraphExecutionEngineConfig,
+): Promise<GraphRunResult<TResult>> {
+    return await new GraphExecutionEngine(executeNode, config).executeFrom(graph, scope);
 }

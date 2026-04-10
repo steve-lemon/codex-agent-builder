@@ -234,6 +234,18 @@ export interface GraphExecutionEngineConfig {
     idPrefix?: string;
 }
 
+/** Options that define which portion of the graph should be executed. */
+export interface GraphExecutionScope {
+    /**
+     * Node ids that act as entry points for this run.
+     *
+     * When omitted, the engine executes the full graph. When provided, the
+     * engine executes only the selected nodes and everything reachable
+     * downstream from them.
+     */
+    startNodeIds?: string[];
+}
+
 /**
  * Final result returned by the graph execution engine.
  *
@@ -247,11 +259,17 @@ export interface GraphRunResult<TResult = unknown> {
     /** Final status of the graph run. */
     status: 'completed' | 'failed';
 
-    /** Original graph that was executed. */
+    /** Effective graph that was actually executed for this run. */
     graph: DirectedGraph;
+
+    /** Original input graph before any start-node scoping was applied. */
+    sourceGraph: DirectedGraph;
 
     /** Execution plan used for scheduling. */
     plan: GraphExecutionPlan;
+
+    /** Start node ids used to derive the effective execution scope. */
+    startNodeIds: string[];
 
     /** Final result of each completed node keyed by node id. */
     results: Record<string, TResult>;

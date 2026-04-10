@@ -1,6 +1,6 @@
 // Vitest specs for graph execution scheduling and delegation.
 import { describe, expect, it } from 'vitest';
-import { GraphExecutionEngine, executeGraph } from './executor';
+import { GraphExecutionEngine, executeGraph, executeGraphFrom } from './executor';
 import type { DirectedGraph, GraphExecutionPlan, GraphNodeExecutionInput } from './types';
 
 function makeGraph(nodeIds: string[], edges: Array<[string, string]>): DirectedGraph {
@@ -234,5 +234,83 @@ describe('GraphExecutionEngine', () => {
         await sleep(60);
         expect(result.results).toEqual({});
         expect(result.executions.map(record => record.status)).not.toContain('completed');
+    });
+
+    it('can start execution from a middle node and only runs downstream nodes', async () => {
+        const graph = makeGraph(
+            ['A', 'B', 'C'],
+            [
+                ['A', 'B'],
+                ['B', 'C'],
+            ],
+        );
+        const seen: string[] = [];
+
+        const result = await executeGraphFrom<string>(
+            graph,
+            {
+                startNodeIds: ['B'],
+            },
+            async input => {
+                seen.push(input.node.id);
+                return input.node.id;
+            },
+        );
+
+        expect(result.status).toBe('completed');
+        expect(result.startNodeIds).toEqual(['B']);
+        expect(result.graph.nodes.map(node => node.id)).toEqual(['B', 'C']);
+        expect(result.executionOrder).toEqual(['B', 'C']);
+        expect(seen).toEqual(['B', 'C']);
+        expect(result.results).toEqual({
+            B: 'B',
+            C: 'C',
+        });
+    });
+
+    it('treats predecessors outside the selected scope as non-blocking for downstream joins', async () => {
+        const graph = makeGraph(
+            ['A', 'B', 'C', 'D'],
+            [
+                ['A', 'B'],
+                ['B', 'D'],
+                ['C', 'D'],
+            ],
+        );
+        let dInput: GraphNodeExecutionInput<string> | undefined;
+
+        const result = await executeGraphFrom<string>(
+            graph,
+            {
+                startNodeIds: ['B'],
+            },
+            async input => {
+                if (input.node.id === 'D') {
+                    dInput = input;
+                }
+                return `${input.node.id}:done`;
+            },
+        );
+
+        expect(result.status).toBe('completed');
+        expect(result.graph.nodes.map(node => node.id)).toEqual(['B', 'D']);
+        expect(result.executionOrder).toEqual(['B', 'D']);
+        expect(dInput?.predecessorResults).toEqual({
+            B: 'B:done',
+        });
+    });
+
+    it('rejects unknown start nodes when creating a scoped execution', async () => {
+        const graph = makeGraph(['A'], []);
+
+        await expect(
+            executeGraphFrom(
+                graph,
+                {
+                    startNodeIds: ['missing'],
+                },
+                async input => input.node.id,
+            ),
+        ).rejects.toThrow(/Graph start node not found: missing/);
     });
 });
