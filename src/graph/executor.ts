@@ -10,6 +10,7 @@ import type {
     GraphExecutionRecord,
     GraphExecutionScope,
     GraphNode,
+    GraphNodeExecutionContext,
     GraphNodeExecutionInput,
     GraphNodeExecutor,
     GraphRunResult,
@@ -45,15 +46,23 @@ interface PreparedGraphState<TResult> {
  * The engine schedules strongly connected components rather than raw nodes so
  * loops can be executed once without deadlocking on circular dependencies.
  */
-export class GraphExecutionEngine<TResult = unknown> {
+export class GraphExecutionEngine<
+    TResult = unknown,
+    TSharedContext extends Record<string, unknown> = Record<string, never>,
+> {
     private readonly maxConcurrency: number;
     private readonly now: () => number;
     private readonly idPrefix: string;
+    private readonly sharedContext: TSharedContext;
 
-    constructor(private readonly executeNode: GraphNodeExecutor<TResult>, config: GraphExecutionEngineConfig = {}) {
+    constructor(
+        private readonly executeNode: GraphNodeExecutor<TResult, TSharedContext>,
+        config: GraphExecutionEngineConfig<TSharedContext> = {},
+    ) {
         this.maxConcurrency = Math.max(1, config.maxConcurrency ?? 4);
         this.now = config.now ?? defaultNow;
         this.idPrefix = config.idPrefix ?? 'graph-run';
+        this.sharedContext = (config.sharedContext ?? {}) as TSharedContext;
     }
 
     async execute(graph: DirectedGraph, plan = planGraphExecution(graph)): Promise<GraphRunResult<TResult>> {
@@ -211,7 +220,18 @@ export class GraphExecutionEngine<TResult = unknown> {
                         predecessorResults,
                         resultsByNode: Object.fromEntries(state.results),
                     };
-                    const result = await this.executeNode(input);
+                    const result = await this.executeNode(
+                        input,
+                        this.buildExecutionContext(
+                            runId,
+                            sourceGraph,
+                            graph,
+                            plan,
+                            startNodeIds,
+                            state.executionRecords,
+                            record,
+                        ),
+                    );
                     if (settled) {
                         return;
                     }
@@ -273,6 +293,59 @@ export class GraphExecutionEngine<TResult = unknown> {
 
             pump();
         });
+    }
+
+    private buildExecutionContext(
+        runId: string,
+        sourceGraph: DirectedGraph,
+        graph: DirectedGraph,
+        plan: GraphExecutionPlan,
+        startNodeIds: string[],
+        executionRecords: Map<string, GraphExecutionRecord>,
+        execution: GraphExecutionRecord,
+    ): GraphNodeExecutionContext<TSharedContext> {
+        const executionStack: GraphExecutionRecord[] = [];
+        let current: GraphExecutionRecord | undefined = execution;
+
+        while (current) {
+            executionStack.push({
+                ...current,
+                nodeIds: [...current.nodeIds],
+                dependencyComponentIds: [...current.dependencyComponentIds],
+                childExecutionIds: [...current.childExecutionIds],
+            });
+            current = current.parentExecutionId ? executionRecords.get(current.parentExecutionId) : undefined;
+        }
+
+        executionStack.reverse();
+        const parentExecution =
+            execution.parentExecutionId !== undefined ? executionRecords.get(execution.parentExecutionId) : undefined;
+
+        return {
+            runId,
+            startNodeIds: [...startNodeIds],
+            sourceGraph,
+            graph,
+            plan,
+            execution: {
+                ...execution,
+                nodeIds: [...execution.nodeIds],
+                dependencyComponentIds: [...execution.dependencyComponentIds],
+                childExecutionIds: [...execution.childExecutionIds],
+            },
+            parentExecution:
+                parentExecution !== undefined
+                    ? {
+                          ...parentExecution,
+                          nodeIds: [...parentExecution.nodeIds],
+                          dependencyComponentIds: [...parentExecution.dependencyComponentIds],
+                          childExecutionIds: [...parentExecution.childExecutionIds],
+                      }
+                    : undefined,
+            executionStack,
+            shared: this.sharedContext,
+            now: this.now,
+        };
     }
 
     private buildExecutionGraph(
@@ -463,20 +536,20 @@ export class GraphExecutionEngine<TResult = unknown> {
 }
 
 /** Convenience helper for one-shot graph execution. */
-export async function executeGraph<TResult>(
+export async function executeGraph<TResult, TSharedContext extends Record<string, unknown> = Record<string, never>>(
     graph: DirectedGraph,
-    executeNode: GraphNodeExecutor<TResult>,
-    config?: GraphExecutionEngineConfig,
+    executeNode: GraphNodeExecutor<TResult, TSharedContext>,
+    config?: GraphExecutionEngineConfig<TSharedContext>,
 ): Promise<GraphRunResult<TResult>> {
-    return await new GraphExecutionEngine(executeNode, config).execute(graph);
+    return await new GraphExecutionEngine<TResult, TSharedContext>(executeNode, config).execute(graph);
 }
 
 /** Convenience helper for executing only the selected start nodes and their downstream graph. */
-export async function executeGraphFrom<TResult>(
+export async function executeGraphFrom<TResult, TSharedContext extends Record<string, unknown> = Record<string, never>>(
     graph: DirectedGraph,
     scope: GraphExecutionScope,
-    executeNode: GraphNodeExecutor<TResult>,
-    config?: GraphExecutionEngineConfig,
+    executeNode: GraphNodeExecutor<TResult, TSharedContext>,
+    config?: GraphExecutionEngineConfig<TSharedContext>,
 ): Promise<GraphRunResult<TResult>> {
-    return await new GraphExecutionEngine(executeNode, config).executeFrom(graph, scope);
+    return await new GraphExecutionEngine<TResult, TSharedContext>(executeNode, config).executeFrom(graph, scope);
 }

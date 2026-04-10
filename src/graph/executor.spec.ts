@@ -99,6 +99,42 @@ describe('GraphExecutionEngine', () => {
         ).toEqual(['B', 'D']);
     });
 
+    it('passes execution context as the second argument to node executors', async () => {
+        const graph = makeGraph(['A', 'B'], [['A', 'B']]);
+        const seenStacks: string[][] = [];
+
+        const result = await executeGraph<string, { traceLabel: string }>(
+            graph,
+            async (input, context) => {
+                seenStacks.push(context.executionStack.map(record => record.nodeIds.join('+')));
+                expect(context.runId).toContain('graph-run');
+                expect(context.graph.nodes.map(node => node.id)).toEqual(['A', 'B']);
+                expect(context.sourceGraph.nodes.map(node => node.id)).toEqual(['A', 'B']);
+                expect(context.shared.traceLabel).toBe('graph-trace');
+                expect(context.execution.executionId).toBe(input.executionId);
+                if (input.node.id === 'A') {
+                    expect(context.parentExecution).toBeUndefined();
+                }
+                if (input.node.id === 'B') {
+                    expect(context.parentExecution?.nodeIds).toEqual(['A']);
+                }
+                return `${context.shared.traceLabel}:${input.node.id}`;
+            },
+            {
+                sharedContext: {
+                    traceLabel: 'graph-trace',
+                },
+            },
+        );
+
+        expect(result.status).toBe('completed');
+        expect(seenStacks).toEqual([['A'], ['A', 'B']]);
+        expect(result.results).toEqual({
+            A: 'graph-trace:A',
+            B: 'graph-trace:B',
+        });
+    });
+
     it('executes loop components once and then continues to downstream nodes', async () => {
         const graph = makeGraph(
             ['A', 'B', 'C'],

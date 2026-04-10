@@ -177,9 +177,6 @@ export interface GraphNodeExecutionInput<TResult = unknown> {
     resultsByNode: Record<string, TResult>;
 }
 
-/** Application-provided callback that performs the real work for one graph node. */
-export type GraphNodeExecutor<TResult = unknown> = (input: GraphNodeExecutionInput<TResult>) => Promise<TResult>;
-
 /**
  * One execution record in the runtime tree.
  *
@@ -222,8 +219,52 @@ export interface GraphExecutionRecord {
     error?: string;
 }
 
+/**
+ * Runtime context passed to the node executor as the second argument.
+ *
+ * This object exposes execution metadata that is useful for tracing, logging,
+ * stack reconstruction, and sharing stable run-scoped context across nodes.
+ */
+export interface GraphNodeExecutionContext<TSharedContext extends Record<string, unknown> = Record<string, never>> {
+    /** Stable id for the overall graph run. */
+    runId: string;
+
+    /** Start node ids that defined the current execution scope. */
+    startNodeIds: string[];
+
+    /** Original input graph before any scope filtering was applied. */
+    sourceGraph: DirectedGraph;
+
+    /** Effective graph that is actually being executed. */
+    graph: DirectedGraph;
+
+    /** Execution plan used by the engine. */
+    plan: GraphExecutionPlan;
+
+    /** Execution record for the node currently being processed. */
+    execution: GraphExecutionRecord;
+
+    /** Parent execution record when the current execution was delegated from a branch. */
+    parentExecution?: GraphExecutionRecord;
+
+    /** Root-to-current execution stack. */
+    executionStack: GraphExecutionRecord[];
+
+    /** Shared run-scoped context supplied when the engine was created. */
+    shared: TSharedContext;
+
+    /** Returns the current timestamp in milliseconds using the engine clock. */
+    now(): number;
+}
+
+/** Application-provided callback that performs the real work for one graph node. */
+export type GraphNodeExecutor<
+    TResult = unknown,
+    TSharedContext extends Record<string, unknown> = Record<string, never>,
+> = (input: GraphNodeExecutionInput<TResult>, context: GraphNodeExecutionContext<TSharedContext>) => Promise<TResult>;
+
 /** Runtime options that control how the graph execution engine behaves. */
-export interface GraphExecutionEngineConfig {
+export interface GraphExecutionEngineConfig<TSharedContext extends Record<string, unknown> = Record<string, never>> {
     /** Maximum number of components that may run at the same time. */
     maxConcurrency?: number;
 
@@ -232,6 +273,9 @@ export interface GraphExecutionEngineConfig {
 
     /** Optional prefix used when generating run and execution ids. */
     idPrefix?: string;
+
+    /** Shared run-scoped context forwarded to every node execution. */
+    sharedContext?: TSharedContext;
 }
 
 /** Options that define which portion of the graph should be executed. */
