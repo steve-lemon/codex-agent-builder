@@ -4,11 +4,35 @@ import type { TraceBatchMessage, TraceConnection, TraceEvent, TraceTransport } f
 
 /** Runtime-tunable batching configuration for trace streaming. */
 export interface WebSocketTraceConnectionConfig {
+    /**
+     * Time window in milliseconds used to collect follow-up events after the first immediate send
+     * - 첫 즉시 전송 이후 후속 event를 모으는 시간창
+     */
     batchWindowMs: number;
+    /**
+     * Maximum number of events included in one outbound batch payload
+     * - 한 번에 보내는 batch 내 event 최대 개수
+     */
     maxBatchSize: number;
+    /**
+     * Maximum number of buffered events kept in memory before overflow handling is applied
+     * - 메모리에 잠시 쌓아둘 수 있는 event 최대 개수
+     */
     maxBufferedEvents: number;
+    /**
+     * Overflow behavior when buffered events exceed the configured limit: flush older events or drop new ones
+     * - overflow 시 flush할지 drop할지 결정
+     */
     overflowStrategy: 'flush' | 'drop';
+    /**
+     * Whether to emit a synthetic trace event that reports how many events were dropped due to overflow
+     * - drop 발생 시 몇 개 버려졌는지 synthetic event를 보낼지 결정
+     */
     emitDropNotice: boolean;
+    /**
+     * Optional custom serializer for converting a batch payload into the wire format expected by the transport
+     * - transport가 기대하는 wire format으로 직렬화하는 커스텀 함수
+     */
     serializer?: (message: TraceBatchMessage) => string;
 }
 
