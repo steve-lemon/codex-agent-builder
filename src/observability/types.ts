@@ -24,6 +24,20 @@ export interface TraceConnection {
     send(event: TraceEvent): void;
 }
 
+/** Serialized trace batch sent over an external streaming transport. */
+export interface TraceBatchMessage {
+    traceId: string;
+    runId: string;
+    sentAt: number;
+    events: TraceEvent[];
+}
+
+/** Transport abstraction used by trace connections to emit serialized payloads. */
+export interface TraceTransport {
+    send(payload: string): void | Promise<void>;
+    close?(): void | Promise<void>;
+}
+
 /** External storage abstraction for persisted traces. */
 export interface TraceStore {
     save(document: TraceDocument): Promise<string>;
