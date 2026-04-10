@@ -268,6 +268,7 @@ export interface GraphExecutionEngineConfig<TSharedContext extends Record<string
     /** Maximum number of components that may run at the same time. */
     maxConcurrency?: number;
 
+    // TODO: Add per-component retry policies for idempotent workloads.
     /** Default timeout in milliseconds applied to each node execution. */
     nodeTimeoutMs?: number;
 
@@ -374,6 +375,8 @@ export interface GraphRunResult<TResult = unknown> {
 
     /** Error message when the run fails. */
     error?: string;
+
+    // TODO: Add checkpoint metadata so long-running graph runs can resume from persisted progress.
 }
 
 /** Structured lifecycle event emitted by the graph execution engine. */
@@ -411,6 +414,8 @@ export interface GraphExecutionEvent {
 
     /** Optional structured payload for downstream observers. */
     data?: Record<string, unknown>;
+
+    // TODO: Version execution events before exposing them as a long-lived external contract.
 }
 
 /** Observer callback for graph execution lifecycle events. */

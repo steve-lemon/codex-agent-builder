@@ -102,6 +102,7 @@ export class GraphExecutionEngine<
         const { graph, startNodeIds } = this.buildExecutionGraph(sourceGraph, scope);
         const plan = providedPlan ?? planGraphExecution(graph);
         const state = this.prepare(graph, plan);
+        // TODO: Persist run checkpoints here when graph execution needs durable resume/recovery support.
         this.emitEvent({
             runId,
             type: 'run_started',
@@ -326,6 +327,7 @@ export class GraphExecutionEngine<
                         record,
                     );
                     const timeoutMs = this.resolveEffectiveNodeTimeoutMs(input, context);
+                    // TODO: Add policy-based retries for timeout/transient node failures where work is idempotent.
                     const result = await this.executeNodeWithTimeout(input, context, timeoutMs);
                     if (settled) {
                         return;
@@ -525,6 +527,7 @@ export class GraphExecutionEngine<
 
         const component = state.componentById.get(componentId)!;
         const nodes = component.nodeIds.map(nodeId => state.nodeById.get(nodeId)!);
+        // TODO: Support weighted concurrency so expensive components can consume more than one keyed slot.
         return this.resolveConcurrencyKey({
             component,
             nodes,
@@ -632,6 +635,7 @@ export class GraphExecutionEngine<
             void this.onEvent(event);
         } catch {
             // Observability hooks must not break production execution.
+            // TODO: Forward observer failures to a dedicated diagnostics channel when available.
         }
     }
 
