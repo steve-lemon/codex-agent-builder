@@ -6,6 +6,8 @@ import type {
     DirectedGraph,
     GraphComponent,
     GraphExecutionEngineConfig,
+    GraphExecutionEvent,
+    GraphExecutionEventHandler,
     GraphExecutionPlan,
     GraphExecutionRecord,
     GraphExecutionScope,
@@ -20,6 +22,7 @@ interface SchedulerTask {
     componentId: string;
     parentExecutionId?: string;
     depth: number;
+    concurrencyKey?: string;
 }
 
 interface PreparedGraphState<TResult> {
@@ -51,18 +54,30 @@ export class GraphExecutionEngine<
     TSharedContext extends Record<string, unknown> = Record<string, never>,
 > {
     private readonly maxConcurrency: number;
+    private readonly nodeTimeoutMs?: number;
+    private readonly resolveNodeTimeoutMs?: GraphExecutionEngineConfig<TSharedContext>['resolveNodeTimeoutMs'];
+    private readonly maxConcurrencyByKey: Record<string, number>;
+    private readonly resolveConcurrencyKey?: GraphExecutionEngineConfig<TSharedContext>['resolveConcurrencyKey'];
     private readonly now: () => number;
     private readonly idPrefix: string;
     private readonly sharedContext: TSharedContext;
+    private readonly signal?: AbortSignal;
+    private readonly onEvent?: GraphExecutionEventHandler;
 
     constructor(
         private readonly executeNode: GraphNodeExecutor<TResult, TSharedContext>,
         config: GraphExecutionEngineConfig<TSharedContext> = {},
     ) {
         this.maxConcurrency = Math.max(1, config.maxConcurrency ?? 4);
+        this.nodeTimeoutMs = config.nodeTimeoutMs;
+        this.resolveNodeTimeoutMs = config.resolveNodeTimeoutMs;
+        this.maxConcurrencyByKey = config.maxConcurrencyByKey ?? {};
+        this.resolveConcurrencyKey = config.resolveConcurrencyKey;
         this.now = config.now ?? defaultNow;
         this.idPrefix = config.idPrefix ?? 'graph-run';
         this.sharedContext = (config.sharedContext ?? {}) as TSharedContext;
+        this.signal = config.signal;
+        this.onEvent = config.onEvent;
     }
 
     async execute(graph: DirectedGraph, plan = planGraphExecution(graph)): Promise<GraphRunResult<TResult>> {
@@ -87,16 +102,25 @@ export class GraphExecutionEngine<
         const { graph, startNodeIds } = this.buildExecutionGraph(sourceGraph, scope);
         const plan = providedPlan ?? planGraphExecution(graph);
         const state = this.prepare(graph, plan);
+        this.emitEvent({
+            runId,
+            type: 'run_started',
+            timestamp: startedAt,
+            message: 'Graph execution started',
+            data: {
+                startNodeIds,
+                nodeCount: graph.nodes.length,
+                edgeCount: graph.edges.length,
+            },
+        });
         const readyQueue: SchedulerTask[] = state.plan.components
             .filter(component => (state.incomingRemaining.get(component.id) ?? 0) === 0)
             .sort((left, right) => left.id.localeCompare(right.id))
-            .map(component => ({
-                componentId: component.id,
-                depth: 0,
-            }));
+            .map(component => this.createSchedulerTask(component.id, 0, undefined, state));
 
         let activeCount = 0;
         let nextExecutionNo = 0;
+        const activeCountByKey = new Map<string, number>();
 
         const createExecutionId = (): string => {
             nextExecutionNo += 1;
@@ -134,12 +158,53 @@ export class GraphExecutionEngine<
                     childExecutionIds: [...record.childExecutionIds],
                 }));
 
+            const cancel = (message: string) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                this.emitEvent({
+                    runId,
+                    type: 'run_cancelled',
+                    timestamp: this.now(),
+                    message,
+                });
+                resolve({
+                    runId,
+                    status: 'cancelled',
+                    graph,
+                    sourceGraph,
+                    plan,
+                    startNodeIds,
+                    results: Object.fromEntries(state.results),
+                    executions: snapshotExecutions().map(record =>
+                        record.status === 'pending' || record.status === 'running'
+                            ? {
+                                  ...record,
+                                  status: 'cancelled',
+                                  completedAt: record.completedAt ?? this.now(),
+                              }
+                            : record,
+                    ),
+                    executionOrder: [...state.executionOrder],
+                    startedAt,
+                    completedAt: this.now(),
+                    error: message,
+                });
+            };
+
             const fail = (error: unknown) => {
                 if (settled) {
                     return;
                 }
                 settled = true;
                 const wrapped = AgentError.from(error, 'Graph execution failed');
+                this.emitEvent({
+                    runId,
+                    type: 'run_failed',
+                    timestamp: this.now(),
+                    message: wrapped.message,
+                });
                 resolve({
                     runId,
                     status: 'failed',
@@ -169,6 +234,15 @@ export class GraphExecutionEngine<
                 }
 
                 settled = true;
+                this.emitEvent({
+                    runId,
+                    type: 'run_completed',
+                    timestamp: this.now(),
+                    message: 'Graph execution completed',
+                    data: {
+                        completedNodes: state.executionOrder.length,
+                    },
+                });
                 resolve({
                     runId,
                     status: 'completed',
@@ -194,14 +268,27 @@ export class GraphExecutionEngine<
             };
 
             const runComponent = async (task: SchedulerTask, record: GraphExecutionRecord) => {
+                this.throwIfAborted();
                 const component = state.componentById.get(task.componentId)!;
                 record.status = 'running';
                 record.startedAt = this.now();
+                this.emitEvent({
+                    runId,
+                    type: 'component_started',
+                    timestamp: record.startedAt,
+                    executionId: record.executionId,
+                    componentId: component.id,
+                    message: `Component ${component.id} started`,
+                    data: {
+                        nodeIds: component.nodeIds,
+                    },
+                });
 
                 for (const nodeId of component.nodeIds) {
                     if (settled) {
                         return;
                     }
+                    this.throwIfAborted();
                     const node = state.nodeById.get(nodeId)!;
                     const predecessorResults = this.buildPredecessorResults(
                         nodeId,
@@ -220,23 +307,40 @@ export class GraphExecutionEngine<
                         predecessorResults,
                         resultsByNode: Object.fromEntries(state.results),
                     };
-                    const result = await this.executeNode(
-                        input,
-                        this.buildExecutionContext(
-                            runId,
-                            sourceGraph,
-                            graph,
-                            plan,
-                            startNodeIds,
-                            state.executionRecords,
-                            record,
-                        ),
+                    this.emitEvent({
+                        runId,
+                        type: 'node_started',
+                        timestamp: this.now(),
+                        executionId: record.executionId,
+                        componentId: component.id,
+                        nodeId,
+                        message: `Node ${nodeId} started`,
+                    });
+                    const context = this.buildExecutionContext(
+                        runId,
+                        sourceGraph,
+                        graph,
+                        plan,
+                        startNodeIds,
+                        state.executionRecords,
+                        record,
                     );
+                    const timeoutMs = this.resolveEffectiveNodeTimeoutMs(input, context);
+                    const result = await this.executeNodeWithTimeout(input, context, timeoutMs);
                     if (settled) {
                         return;
                     }
                     state.results.set(nodeId, result);
                     state.executionOrder.push(nodeId);
+                    this.emitEvent({
+                        runId,
+                        type: 'node_completed',
+                        timestamp: this.now(),
+                        executionId: record.executionId,
+                        componentId: component.id,
+                        nodeId,
+                        message: `Node ${nodeId} completed`,
+                    });
                 }
 
                 if (settled) {
@@ -245,15 +349,21 @@ export class GraphExecutionEngine<
                 record.status = 'completed';
                 record.completedAt = this.now();
                 state.completedComponents.add(component.id);
+                this.emitEvent({
+                    runId,
+                    type: 'component_completed',
+                    timestamp: record.completedAt,
+                    executionId: record.executionId,
+                    componentId: component.id,
+                    message: `Component ${component.id} completed`,
+                });
 
                 for (const nextComponentId of state.outgoingComponents.get(component.id) ?? []) {
                     const remaining = (state.incomingRemaining.get(nextComponentId) ?? 0) - 1;
                     state.incomingRemaining.set(nextComponentId, remaining);
                     if (remaining === 0) {
                         enqueueReadyComponent({
-                            componentId: nextComponentId,
-                            parentExecutionId: record.executionId,
-                            depth: record.depth + 1,
+                            ...this.createSchedulerTask(nextComponentId, record.depth + 1, record.executionId, state),
                         });
                     }
                 }
@@ -263,26 +373,69 @@ export class GraphExecutionEngine<
                 if (settled) {
                     return;
                 }
+                if (this.signal?.aborted) {
+                    cancel(
+                        this.signal.reason instanceof Error ? this.signal.reason.message : 'Graph execution cancelled',
+                    );
+                    return;
+                }
 
-                while (activeCount < this.maxConcurrency && readyQueue.length > 0) {
-                    const task = readyQueue.shift()!;
+                while (activeCount < this.maxConcurrency) {
+                    const nextTaskIndex = this.findRunnableTaskIndex(readyQueue, activeCountByKey);
+                    if (nextTaskIndex === -1) {
+                        break;
+                    }
+                    const [task] = readyQueue.splice(nextTaskIndex, 1);
                     const record = createRecord(task);
                     activeCount += 1;
+                    if (task.concurrencyKey) {
+                        activeCountByKey.set(task.concurrencyKey, (activeCountByKey.get(task.concurrencyKey) ?? 0) + 1);
+                    }
                     void runComponent(task, record)
                         .catch(error => {
-                            record.status = 'failed';
+                            const wrapped = AgentError.from(error, 'Graph component execution failed');
+                            record.status = wrapped.code === 'GRAPH_EXECUTION_ABORTED' ? 'cancelled' : 'failed';
                             record.completedAt = this.now();
-                            record.error = AgentError.from(error, 'Graph component execution failed').message;
+                            record.error = wrapped.message;
+                            this.emitEvent({
+                                runId,
+                                type: 'component_failed',
+                                timestamp: record.completedAt,
+                                executionId: record.executionId,
+                                componentId: record.componentId,
+                                message: wrapped.message,
+                            });
                             throw error;
                         })
                         .then(
                             () => {
                                 activeCount -= 1;
+                                if (task.concurrencyKey) {
+                                    const nextCount = (activeCountByKey.get(task.concurrencyKey) ?? 1) - 1;
+                                    if (nextCount <= 0) {
+                                        activeCountByKey.delete(task.concurrencyKey);
+                                    } else {
+                                        activeCountByKey.set(task.concurrencyKey, nextCount);
+                                    }
+                                }
                                 pump();
                                 maybeComplete();
                             },
                             error => {
                                 activeCount -= 1;
+                                if (task.concurrencyKey) {
+                                    const nextCount = (activeCountByKey.get(task.concurrencyKey) ?? 1) - 1;
+                                    if (nextCount <= 0) {
+                                        activeCountByKey.delete(task.concurrencyKey);
+                                    } else {
+                                        activeCountByKey.set(task.concurrencyKey, nextCount);
+                                    }
+                                }
+                                const wrapped = AgentError.from(error, 'Graph execution failed');
+                                if (wrapped.code === 'GRAPH_EXECUTION_ABORTED') {
+                                    cancel(wrapped.message);
+                                    return;
+                                }
                                 fail(error);
                             },
                         );
@@ -346,6 +499,140 @@ export class GraphExecutionEngine<
             shared: this.sharedContext,
             now: this.now,
         };
+    }
+
+    private createSchedulerTask(
+        componentId: string,
+        depth: number,
+        parentExecutionId: string | undefined,
+        state: PreparedGraphState<TResult>,
+    ): SchedulerTask {
+        return {
+            componentId,
+            parentExecutionId,
+            depth,
+            concurrencyKey: this.resolveComponentConcurrencyKey(componentId, state),
+        };
+    }
+
+    private resolveComponentConcurrencyKey(
+        componentId: string,
+        state: PreparedGraphState<TResult>,
+    ): string | undefined {
+        if (!this.resolveConcurrencyKey) {
+            return undefined;
+        }
+
+        const component = state.componentById.get(componentId)!;
+        const nodes = component.nodeIds.map(nodeId => state.nodeById.get(nodeId)!);
+        return this.resolveConcurrencyKey({
+            component,
+            nodes,
+            graph: state.graph,
+            plan: state.plan,
+        });
+    }
+
+    private findRunnableTaskIndex(readyQueue: SchedulerTask[], activeCountByKey: Map<string, number>): number {
+        for (let index = 0; index < readyQueue.length; index += 1) {
+            const task = readyQueue[index];
+            if (!task.concurrencyKey) {
+                return index;
+            }
+
+            const limit = this.maxConcurrencyByKey[task.concurrencyKey];
+            if (limit === undefined) {
+                return index;
+            }
+
+            if ((activeCountByKey.get(task.concurrencyKey) ?? 0) < Math.max(1, limit)) {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private resolveEffectiveNodeTimeoutMs(
+        input: GraphNodeExecutionInput<TResult>,
+        context: GraphNodeExecutionContext<TSharedContext>,
+    ): number | undefined {
+        const resolved = this.resolveNodeTimeoutMs?.(input as GraphNodeExecutionInput<unknown>, context);
+        const timeoutMs = resolved ?? this.nodeTimeoutMs;
+
+        if (timeoutMs === undefined || timeoutMs <= 0) {
+            return undefined;
+        }
+
+        return timeoutMs;
+    }
+
+    private async executeNodeWithTimeout(
+        input: GraphNodeExecutionInput<TResult>,
+        context: GraphNodeExecutionContext<TSharedContext>,
+        timeoutMs: number | undefined,
+    ): Promise<TResult> {
+        if (timeoutMs === undefined) {
+            return await this.executeNode(input, context);
+        }
+
+        return await new Promise<TResult>((resolve, reject) => {
+            const timer = setTimeout(() => {
+                this.emitEvent({
+                    runId: input.runId,
+                    type: 'node_timed_out',
+                    timestamp: this.now(),
+                    executionId: input.executionId,
+                    componentId: input.component.id,
+                    nodeId: input.node.id,
+                    message: `Node ${input.node.id} timed out after ${timeoutMs}ms`,
+                    data: {
+                        timeoutMs,
+                    },
+                });
+                reject(
+                    new AgentError(`Node ${input.node.id} timed out after ${timeoutMs}ms`, {
+                        code: 'GRAPH_NODE_TIMEOUT',
+                    }),
+                );
+            }, timeoutMs);
+
+            void this.executeNode(input, context).then(
+                result => {
+                    clearTimeout(timer);
+                    resolve(result);
+                },
+                error => {
+                    clearTimeout(timer);
+                    reject(error);
+                },
+            );
+        });
+    }
+
+    private throwIfAborted(): void {
+        if (!this.signal?.aborted) {
+            return;
+        }
+
+        throw new AgentError(
+            this.signal.reason instanceof Error ? this.signal.reason.message : 'Graph execution cancelled',
+            {
+                code: 'GRAPH_EXECUTION_ABORTED',
+            },
+        );
+    }
+
+    private emitEvent(event: GraphExecutionEvent): void {
+        if (!this.onEvent) {
+            return;
+        }
+
+        try {
+            void this.onEvent(event);
+        } catch {
+            // Observability hooks must not break production execution.
+        }
     }
 
     private buildExecutionGraph(

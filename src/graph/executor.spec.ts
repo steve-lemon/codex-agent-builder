@@ -349,4 +349,163 @@ describe('GraphExecutionEngine', () => {
             ),
         ).rejects.toThrow(/Graph start node not found: missing/);
     });
+
+    it('emits structured lifecycle events during execution', async () => {
+        const graph = makeGraph(['A', 'B'], [['A', 'B']]);
+        const eventTypes: string[] = [];
+
+        const result = await executeGraph(graph, async input => input.node.id, {
+            onEvent: event => {
+                eventTypes.push(event.type);
+            },
+        });
+
+        expect(result.status).toBe('completed');
+        expect(eventTypes).toEqual([
+            'run_started',
+            'component_started',
+            'node_started',
+            'node_completed',
+            'component_completed',
+            'component_started',
+            'node_started',
+            'node_completed',
+            'component_completed',
+            'run_completed',
+        ]);
+    });
+
+    it('supports cooperative cancellation through AbortSignal', async () => {
+        const graph = makeGraph(
+            ['A', 'B', 'C'],
+            [
+                ['A', 'B'],
+                ['B', 'C'],
+            ],
+        );
+        const controller = new AbortController();
+        const seenEvents: string[] = [];
+
+        const result = await executeGraph(
+            graph,
+            async input => {
+                if (input.node.id === 'A') {
+                    controller.abort(new Error('stop requested'));
+                }
+                await sleep(5);
+                return input.node.id;
+            },
+            {
+                signal: controller.signal,
+                onEvent: event => {
+                    seenEvents.push(event.type);
+                },
+            },
+        );
+
+        expect(result.status).toBe('cancelled');
+        expect(result.error).toBe('stop requested');
+        expect(result.results).toEqual({ A: 'A' });
+        expect(result.executionOrder).toEqual(['A']);
+        expect(seenEvents).toContain('run_cancelled');
+    });
+
+    it('fails a run when a node exceeds the configured timeout', async () => {
+        const graph = makeGraph(['A'], []);
+        const events: string[] = [];
+
+        const result = await executeGraph(
+            graph,
+            async () => {
+                await sleep(30);
+                return 'late';
+            },
+            {
+                nodeTimeoutMs: 10,
+                onEvent: event => {
+                    events.push(event.type);
+                },
+            },
+        );
+
+        expect(result.status).toBe('failed');
+        expect(result.error).toMatch(/timed out after 10ms/);
+        expect(events).toContain('node_timed_out');
+    });
+
+    it('allows per-node timeout overrides', async () => {
+        const graph = makeGraph(['A', 'B'], [['A', 'B']]);
+
+        const result = await executeGraph(
+            graph,
+            async input => {
+                await sleep(input.node.id === 'A' ? 15 : 5);
+                return input.node.id;
+            },
+            {
+                nodeTimeoutMs: 10,
+                resolveNodeTimeoutMs: input => (input.node.id === 'A' ? 25 : undefined),
+            },
+        );
+
+        expect(result.status).toBe('completed');
+        expect(result.executionOrder).toEqual(['A', 'B']);
+    });
+
+    it('applies per-key concurrency limits without blocking unrelated work', async () => {
+        const graph = makeGraph(
+            ['A', 'B', 'C', 'D'],
+            [
+                ['A', 'B'],
+                ['A', 'C'],
+                ['A', 'D'],
+            ],
+        );
+        let dbRunning = 0;
+        let maxDbRunning = 0;
+        let totalRunning = 0;
+        let maxTotalRunning = 0;
+
+        const result = await executeGraph(
+            graph,
+            async input => {
+                if (input.node.id !== 'A') {
+                    totalRunning += 1;
+                    maxTotalRunning = Math.max(maxTotalRunning, totalRunning);
+                }
+
+                if (input.node.id === 'B' || input.node.id === 'C') {
+                    dbRunning += 1;
+                    maxDbRunning = Math.max(maxDbRunning, dbRunning);
+                    await sleep(20);
+                    dbRunning -= 1;
+                } else if (input.node.id === 'D') {
+                    await sleep(20);
+                }
+
+                if (input.node.id !== 'A') {
+                    totalRunning -= 1;
+                }
+
+                return input.node.id;
+            },
+            {
+                maxConcurrency: 3,
+                maxConcurrencyByKey: {
+                    db: 1,
+                },
+                resolveConcurrencyKey: ({ nodes }) => {
+                    const nodeId = nodes[0]?.id;
+                    if (nodeId === 'B' || nodeId === 'C') {
+                        return 'db';
+                    }
+                    return undefined;
+                },
+            },
+        );
+
+        expect(result.status).toBe('completed');
+        expect(maxDbRunning).toBe(1);
+        expect(maxTotalRunning).toBe(2);
+    });
 });

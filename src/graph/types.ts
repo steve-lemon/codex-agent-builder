@@ -137,7 +137,7 @@ export interface GraphExecutionPlan {
 }
 
 /** Runtime status for one scheduled execution unit. */
-export type GraphExecutionStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type GraphExecutionStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 /**
  * Input passed to the application-defined node executor.
@@ -268,6 +268,42 @@ export interface GraphExecutionEngineConfig<TSharedContext extends Record<string
     /** Maximum number of components that may run at the same time. */
     maxConcurrency?: number;
 
+    /** Default timeout in milliseconds applied to each node execution. */
+    nodeTimeoutMs?: number;
+
+    /**
+     * Optional resolver for per-node timeout overrides.
+     *
+     * Returning `undefined` falls back to `nodeTimeoutMs`. Returning `0` or a
+     * negative value disables timeout for that node.
+     */
+    resolveNodeTimeoutMs?: (
+        input: GraphNodeExecutionInput<unknown>,
+        context: GraphNodeExecutionContext<TSharedContext>,
+    ) => number | undefined;
+
+    /**
+     * Optional per-key concurrency limits used in addition to `maxConcurrency`.
+     *
+     * This is useful when certain classes of work, such as external APIs or
+     * database-heavy nodes, must be throttled separately from the global run.
+     */
+    maxConcurrencyByKey?: Record<string, number>;
+
+    /**
+     * Resolves the concurrency key for a planned component.
+     *
+     * Components that resolve to the same key share the corresponding limit in
+     * `maxConcurrencyByKey`. Returning `undefined` means the component only
+     * participates in the global concurrency limit.
+     */
+    resolveConcurrencyKey?: (args: {
+        component: GraphComponent;
+        nodes: GraphNode[];
+        graph: DirectedGraph;
+        plan: GraphExecutionPlan;
+    }) => string | undefined;
+
     /** Function used to generate timestamps for execution metadata. */
     now?: () => number;
 
@@ -276,6 +312,12 @@ export interface GraphExecutionEngineConfig<TSharedContext extends Record<string
 
     /** Shared run-scoped context forwarded to every node execution. */
     sharedContext?: TSharedContext;
+
+    /** Optional abort signal used to cancel scheduling and downstream execution. */
+    signal?: AbortSignal;
+
+    /** Optional lifecycle hook for observing graph execution progress. */
+    onEvent?: GraphExecutionEventHandler;
 }
 
 /** Options that define which portion of the graph should be executed. */
@@ -301,7 +343,7 @@ export interface GraphRunResult<TResult = unknown> {
     runId: string;
 
     /** Final status of the graph run. */
-    status: 'completed' | 'failed';
+    status: 'completed' | 'failed' | 'cancelled';
 
     /** Effective graph that was actually executed for this run. */
     graph: DirectedGraph;
@@ -333,3 +375,43 @@ export interface GraphRunResult<TResult = unknown> {
     /** Error message when the run fails. */
     error?: string;
 }
+
+/** Structured lifecycle event emitted by the graph execution engine. */
+export interface GraphExecutionEvent {
+    /** Stable id for the graph run that produced the event. */
+    runId: string;
+
+    /** Event type describing the lifecycle transition. */
+    type:
+        | 'run_started'
+        | 'component_started'
+        | 'node_started'
+        | 'node_completed'
+        | 'node_timed_out'
+        | 'component_completed'
+        | 'component_failed'
+        | 'run_completed'
+        | 'run_failed'
+        | 'run_cancelled';
+
+    /** Unix timestamp in milliseconds when the event was emitted. */
+    timestamp: number;
+
+    /** Execution id related to the event when available. */
+    executionId?: string;
+
+    /** Component id related to the event when available. */
+    componentId?: string;
+
+    /** Node id related to the event when available. */
+    nodeId?: string;
+
+    /** Short human-readable message for logs and diagnostics. */
+    message: string;
+
+    /** Optional structured payload for downstream observers. */
+    data?: Record<string, unknown>;
+}
+
+/** Observer callback for graph execution lifecycle events. */
+export type GraphExecutionEventHandler = (event: GraphExecutionEvent) => void | Promise<void>;
