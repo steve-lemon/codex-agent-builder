@@ -18,6 +18,9 @@ export interface UnifiedRunEvent {
     sessionId?: string;
     data?: Record<string, unknown>;
     payload: TraceEvent | FlowDesignEvent;
+
+    // TODO(monitoring): Add a normalized visual payload here so mixed trace and
+    // design consumers can render one timeline without branching on `source`.
 }
 
 /** Connection contract for consumers of the merged run timeline. */
@@ -82,6 +85,8 @@ export class UnifiedRunEventBus {
     asTraceConnection(): TraceConnection {
         return {
             send: event => {
+                // TODO(monitoring): Allow per-source backpressure policies so a
+                // burst of design events does not starve critical trace events.
                 this.connection.send({
                     runId: event.runId,
                     seq: this.nextSeq(),
@@ -101,6 +106,8 @@ export class UnifiedRunEventBus {
     asFlowDesignConnection(): FlowDesignConnection {
         return {
             send: event => {
+                // TODO(monitoring): Attach run-step correlation ids here once
+                // design events need to map back to specific planner steps.
                 this.connection.send({
                     runId: this.runId,
                     seq: this.nextSeq(),

@@ -71,6 +71,9 @@ export interface FlowDesignEvent {
     snapshot: FlowDesignGraphSnapshot;
     reagraph: FlowDesignReagraphGraph;
     data?: Record<string, unknown>;
+
+    // TODO(monitoring): Add optional diff metadata so clients can update large
+    // graphs incrementally without reprocessing the full snapshot every time.
 }
 
 /** Connection contract used to forward live design events to any observer. */
@@ -172,6 +175,8 @@ export class FlowDesignSession {
         this.flow = this.controller.createDocument(this.flow.blocks);
         this.nodeVisuals.clear();
         this.edgeVisuals.clear();
+        // TODO(monitoring): Preserve stable client-side layout hints across
+        // clears/retries so graph UIs can animate resets more gracefully.
         this.emit('graph_cleared', 'Flow design graph cleared.', data);
     }
 
@@ -320,6 +325,9 @@ export class FlowDesignSession {
                 ...visual.targetAnchor,
             },
         });
+
+        // TODO(monitoring): Support curved-path or routing hints once clients
+        // need to distinguish overlapping edges in denser designs.
         this.emit('edge_created', `Edge created: ${created.edge.sourceNodeId} -> ${created.edge.targetNodeId}`, {
             edge: this.edgeVisuals.get(created.edge.id),
         });

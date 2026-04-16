@@ -39,6 +39,9 @@ export interface AgentRuntimeOptions {
         skillName: SkillName;
         userInput: string;
     }) => UnifiedRunEventConnection | undefined;
+
+    // TODO(monitoring): Add a unified timeline persistence option if merged
+    // trace/design streams need to be replayed after the live run ends.
 }
 
 /** Orchestrates selection, planning, execution, persistence, approvals, and tracing. */
@@ -325,6 +328,8 @@ export class AgentRuntime {
             return activeConnections[0];
         }
 
+        // TODO(monitoring): Introduce failure isolation / retry policy for each
+        // downstream monitoring sink if one connection becomes unstable.
         return {
             send(event) {
                 for (const connection of activeConnections) {

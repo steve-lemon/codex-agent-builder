@@ -35,6 +35,9 @@ export interface FlowDesignReagraphEdge extends ReagraphEdge {
 export interface FlowDesignReagraphGraph {
     nodes: FlowDesignReagraphNode[];
     edges: FlowDesignReagraphEdge[];
+
+    // TODO(monitoring): Add optional layout/group metadata if live design UIs
+    // need deterministic placement for retries or multi-column editing flows.
 }
 
 /** Reagraph-compatible graph payload. */
