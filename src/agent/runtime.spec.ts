@@ -50,6 +50,20 @@ describe('runtime flow', () => {
         );
     });
 
+    it('completes a preflight validation run and returns task-graph feasibility feedback', async () => {
+        const runtime = buildDefaultRuntime();
+        const result = await runtime.run('이 요청이 가능한지 사전 검증해줘: 이메일을 확인해서 답장 해줘');
+
+        expect(result.status).toBe('completed');
+        expect(result.finalResult).toEqual(
+            expect.objectContaining({
+                success: false,
+                summary: expect.stringContaining('flow-preflight-validator'),
+                nextActions: expect.arrayContaining([expect.stringContaining('email-read-block')]),
+            }),
+        );
+    });
+
     it('runs parallel-safe tools concurrently in parallel step', async () => {
         const registry = new ToolRegistry();
         const timeline: Array<{ name: string; ts: number }> = [];

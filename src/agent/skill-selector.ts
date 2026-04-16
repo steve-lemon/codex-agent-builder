@@ -5,6 +5,7 @@ export const SKILL_NAMES = [
     'research-brief-generator',
     'ops-automation-agent',
     'flow-designer',
+    'flow-preflight-validator',
 ] as const;
 
 export type SkillName = (typeof SKILL_NAMES)[number];
@@ -25,6 +26,16 @@ export class SkillSelector {
 
         if (text.includes('ops') || text.includes('automation') || text.includes('slack') || text.includes('runbook')) {
             return 'ops-automation-agent';
+        }
+
+        if (
+            text.includes('preflight') ||
+            text.includes('feasibility') ||
+            text.includes('가능한지') ||
+            text.includes('사전 검증') ||
+            text.includes('검증해줘')
+        ) {
+            return 'flow-preflight-validator';
         }
 
         if (

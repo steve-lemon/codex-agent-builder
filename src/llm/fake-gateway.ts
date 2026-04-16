@@ -68,6 +68,66 @@ export class FakeLlmGateway implements LlmGateway {
             };
         }
 
+        if (input.skillName === 'flow-preflight-validator') {
+            return {
+                steps: [
+                    {
+                        id: 's1',
+                        mode: 'single-tool',
+                        description: 'Infer the task graph from the request',
+                        toolCalls: [
+                            {
+                                toolName: ensureToolAvailable('inferTaskGraph'),
+                                args: { userRequest: input.userInput },
+                            },
+                        ],
+                    },
+                    {
+                        id: 's2',
+                        mode: 'single-tool',
+                        description: 'Analyze graph compatibility against current blocks',
+                        toolCalls: [
+                            {
+                                toolName: ensureToolAvailable('analyzeTaskGraphCompatibility'),
+                                args: {
+                                    taskGraph: { $fromStep: 's1', path: 'toolResults.0.data.taskGraph' },
+                                },
+                            },
+                        ],
+                    },
+                    {
+                        id: 's3',
+                        mode: 'single-tool',
+                        description: 'Draft any missing blocks implied by the graph',
+                        toolCalls: [
+                            {
+                                toolName: ensureToolAvailable('proposeMissingBlocks'),
+                                args: {
+                                    nodeAnalyses: { $fromStep: 's2', path: 'toolResults.0.data.nodeAnalyses' },
+                                },
+                            },
+                        ],
+                    },
+                    {
+                        id: 's4',
+                        mode: 'single-tool',
+                        description: 'Produce a full preflight validation summary',
+                        toolCalls: [
+                            {
+                                toolName: ensureToolAvailable('prevalidateFlowDesignRequest'),
+                                args: { userRequest: input.userInput },
+                            },
+                        ],
+                    },
+                    {
+                        id: 's5',
+                        mode: 'finalize',
+                        description: 'Finalize preflight validation response',
+                    },
+                ],
+            };
+        }
+
         if (input.skillName === 'flow-designer') {
             const isClearlyInfeasible =
                 text.includes('email') ||
@@ -303,6 +363,38 @@ export class FakeLlmGateway implements LlmGateway {
     }
 
     async finalize(input: FinalizerInput): Promise<FinalResult> {
+        if (input.skillName === 'flow-preflight-validator') {
+            const preflight = input.stepResults.find(step =>
+                JSON.stringify(step).includes('"toolName":"prevalidateFlowDesignRequest"'),
+            ) as
+                | {
+                      toolResults?: Array<{
+                          data?: {
+                              feasible?: boolean;
+                              missingCapabilities?: string[];
+                              proposedBlocks?: Array<{ blockId: string }>;
+                          };
+                      }>;
+                  }
+                | undefined;
+            const preflightData = preflight?.toolResults?.[0]?.data;
+
+            return {
+                summary:
+                    preflightData?.feasible === false
+                        ? `Handled with skill flow-preflight-validator. The inferred task graph is not feasible with current blocks. Missing capabilities: ${(preflightData?.missingCapabilities ?? []).join(', ')}.`
+                        : 'Handled with skill flow-preflight-validator. The inferred task graph is feasible with the current blocks.',
+                success: preflightData?.feasible !== false,
+                nextActions:
+                    preflightData?.feasible === false
+                        ? [
+                              `Review proposed blocks: ${(preflightData?.proposedBlocks ?? []).map(block => block.blockId).join(', ')}`,
+                              `Add capabilities: ${(preflightData?.missingCapabilities ?? []).join(', ')}`,
+                          ]
+                        : ['Proceed to flow design'],
+            };
+        }
+
         if (input.skillName === 'flow-designer') {
             const feasibility = input.stepResults.find(step =>
                 JSON.stringify(step).includes('"toolName":"assessFlowFeasibility"'),

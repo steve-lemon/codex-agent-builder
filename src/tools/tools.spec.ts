@@ -60,6 +60,10 @@ describe('tools modules', () => {
             'proposeBlockSpecUpdate',
             'runFlowSample',
             'reflectFlowResult',
+            'inferTaskGraph',
+            'analyzeTaskGraphCompatibility',
+            'proposeMissingBlocks',
+            'prevalidateFlowDesignRequest',
         ]);
     });
 
@@ -125,6 +129,118 @@ describe('tools modules', () => {
                 feasible: false,
                 missingCapabilities: ['email-read', 'email-reply'],
                 recommendedAction: expect.stringContaining('email-read'),
+                taskGraph: expect.objectContaining({
+                    nodes: expect.arrayContaining([
+                        expect.objectContaining({ id: 'email-read', label: 'Read Email' }),
+                        expect.objectContaining({ id: 'draft-reply', label: 'Draft Reply' }),
+                        expect.objectContaining({ id: 'send-reply', label: 'Send Reply' }),
+                    ]),
+                    edges: expect.arrayContaining([
+                        expect.objectContaining({ source: 'email-read', target: 'draft-reply' }),
+                        expect.objectContaining({ source: 'draft-reply', target: 'send-reply' }),
+                    ]),
+                }),
+                nodeAnalyses: expect.arrayContaining([
+                    expect.objectContaining({
+                        nodeId: 'email-read',
+                        expectedInputs: ['mailbox connection', 'message selector'],
+                        expectedOutputs: ['email thread text', 'message metadata'],
+                        feasible: false,
+                    }),
+                ]),
+                proposedBlocks: expect.arrayContaining([
+                    expect.objectContaining({
+                        blockId: 'email-read-block',
+                        requiredCapabilities: ['email-read'],
+                    }),
+                    expect.objectContaining({
+                        blockId: 'send-reply-block',
+                        requiredCapabilities: ['email-reply'],
+                    }),
+                ]),
+            }),
+        });
+    });
+
+    it('task-graph preflight tools infer a graph, match blocks, and propose missing blocks', async () => {
+        const registry = buildDefaultToolRegistry();
+
+        const inferred = await registry.execute(
+            {
+                toolName: 'inferTaskGraph',
+                args: { userRequest: '이메일을 확인해서 답장 해줘' },
+            },
+            makeToolContext('task-graph-1'),
+        );
+
+        expect(inferred).toEqual({
+            toolName: 'inferTaskGraph',
+            ok: true,
+            data: expect.objectContaining({
+                taskGraph: expect.objectContaining({
+                    nodes: expect.arrayContaining([expect.objectContaining({ id: 'email-read' })]),
+                }),
+            }),
+        });
+
+        const taskGraph = (inferred.data as { taskGraph: Record<string, unknown> }).taskGraph;
+        const compatibility = await registry.execute(
+            {
+                toolName: 'analyzeTaskGraphCompatibility',
+                args: { taskGraph },
+            },
+            makeToolContext('task-graph-1'),
+        );
+
+        expect(compatibility).toEqual({
+            toolName: 'analyzeTaskGraphCompatibility',
+            ok: true,
+            data: expect.objectContaining({
+                nodeAnalyses: expect.arrayContaining([
+                    expect.objectContaining({
+                        nodeId: 'email-read',
+                        feasible: false,
+                    }),
+                ]),
+            }),
+        });
+
+        const nodeAnalyses = (compatibility.data as { nodeAnalyses: unknown[] }).nodeAnalyses;
+        const proposed = await registry.execute(
+            {
+                toolName: 'proposeMissingBlocks',
+                args: { nodeAnalyses },
+            },
+            makeToolContext('task-graph-1'),
+        );
+
+        expect(proposed).toEqual({
+            toolName: 'proposeMissingBlocks',
+            ok: true,
+            data: expect.objectContaining({
+                proposedBlocks: expect.arrayContaining([
+                    expect.objectContaining({ blockId: 'email-read-block' }),
+                    expect.objectContaining({ blockId: 'send-reply-block' }),
+                ]),
+            }),
+        });
+
+        const preflight = await registry.execute(
+            {
+                toolName: 'prevalidateFlowDesignRequest',
+                args: { userRequest: '이메일을 확인해서 답장 해줘' },
+            },
+            makeToolContext('task-graph-1'),
+        );
+
+        expect(preflight).toEqual({
+            toolName: 'prevalidateFlowDesignRequest',
+            ok: true,
+            data: expect.objectContaining({
+                feasible: false,
+                taskGraph: expect.any(Object),
+                nodeAnalyses: expect.any(Array),
+                proposedBlocks: expect.any(Array),
             }),
         });
     });

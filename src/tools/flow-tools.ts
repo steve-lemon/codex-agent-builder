@@ -15,6 +15,7 @@ import { planFlowGraph } from '../flow/graph';
 import { DefaultExecutableFlowNodeFactory } from '../flow/runtime';
 import type { FlowDocument } from '../flow/types';
 import { GraphExecutionEngine } from '../graph/executor';
+import type { DirectedGraph } from '../graph/types';
 import { defineTool, type ToolDefinition } from './types';
 
 const availableBlocks = [TextInputBlock, InputBlock, BufferBlock, ViewBlock, AiGenerateBlock];
@@ -26,6 +27,33 @@ const availableCapabilities = [
     'mock-ai-generation',
     'structured-output',
 ];
+const blockCapabilityMap: Record<string, string[]> = {
+    'text-input': ['text-input'],
+    input: ['text-input'],
+    buffer: ['delay'],
+    view: ['view-log', 'text-output'],
+    'ai-generate': ['mock-ai-generation', 'structured-output', 'text-output'],
+};
+
+interface TaskNodeAnalysis {
+    nodeId: string;
+    operation: string;
+    expectedInputs: string[];
+    expectedOutputs: string[];
+    requiredCapabilities: string[];
+    matchedBlockIds: string[];
+    feasible: boolean;
+    reasons: string[];
+}
+
+interface ProposedBlockDraft {
+    blockId: string;
+    purpose: string;
+    requiredCapabilities: string[];
+    suggestedInputs: Array<{ localId: string; dataType: string; description: string }>;
+    suggestedOutputs: Array<{ localId: string; dataType: string; description: string }>;
+    suggestedConfigs: Array<{ id: string; hint: string; required: boolean; description: string }>;
+}
 
 const FlowPortSchema = z.object({
     id: z.string(),
@@ -234,22 +262,219 @@ function inferRequiredCapabilities(userRequest: string): string[] {
     return [...required];
 }
 
+function inferTaskGraph(userRequest: string): DirectedGraph {
+    const lowered = userRequest.toLowerCase();
+
+    if (lowered.includes('email') || lowered.includes('mail') || userRequest.includes('이메일')) {
+        return {
+            nodes: [
+                {
+                    id: 'email-read',
+                    label: 'Read Email',
+                    data: {
+                        operation: 'read-email',
+                        expectedInputs: ['mailbox connection', 'message selector'],
+                        expectedOutputs: ['email thread text', 'message metadata'],
+                        requiredCapabilities: ['email-read'],
+                    },
+                },
+                {
+                    id: 'draft-reply',
+                    label: 'Draft Reply',
+                    data: {
+                        operation: 'draft-reply',
+                        expectedInputs: ['email thread text', 'response policy'],
+                        expectedOutputs: ['reply body text'],
+                        requiredCapabilities: ['mock-ai-generation', 'text-output'],
+                    },
+                },
+                {
+                    id: 'send-reply',
+                    label: 'Send Reply',
+                    data: {
+                        operation: 'send-email-reply',
+                        expectedInputs: ['reply body text', 'recipient metadata'],
+                        expectedOutputs: ['delivery confirmation'],
+                        requiredCapabilities: ['email-reply'],
+                    },
+                },
+            ],
+            edges: [
+                { source: 'email-read', target: 'draft-reply', label: 'thread text' },
+                { source: 'draft-reply', target: 'send-reply', label: 'reply draft' },
+            ],
+        };
+    }
+
+    if (
+        lowered.includes('blog') ||
+        lowered.includes('title') ||
+        userRequest.includes('타이틀') ||
+        userRequest.includes('제목')
+    ) {
+        return {
+            nodes: [
+                {
+                    id: 'capture-request',
+                    label: 'Capture Request',
+                    data: {
+                        operation: 'capture-text',
+                        expectedInputs: ['user request'],
+                        expectedOutputs: ['prompt text'],
+                        requiredCapabilities: ['text-input'],
+                    },
+                },
+                {
+                    id: 'generate-titles',
+                    label: 'Generate Titles',
+                    data: {
+                        operation: 'generate-text',
+                        expectedInputs: ['prompt text', 'system instruction'],
+                        expectedOutputs: ['title suggestions'],
+                        requiredCapabilities: ['mock-ai-generation', 'text-output'],
+                    },
+                },
+                {
+                    id: 'review-output',
+                    label: 'Review Output',
+                    data: {
+                        operation: 'log-output',
+                        expectedInputs: ['title suggestions'],
+                        expectedOutputs: ['execution log'],
+                        requiredCapabilities: ['view-log'],
+                    },
+                },
+            ],
+            edges: [
+                { source: 'capture-request', target: 'generate-titles', label: 'prompt text' },
+                { source: 'generate-titles', target: 'review-output', label: 'generated titles' },
+            ],
+        };
+    }
+
+    return {
+        nodes: [
+            {
+                id: 'capture-request',
+                label: 'Capture Request',
+                data: {
+                    operation: 'capture-text',
+                    expectedInputs: ['user request'],
+                    expectedOutputs: ['prompt text'],
+                    requiredCapabilities: ['text-input'],
+                },
+            },
+            {
+                id: 'generate-output',
+                label: 'Generate Output',
+                data: {
+                    operation: 'generate-text',
+                    expectedInputs: ['prompt text'],
+                    expectedOutputs: ['response text'],
+                    requiredCapabilities: ['mock-ai-generation', 'text-output'],
+                },
+            },
+            {
+                id: 'review-output',
+                label: 'Review Output',
+                data: {
+                    operation: 'log-output',
+                    expectedInputs: ['response text'],
+                    expectedOutputs: ['execution log'],
+                    requiredCapabilities: ['view-log'],
+                },
+            },
+        ],
+        edges: [
+            { source: 'capture-request', target: 'generate-output', label: 'prompt text' },
+            { source: 'generate-output', target: 'review-output', label: 'generated response' },
+        ],
+    };
+}
+
+function analyzeTaskGraph(graph: DirectedGraph): TaskNodeAnalysis[] {
+    return graph.nodes.map(node => {
+        const requiredCapabilities = ((node.data?.requiredCapabilities as string[] | undefined) ?? []).slice();
+        const matchedBlockIds = availableBlocks
+            .filter(block => {
+                const blockCapabilities = blockCapabilityMap[block.id] ?? [];
+                return requiredCapabilities.every(capability => blockCapabilities.includes(capability));
+            })
+            .map(block => block.id);
+        const reasons =
+            matchedBlockIds.length > 0
+                ? [`Matched block candidates: ${matchedBlockIds.join(', ')}`]
+                : [`No block currently provides all required capabilities: ${requiredCapabilities.join(', ')}`];
+
+        return {
+            nodeId: node.id,
+            operation: String(node.data?.operation ?? node.label ?? node.id),
+            expectedInputs: ((node.data?.expectedInputs as string[] | undefined) ?? []).slice(),
+            expectedOutputs: ((node.data?.expectedOutputs as string[] | undefined) ?? []).slice(),
+            requiredCapabilities,
+            matchedBlockIds,
+            feasible: matchedBlockIds.length > 0,
+            reasons,
+        };
+    });
+}
+
+function buildProposedBlocks(nodeAnalyses: TaskNodeAnalysis[]): ProposedBlockDraft[] {
+    return nodeAnalyses
+        .filter(node => !node.feasible)
+        .map(node => ({
+            blockId: `${node.nodeId}-block`,
+            purpose: `Support the '${node.operation}' task node in the inferred request graph.`,
+            requiredCapabilities: [...node.requiredCapabilities],
+            suggestedInputs: node.expectedInputs.map((description, index) => ({
+                localId: `input${index + 1}`,
+                dataType: description.includes('metadata') ? 'json' : 'text',
+                description,
+            })),
+            suggestedOutputs: node.expectedOutputs.map((description, index) => ({
+                localId: `output${index + 1}`,
+                dataType: description.includes('metadata') || description.includes('confirmation') ? 'json' : 'text',
+                description,
+            })),
+            suggestedConfigs: [
+                {
+                    id: 'provider',
+                    hint: 'text',
+                    required: true,
+                    description: `Connection or provider identifier needed for ${node.operation}.`,
+                },
+            ],
+        }));
+}
+
 function assessFlowFeasibility(userRequest: string) {
+    const taskGraph = inferTaskGraph(userRequest);
+    const nodeAnalyses = analyzeTaskGraph(taskGraph);
     const requiredCapabilities = inferRequiredCapabilities(userRequest);
     const missingCapabilities = requiredCapabilities.filter(capability => !availableCapabilities.includes(capability));
-    const feasible = missingCapabilities.length === 0;
+    const graphLevelMissingCapabilities = nodeAnalyses
+        .filter(node => !node.feasible)
+        .flatMap(node => node.requiredCapabilities)
+        .filter((capability, index, all) => all.indexOf(capability) === index);
+    const feasible = missingCapabilities.length === 0 && nodeAnalyses.every(node => node.feasible);
+    const proposedBlocks = buildProposedBlocks(nodeAnalyses);
 
     return {
         feasible,
+        taskGraph,
+        nodeAnalyses,
         requiredCapabilities,
         availableCapabilities,
-        missingCapabilities,
+        missingCapabilities: [...new Set([...missingCapabilities, ...graphLevelMissingCapabilities])],
+        proposedBlocks,
         reason: feasible
-            ? 'The request can be covered by the currently available blocks.'
-            : 'The request depends on capabilities that no available block provides.',
+            ? 'The request can be covered by the currently available blocks after graph-based design analysis.'
+            : 'The inferred task graph contains nodes whose required capabilities are not covered by the available blocks.',
         recommendedAction: feasible
             ? 'Proceed with flow design and sample execution.'
-            : `Add blocks or tools for: ${missingCapabilities.join(', ')}`,
+            : `Add blocks or tools for: ${[...new Set([...missingCapabilities, ...graphLevelMissingCapabilities])].join(
+                  ', ',
+              )}`,
     };
 }
 
