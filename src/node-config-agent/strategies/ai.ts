@@ -1,6 +1,6 @@
 // AI block strategy for model and structured-output configuration.
 import {
-    collectStrategyNotes,
+    collectStrategyNotesFor,
     inferTaskType,
     applyNodeConfig,
     type NodeBlockConfigStrategy,
@@ -11,7 +11,7 @@ import type { NodeConfigurationDesignInput } from '../types';
 
 function selectModel(input: NodeConfigurationDesignInput): string {
     const taskType = inferTaskType(input.userRequest, input.wantsJson);
-    const strategyNotes = collectStrategyNotes(input).join(' ').toLowerCase();
+    const strategyNotes = collectStrategyNotesFor(input, 'ai-generation').join(' ').toLowerCase();
 
     if (strategyNotes.includes('json')) {
         return 'mock-structured-gpt';
@@ -48,6 +48,7 @@ export class AiGenerateNodeStrategy implements NodeBlockConfigStrategy {
             suggestion: {
                 nodeId: node.id,
                 blockId: node.blockId,
+                strategyId: this.strategyId,
                 config,
                 rationale: [
                     'Choose an AI model profile that matches the requested output style.',
@@ -55,8 +56,13 @@ export class AiGenerateNodeStrategy implements NodeBlockConfigStrategy {
                     ...(context.probeInsightsApplied.length > 0
                         ? ['Use the probe result to keep model and prompt assumptions aligned with observed behavior.']
                         : []),
-                    ...(collectStrategyNotes(context.input).length > 0
-                        ? [`Apply AI configuration strategy notes: ${collectStrategyNotes(context.input).join(' | ')}`]
+                    ...(collectStrategyNotesFor(context.input, this.strategyId).length > 0
+                        ? [
+                              `Apply AI configuration strategy notes: ${collectStrategyNotesFor(
+                                  context.input,
+                                  this.strategyId,
+                              ).join(' | ')}`,
+                          ]
                         : []),
                 ],
             },

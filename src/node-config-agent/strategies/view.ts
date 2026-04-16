@@ -12,6 +12,7 @@ export class ViewNodeStrategy implements NodeBlockConfigStrategy {
             suggestion: {
                 nodeId: node.id,
                 blockId: node.blockId,
+                strategyId: this.strategyId,
                 config: node.config ?? {},
                 rationale: ['Keep the view node focused on output inspection so the final sample remains observable.'],
             },

@@ -79,6 +79,11 @@ const ProbeResultSchema = z.object({
     mismatchesFromSpec: z.array(z.string()).optional(),
 });
 
+const StrategyDirectiveSchema = z.object({
+    strategyId: z.string(),
+    note: z.string(),
+});
+
 /** Returns tools that design and validate concrete node configurations for a flow draft. */
 export function createNodeConfigTools(): ToolDefinition[] {
     return [
@@ -93,6 +98,7 @@ export function createNodeConfigTools(): ToolDefinition[] {
                 wantsJson: z.boolean(),
                 improvementNotes: z.array(z.string()).optional(),
                 strategyNotes: z.array(z.string()).optional(),
+                strategyDirectives: z.array(StrategyDirectiveSchema).optional(),
                 probeResult: ProbeResultSchema.optional(),
             }),
             riskLevel: 'read-only',
@@ -106,6 +112,7 @@ export function createNodeConfigTools(): ToolDefinition[] {
                 wantsJson,
                 improvementNotes = [],
                 strategyNotes = [],
+                strategyDirectives = [],
                 probeResult,
             }) => {
                 return agent.design({
@@ -115,6 +122,7 @@ export function createNodeConfigTools(): ToolDefinition[] {
                     wantsJson,
                     improvementNotes,
                     strategyNotes,
+                    strategyDirectives,
                     probeResult,
                 });
             },

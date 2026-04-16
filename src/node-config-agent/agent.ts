@@ -38,6 +38,7 @@ export class NodeConfigDesignAgent {
             ...(input.probeResult?.mismatchesFromSpec ?? []),
         ];
         const suggestions: NodeConfigurationDesignResult['suggestions'] = [];
+        const nodeStrategyAssignments: NodeConfigurationDesignResult['nodeStrategyAssignments'] = [];
         const nextFlow: FlowDocument = {
             ...input.flow,
             nodes: input.flow.nodes.map(node => {
@@ -53,15 +54,22 @@ export class NodeConfigDesignAgent {
                 });
                 if (result.suggestion) {
                     suggestions.push(result.suggestion);
+                    nodeStrategyAssignments.push({
+                        nodeId: node.id,
+                        strategyId: result.suggestion.strategyId,
+                    });
                 }
                 return result.node;
             }),
         };
+        const appliedStrategyIds = [...new Set(nodeStrategyAssignments.map(assignment => assignment.strategyId))];
 
         return {
             flow: nextFlow,
             suggestions,
             probeInsightsApplied,
+            appliedStrategyIds,
+            nodeStrategyAssignments,
             summary:
                 probeInsightsApplied.length > 0
                     ? `Configured ${suggestions.length} node(s) with block-specific settings using ${probeInsightsApplied.length} probe insight(s).`

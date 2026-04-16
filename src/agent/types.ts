@@ -62,6 +62,11 @@ export interface RunState {
 export interface FinalResultDesignDetails {
     flowDesignImprovements: string[];
     nodeConfigStrategyImprovements: string[];
+    appliedNodeConfigStrategies?: string[];
+    nodeStrategyAssignments?: Array<{
+        nodeId: string;
+        strategyId: string;
+    }>;
     configuredNodeCount?: number;
     probeInsightCount?: number;
 }
@@ -92,6 +97,15 @@ export const FinalResultSchema = z.object({
         .object({
             flowDesignImprovements: z.array(z.string()),
             nodeConfigStrategyImprovements: z.array(z.string()),
+            appliedNodeConfigStrategies: z.array(z.string()).optional(),
+            nodeStrategyAssignments: z
+                .array(
+                    z.object({
+                        nodeId: z.string(),
+                        strategyId: z.string(),
+                    }),
+                )
+                .optional(),
             configuredNodeCount: z.number().int().nonnegative().optional(),
             probeInsightCount: z.number().int().nonnegative().optional(),
         })

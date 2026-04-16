@@ -365,6 +365,10 @@ export class FakeLlmGateway implements LlmGateway {
                                 probeResult: { $fromStep: 's3', path: 'toolResults.0.data' },
                                 ...(previousReflectionStepId
                                     ? {
+                                          strategyDirectives: {
+                                              $fromStep: previousReflectionStepId,
+                                              path: 'toolResults.0.data.nodeConfigStrategyDirectives',
+                                          },
                                           strategyNotes: {
                                               $fromStep: previousReflectionStepId,
                                               path: 'toolResults.0.data.nodeConfigSkillImprovements',
@@ -610,6 +614,10 @@ export class FakeLlmGateway implements LlmGateway {
                         issues?: string[];
                         improvementNotes?: string[];
                         nodeConfigSkillImprovements?: string[];
+                        nodeConfigStrategyDirectives?: Array<{
+                            strategyId: string;
+                            note: string;
+                        }>;
                     };
                 }>;
             }>;
@@ -622,6 +630,8 @@ export class FakeLlmGateway implements LlmGateway {
                 toolResults?: Array<{
                     data?: {
                         suggestions?: Array<{ nodeId: string }>;
+                        appliedStrategyIds?: string[];
+                        nodeStrategyAssignments?: Array<{ nodeId: string; strategyId: string }>;
                         probeInsightsApplied?: string[];
                     };
                 }>;
@@ -673,6 +683,8 @@ export class FakeLlmGateway implements LlmGateway {
                     designDetails: {
                         flowDesignImprovements: latestReflection.issues ?? [],
                         nodeConfigStrategyImprovements: latestNodeConfigImprovements,
+                        appliedNodeConfigStrategies: latestConfiguration?.appliedStrategyIds ?? [],
+                        nodeStrategyAssignments: latestConfiguration?.nodeStrategyAssignments ?? [],
                         configuredNodeCount: latestConfiguration?.suggestions?.length ?? 0,
                         probeInsightCount: latestConfiguration?.probeInsightsApplied?.length ?? 0,
                     },
@@ -694,6 +706,8 @@ export class FakeLlmGateway implements LlmGateway {
                     designDetails: {
                         flowDesignImprovements: latestReflection.improvementNotes ?? [],
                         nodeConfigStrategyImprovements: latestNodeConfigImprovements,
+                        appliedNodeConfigStrategies: latestConfiguration?.appliedStrategyIds ?? [],
+                        nodeStrategyAssignments: latestConfiguration?.nodeStrategyAssignments ?? [],
                         configuredNodeCount,
                         probeInsightCount,
                     },

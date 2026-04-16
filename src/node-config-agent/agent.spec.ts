@@ -70,10 +70,21 @@ describe('node-config design agent', () => {
         expect(result.summary).toContain('Configured');
         expect(result.summary).toContain('probe insight');
         expect(result.probeInsightsApplied).toHaveLength(2);
+        expect(result.appliedStrategyIds).toEqual(
+            expect.arrayContaining(['system-input', 'prompt-input', 'ai-generation', 'view-observer']),
+        );
+        expect(result.nodeStrategyAssignments).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ nodeId: 'system-input', strategyId: 'system-input' }),
+                expect.objectContaining({ nodeId: 'prompt-input', strategyId: 'prompt-input' }),
+                expect.objectContaining({ nodeId: 'ai-node', strategyId: 'ai-generation' }),
+            ]),
+        );
         expect(result.suggestions).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({
                     nodeId: 'system-input',
+                    strategyId: 'system-input',
                     config: expect.objectContaining({
                         input: expect.stringContaining('You generate clear and catchy blog titles'),
                     }),
@@ -84,12 +95,14 @@ describe('node-config design agent', () => {
                 }),
                 expect.objectContaining({
                     nodeId: 'prompt-input',
+                    strategyId: 'prompt-input',
                     config: expect.objectContaining({
                         input: expect.stringMatching(/Return exactly 5 results\..*Strategy notes:/),
                     }),
                 }),
                 expect.objectContaining({
                     nodeId: 'ai-node',
+                    strategyId: 'ai-generation',
                     config: expect.objectContaining({
                         model: 'mock-blog-gpt',
                         jsonOutput: 'false',

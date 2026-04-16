@@ -49,6 +49,16 @@ describe('runtime flow', () => {
             expect.objectContaining({
                 flowDesignImprovements: expect.any(Array),
                 nodeConfigStrategyImprovements: expect.any(Array),
+                appliedNodeConfigStrategies: expect.arrayContaining([
+                    'system-input',
+                    'prompt-input',
+                    'ai-generation',
+                ]),
+                nodeStrategyAssignments: expect.arrayContaining([
+                    expect.objectContaining({ nodeId: 'system-input', strategyId: 'system-input' }),
+                    expect.objectContaining({ nodeId: 'prompt-input', strategyId: 'prompt-input' }),
+                    expect.objectContaining({ nodeId: 'ai-node', strategyId: 'ai-generation' }),
+                ]),
                 configuredNodeCount: expect.any(Number),
                 probeInsightCount: expect.any(Number),
             }),

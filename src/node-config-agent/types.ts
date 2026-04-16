@@ -5,8 +5,15 @@ import type { FlowDocument } from '../flow/types';
 export interface NodeConfigurationSuggestion {
     nodeId: string;
     blockId: string;
+    strategyId: string;
     config: Record<string, string>;
     rationale: string[];
+}
+
+/** Strategy-targeted improvement directive emitted by reflection or higher-level planners. */
+export interface NodeConfigurationStrategyDirective {
+    strategyId: string;
+    note: string;
 }
 
 /** Observed runtime behavior for a probed block that can inform node configuration design. */
@@ -23,6 +30,11 @@ export interface NodeConfigurationDesignResult {
     flow: FlowDocument;
     suggestions: NodeConfigurationSuggestion[];
     probeInsightsApplied: string[];
+    appliedStrategyIds: string[];
+    nodeStrategyAssignments: Array<{
+        nodeId: string;
+        strategyId: string;
+    }>;
     summary: string;
 }
 
@@ -40,5 +52,6 @@ export interface NodeConfigurationDesignInput {
     wantsJson: boolean;
     improvementNotes?: string[];
     strategyNotes?: string[];
+    strategyDirectives?: NodeConfigurationStrategyDirective[];
     probeResult?: NodeConfigurationProbeResult;
 }

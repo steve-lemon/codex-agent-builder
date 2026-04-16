@@ -1236,15 +1236,24 @@ export function createFlowDesignTools(): ToolDefinition[] {
                 }
 
                 const nodeConfigSkillImprovements: string[] = [];
+                const nodeConfigStrategyDirectives: Array<{ strategyId: string; note: string }> = [];
                 if (wantsJson) {
                     nodeConfigSkillImprovements.push(
                         'Prefer a structured-output model profile and stricter system instructions for JSON mode.',
                     );
+                    nodeConfigStrategyDirectives.push({
+                        strategyId: 'ai-generation',
+                        note: 'Prefer a structured-output model profile and stricter system instructions for JSON mode.',
+                    });
                 }
                 if (desiredCount > 1) {
                     nodeConfigSkillImprovements.push(
                         `Tune the prompt-input node so the AI block is explicitly asked for exactly ${desiredCount} outputs.`,
                     );
+                    nodeConfigStrategyDirectives.push({
+                        strategyId: 'prompt-input',
+                        note: `Ask for exactly ${desiredCount} outputs with explicit count wording.`,
+                    });
                 }
                 if (
                     lowered.includes('blog') ||
@@ -1255,11 +1264,23 @@ export function createFlowDesignTools(): ToolDefinition[] {
                     nodeConfigSkillImprovements.push(
                         'Strengthen the system-input node to emphasize publishable headline quality and distinct title phrasing.',
                     );
+                    nodeConfigStrategyDirectives.push({
+                        strategyId: 'system-input',
+                        note: 'Emphasize publishable headline quality and distinct title phrasing.',
+                    });
                 }
                 if (issues.some(issue => issue.toLowerCase().includes('status'))) {
                     nodeConfigSkillImprovements.push(
                         'Review buffer/view node settings so execution remains observable and deterministic during retries.',
                     );
+                    nodeConfigStrategyDirectives.push({
+                        strategyId: 'buffer-timing',
+                        note: 'Keep execution timing explicit and deterministic during retries.',
+                    });
+                    nodeConfigStrategyDirectives.push({
+                        strategyId: 'view-observer',
+                        note: 'Keep output observation visible while retrying failed runs.',
+                    });
                 }
 
                 return {
@@ -1271,6 +1292,7 @@ export function createFlowDesignTools(): ToolDefinition[] {
                     issues,
                     improvementNotes: suggestedImprovements,
                     nodeConfigSkillImprovements,
+                    nodeConfigStrategyDirectives,
                 };
             },
         }),

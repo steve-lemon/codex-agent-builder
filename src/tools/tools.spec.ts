@@ -607,6 +607,14 @@ describe('tools modules', () => {
                     expect.stringContaining('prompt-input node'),
                     expect.stringContaining('headline quality'),
                 ]),
+                nodeConfigStrategyDirectives: expect.arrayContaining([
+                    expect.objectContaining({
+                        strategyId: 'prompt-input',
+                    }),
+                    expect.objectContaining({
+                        strategyId: 'system-input',
+                    }),
+                ]),
             }),
         });
 
@@ -701,9 +709,16 @@ describe('tools modules', () => {
                     expect.stringContaining('Reads system/prompt text'),
                     expect.stringContaining('structured object payloads'),
                 ]),
+                appliedStrategyIds: expect.arrayContaining(['system-input', 'prompt-input', 'ai-generation']),
+                nodeStrategyAssignments: expect.arrayContaining([
+                    expect.objectContaining({ nodeId: 'system-input', strategyId: 'system-input' }),
+                    expect.objectContaining({ nodeId: 'prompt-input', strategyId: 'prompt-input' }),
+                    expect.objectContaining({ nodeId: 'ai-node', strategyId: 'ai-generation' }),
+                ]),
                 suggestions: expect.arrayContaining([
                     expect.objectContaining({
                         nodeId: 'system-input',
+                        strategyId: 'system-input',
                         config: expect.objectContaining({
                             input: expect.stringContaining('You generate clear and catchy blog titles'),
                         }),
@@ -711,12 +726,14 @@ describe('tools modules', () => {
                     }),
                     expect.objectContaining({
                         nodeId: 'prompt-input',
+                        strategyId: 'prompt-input',
                         config: expect.objectContaining({
                             input: expect.stringContaining('Return exactly 5 results.'),
                         }),
                     }),
                     expect.objectContaining({
                         nodeId: 'ai-node',
+                        strategyId: 'ai-generation',
                         config: expect.objectContaining({
                             model: 'mock-blog-gpt',
                             jsonOutput: 'false',

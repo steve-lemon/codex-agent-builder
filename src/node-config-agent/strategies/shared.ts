@@ -45,6 +45,15 @@ export function collectStrategyNotes(input: NodeConfigurationDesignInput): strin
     return input.strategyNotes ?? [];
 }
 
+export function collectStrategyNotesFor(input: NodeConfigurationDesignInput, strategyId: string): string[] {
+    return [
+        ...(input.strategyNotes ?? []),
+        ...(input.strategyDirectives ?? [])
+            .filter(directive => directive.strategyId === strategyId)
+            .map(directive => directive.note),
+    ];
+}
+
 export function applyNodeConfig(node: FlowNode, config: Record<string, string>): FlowNode {
     return {
         ...node,
