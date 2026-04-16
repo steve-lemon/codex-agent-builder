@@ -153,33 +153,22 @@ export class FakeLlmGateway implements LlmGateway {
                         {
                             id: 's2',
                             mode: 'single-tool',
-                            description: 'List available flow blocks',
+                            description: 'Run graph-based preflight validation before attempting flow design',
                             toolCalls: [
                                 {
-                                    toolName: ensureToolAvailable('listAvailableFlowBlocks'),
-                                    args: {},
-                                },
-                            ],
-                        },
-                        {
-                            id: 's3',
-                            mode: 'single-tool',
-                            description: 'Assess whether the request is feasible with current blocks',
-                            toolCalls: [
-                                {
-                                    toolName: ensureToolAvailable('assessFlowFeasibility'),
+                                    toolName: ensureToolAvailable('prevalidateFlowDesignRequest'),
                                     args: { userRequest: input.userInput },
                                 },
                             ],
                         },
                         {
-                            id: 's4',
+                            id: 's3',
                             mode: 'reasoning',
                             description: 'Stop before design because required capabilities are missing',
                             reasoning: 'Do not force a flow design when critical capabilities such as email access are unavailable.',
                         },
                         {
-                            id: 's5',
+                            id: 's4',
                             mode: 'finalize',
                             description: 'Finalize capability-gap response',
                         },
@@ -203,27 +192,16 @@ export class FakeLlmGateway implements LlmGateway {
                     {
                         id: 's2',
                         mode: 'single-tool',
-                        description: 'List available flow blocks',
+                        description: 'Run graph-based preflight validation before flow design',
                         toolCalls: [
                             {
-                                toolName: ensureToolAvailable('listAvailableFlowBlocks'),
-                                args: {},
-                            },
-                        ],
-                    },
-                    {
-                        id: 's3',
-                        mode: 'single-tool',
-                        description: 'Assess whether the request is feasible with current blocks',
-                        toolCalls: [
-                            {
-                                toolName: ensureToolAvailable('assessFlowFeasibility'),
+                                toolName: ensureToolAvailable('prevalidateFlowDesignRequest'),
                                 args: { userRequest: input.userInput },
                             },
                         ],
                     },
                     {
-                        id: 's4',
+                        id: 's3',
                         mode: 'single-tool',
                         description: 'Probe the AI block behavior before using it',
                         toolCalls: [
@@ -244,7 +222,7 @@ export class FakeLlmGateway implements LlmGateway {
                         ],
                     },
                     {
-                        id: 's5',
+                        id: 's4',
                         mode: 'single-tool',
                         description: 'Design a flow draft',
                         toolCalls: [
@@ -255,6 +233,20 @@ export class FakeLlmGateway implements LlmGateway {
                                     sampleInput: { $fromStep: 's1', path: 'toolResults.0.data.sampleInput' },
                                     desiredCount: { $fromStep: 's1', path: 'toolResults.0.data.desiredCount' },
                                     wantsJson: { $fromStep: 's1', path: 'toolResults.0.data.wantsJson' },
+                                    preflight: { $fromStep: 's2', path: 'toolResults.0.data' },
+                                },
+                            },
+                        ],
+                    },
+                    {
+                        id: 's5',
+                        mode: 'single-tool',
+                        description: 'Validate the flow draft',
+                        toolCalls: [
+                            {
+                                toolName: ensureToolAvailable('validateFlowDraft'),
+                                args: {
+                                    flow: { $fromStep: 's4', path: 'toolResults.0.data.flow' },
                                 },
                             },
                         ],
@@ -262,32 +254,19 @@ export class FakeLlmGateway implements LlmGateway {
                     {
                         id: 's6',
                         mode: 'single-tool',
-                        description: 'Validate the flow draft',
-                        toolCalls: [
-                            {
-                                toolName: ensureToolAvailable('validateFlowDraft'),
-                                args: {
-                                    flow: { $fromStep: 's5', path: 'toolResults.0.data.flow' },
-                                },
-                            },
-                        ],
-                    },
-                    {
-                        id: 's7',
-                        mode: 'single-tool',
                         description: 'Run the flow sample',
                         toolCalls: [
                             {
                                 toolName: ensureToolAvailable('runFlowSample'),
                                 args: {
                                     userRequest: input.userInput,
-                                    flow: { $fromStep: 's5', path: 'toolResults.0.data.flow' },
+                                    flow: { $fromStep: 's4', path: 'toolResults.0.data.flow' },
                                 },
                             },
                         ],
                     },
                     {
-                        id: 's8',
+                        id: 's7',
                         mode: 'single-tool',
                         description: 'Reflect on the sample result',
                         toolCalls: [
@@ -297,13 +276,13 @@ export class FakeLlmGateway implements LlmGateway {
                                     userRequest: input.userInput,
                                     desiredCount: { $fromStep: 's1', path: 'toolResults.0.data.desiredCount' },
                                     wantsJson: { $fromStep: 's1', path: 'toolResults.0.data.wantsJson' },
-                                    sampleResult: { $fromStep: 's7', path: 'toolResults.0.data' },
+                                    sampleResult: { $fromStep: 's6', path: 'toolResults.0.data' },
                                 },
                             },
                         ],
                     },
                     {
-                        id: 's9',
+                        id: 's8',
                         mode: 'finalize',
                         description: 'Finalize flow design response',
                     },
@@ -397,13 +376,14 @@ export class FakeLlmGateway implements LlmGateway {
 
         if (input.skillName === 'flow-designer') {
             const feasibility = input.stepResults.find(step =>
-                JSON.stringify(step).includes('"toolName":"assessFlowFeasibility"'),
+                JSON.stringify(step).includes('"toolName":"prevalidateFlowDesignRequest"'),
             ) as
                 | {
                       toolResults?: Array<{
                           data?: {
                               feasible?: boolean;
                               missingCapabilities?: string[];
+                              proposedBlocks?: Array<{ blockId: string }>;
                           };
                       }>;
                   }
@@ -416,6 +396,7 @@ export class FakeLlmGateway implements LlmGateway {
                     summary: `Handled with skill flow-designer. The request is not feasible with current blocks because these capabilities are missing: ${missingCapabilities.join(', ')}.`,
                     success: false,
                     nextActions: [
+                        `Review proposed blocks: ${(feasibilityData.proposedBlocks ?? []).map(block => block.blockId).join(', ')}`,
                         `Add blocks or tools for: ${missingCapabilities.join(', ')}`,
                         'Retry flow design after the missing capabilities are available',
                     ],

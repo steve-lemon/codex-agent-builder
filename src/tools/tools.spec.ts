@@ -245,6 +245,13 @@ describe('tools modules', () => {
         });
     });
 
+    it('prevalidateFlowDesignRequest is shared with flow-designer so design runs can reuse preflight facts', () => {
+        const registry = buildDefaultToolRegistry();
+        const preflightTool = registry.get('prevalidateFlowDesignRequest');
+
+        expect(preflightTool?.allowedSkills).toEqual(['flow-preflight-validator', 'flow-designer']);
+    });
+
     it('mock tools return deterministic customer and order data', async () => {
         const registry = buildDefaultToolRegistry();
 

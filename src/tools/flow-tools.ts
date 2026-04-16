@@ -121,6 +121,73 @@ const FlowDocumentSchema = z.object({
     edges: z.array(FlowEdgeSchema),
 });
 
+const PreflightSummarySchema = z.object({
+    feasible: z.boolean(),
+    requiredCapabilities: z.array(z.string()),
+    availableCapabilities: z.array(z.string()),
+    missingCapabilities: z.array(z.string()),
+    reason: z.string(),
+    recommendedAction: z.string(),
+    taskGraph: z.object({
+        nodes: z.array(
+            z.object({
+                id: z.string(),
+                label: z.string().optional(),
+                data: z.record(z.unknown()).optional(),
+            }),
+        ),
+        edges: z.array(
+            z.object({
+                source: z.string(),
+                target: z.string(),
+                label: z.string().optional(),
+                data: z.record(z.unknown()).optional(),
+            }),
+        ),
+    }),
+    nodeAnalyses: z.array(
+        z.object({
+            nodeId: z.string(),
+            operation: z.string(),
+            expectedInputs: z.array(z.string()),
+            expectedOutputs: z.array(z.string()),
+            requiredCapabilities: z.array(z.string()),
+            matchedBlockIds: z.array(z.string()),
+            feasible: z.boolean(),
+            reasons: z.array(z.string()),
+        }),
+    ),
+    proposedBlocks: z.array(
+        z.object({
+            blockId: z.string(),
+            purpose: z.string(),
+            requiredCapabilities: z.array(z.string()),
+            suggestedInputs: z.array(
+                z.object({
+                    localId: z.string(),
+                    dataType: z.string(),
+                    description: z.string(),
+                }),
+            ),
+            suggestedOutputs: z.array(
+                z.object({
+                    localId: z.string(),
+                    dataType: z.string(),
+                    description: z.string(),
+                }),
+            ),
+            suggestedConfigs: z.array(
+                z.object({
+                    id: z.string(),
+                    hint: z.string(),
+                    required: z.boolean(),
+                    description: z.string(),
+                }),
+            ),
+        }),
+    ),
+});
+
 function hydrateFlowDocument(flow: FlowDocument): FlowDocument {
     return {
         ...flow,
@@ -753,20 +820,22 @@ export function createFlowDesignTools(): ToolDefinition[] {
         }),
         defineTool({
             name: 'designFlowDraft',
-            description: 'Create a flow draft using only the available flow blocks and optional improvement notes.',
+            description:
+                'Create a flow draft using only the available flow blocks, grounded by preflight validation and optional improvement notes.',
             parameters: z.object({
                 userRequest: z.string(),
                 sampleInput: z.string(),
                 desiredCount: z.number().int().positive(),
                 wantsJson: z.boolean(),
                 improvementNotes: z.array(z.string()).optional(),
+                preflight: PreflightSummarySchema.optional(),
             }),
             riskLevel: 'read-only',
             allowedSkills: ['flow-designer'],
             requiresConfirmation: false,
             parallelSafe: false,
-            execute: async ({ userRequest, sampleInput, desiredCount, wantsJson, improvementNotes = [] }) => {
-                const feasibility = assessFlowFeasibility(userRequest);
+            execute: async ({ userRequest, sampleInput, desiredCount, wantsJson, improvementNotes = [], preflight }) => {
+                const feasibility = preflight ?? assessFlowFeasibility(userRequest);
                 if (!feasibility.feasible) {
                     throw new AgentError(
                         `Flow design is not feasible with current blocks. Missing capabilities: ${feasibility.missingCapabilities.join(
@@ -824,10 +893,16 @@ export function createFlowDesignTools(): ToolDefinition[] {
                 return {
                     flow,
                     designRationale: [
+                        `Use preflight validation to confirm required capabilities are available: ${feasibility.requiredCapabilities.join(', ') || 'none'}.`,
                         'Use input nodes to materialize deterministic system and prompt text.',
                         'Use one AI node to generate the requested output.',
                         'Use a view node to inspect the final sample output.',
                     ],
+                    preflightSummary: {
+                        taskGraphNodeCount: feasibility.taskGraph.nodes.length,
+                        feasible: feasibility.feasible,
+                        missingCapabilities: feasibility.missingCapabilities,
+                    },
                 };
             },
         }),

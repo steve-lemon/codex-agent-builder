@@ -62,6 +62,7 @@ describe('skill selector and router', () => {
             'proposeBlockSpecUpdate',
             'runFlowSample',
             'reflectFlowResult',
+            'prevalidateFlowDesignRequest',
         ]);
     });
 

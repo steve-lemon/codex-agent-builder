@@ -29,11 +29,20 @@ describe('runtime flow', () => {
     });
 
     it('completes a flow-designer skill run with the bundled flow-design tools', async () => {
-        const runtime = buildDefaultRuntime();
+        const store = new InMemoryRunStateStore();
+        const runtime = new AgentRuntime({
+            llm: new FakeLlmGateway(),
+            store,
+            toolRegistry: buildDefaultToolRegistry(),
+        });
         const result = await runtime.run('키워드를 줄테니 블로그 타이틀 여러개 만들기');
+        const run = await store.get(result.runId);
 
         expect(result.status).toBe('completed');
         expect(result.finalResult?.summary).toContain('flow-designer');
+        expect(
+            run?.stepResults.some(step => JSON.stringify(step).includes('"toolName":"prevalidateFlowDesignRequest"')),
+        ).toBe(true);
     });
 
     it('stops early and reports missing capabilities when the request cannot be satisfied by available blocks', async () => {

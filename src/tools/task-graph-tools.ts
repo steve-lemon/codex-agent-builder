@@ -102,7 +102,7 @@ export function createTaskGraphTools(): ToolDefinition[] {
                 userRequest: z.string(),
             }),
             riskLevel: 'read-only',
-            allowedSkills: ['flow-preflight-validator'],
+            allowedSkills: ['flow-preflight-validator', 'flow-designer'],
             requiresConfirmation: false,
             parallelSafe: true,
             execute: async ({ userRequest }) => {
