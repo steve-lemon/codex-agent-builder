@@ -1,7 +1,7 @@
 // Vitest specs for executable flow node runtimes.
 import { describe, expect, it } from 'vitest';
 import { BufferBlock, InputBlock, ViewBlock } from './blocks';
-import { connectFlowPorts, createFlowDocument, createFlowNode, getFlowPortById } from './document';
+import { connectFlowPorts, createFlowDocument, createFlowNode, getFlowPortById, setFlowPortPacket } from './document';
 import { DefaultExecutableFlowNodeFactory } from './runtime';
 
 describe('flow runtime', () => {
@@ -81,5 +81,129 @@ describe('flow runtime', () => {
 
         expect(getFlowPortById(flow, 'view-1:input')?.packet?.value).toBe('visible text');
         expect(logs).toEqual(['visible text']);
+    });
+
+    it('executes an input -> buffer -> view chain end-to-end with packet propagation', async () => {
+        const logs: string[] = [];
+        const sleeps: number[] = [];
+        let flow = createFlowDocument([InputBlock, BufferBlock, ViewBlock]);
+        flow = createFlowNode(flow, 'input', {
+            nodeId: 'input-1',
+            config: {
+                input: 'pipeline text',
+            },
+        }).flow;
+        flow = createFlowNode(flow, 'buffer', {
+            nodeId: 'buffer-1',
+            config: {
+                wait: '12',
+            },
+        }).flow;
+        flow = createFlowNode(flow, 'view', {
+            nodeId: 'view-1',
+        }).flow;
+        flow = connectFlowPorts(flow, {
+            sourceNodeId: 'input-1',
+            sourcePort: 'output',
+            targetNodeId: 'buffer-1',
+            targetPort: 'input',
+        }).flow;
+        flow = connectFlowPorts(flow, {
+            sourceNodeId: 'buffer-1',
+            sourcePort: 'output',
+            targetNodeId: 'view-1',
+            targetPort: 'input',
+        }).flow;
+
+        const factory = new DefaultExecutableFlowNodeFactory({
+            logger: message => {
+                logs.push(message);
+            },
+            sleep: async ms => {
+                sleeps.push(ms);
+            },
+        });
+
+        flow = await factory.create(flow, 'input-1').execute(flow);
+        expect(getFlowPortById(flow, 'buffer-1:input')?.packet?.value).toBe('pipeline text');
+
+        flow = await factory.create(flow, 'buffer-1').execute(flow);
+        expect(getFlowPortById(flow, 'view-1:input')?.packet?.value).toBe('pipeline text');
+
+        flow = await factory.create(flow, 'view-1').execute(flow);
+
+        expect(getFlowPortById(flow, 'buffer-1:output')?.packet?.value).toBe('pipeline text');
+        expect(getFlowPortById(flow, 'view-1:input')?.packet?.value).toBe('pipeline text');
+        expect(sleeps).toEqual([12]);
+        expect(logs).toEqual(['pipeline text']);
+    });
+
+    it('preserves null packets through buffer and logs them as null in the view block', async () => {
+        const logs: string[] = [];
+        let flow = createFlowDocument([BufferBlock, ViewBlock]);
+        flow = createFlowNode(flow, 'buffer', {
+            nodeId: 'buffer-1',
+            config: {
+                wait: '0',
+            },
+        }).flow;
+        flow = createFlowNode(flow, 'view', {
+            nodeId: 'view-1',
+        }).flow;
+        flow = setFlowPortPacket(flow, {
+            nodeId: 'buffer-1',
+            port: 'input',
+            packet: {
+                value: null,
+                ts: 999,
+            },
+        }).flow;
+        flow = connectFlowPorts(flow, {
+            sourceNodeId: 'buffer-1',
+            sourcePort: 'output',
+            targetNodeId: 'view-1',
+            targetPort: 'input',
+        }).flow;
+
+        const factory = new DefaultExecutableFlowNodeFactory({
+            logger: message => {
+                logs.push(message);
+            },
+        });
+
+        flow = await factory.create(flow, 'buffer-1').execute(flow);
+        flow = await factory.create(flow, 'view-1').execute(flow);
+
+        expect(getFlowPortById(flow, 'buffer-1:output')?.packet).toEqual({
+            value: null,
+            ts: 999,
+        });
+        expect(getFlowPortById(flow, 'view-1:input')?.packet).toEqual({
+            value: null,
+            ts: 999,
+        });
+        expect(logs).toEqual(['null']);
+    });
+
+    it('fails execution when required config is missing or invalid', async () => {
+        let flow = createFlowDocument([InputBlock, BufferBlock, ViewBlock]);
+        flow = createFlowNode(flow, 'input', {
+            nodeId: 'input-1',
+        }).flow;
+        flow = createFlowNode(flow, 'buffer', {
+            nodeId: 'buffer-1',
+            config: {
+                wait: '-5',
+            },
+        }).flow;
+        flow = createFlowNode(flow, 'view', {
+            nodeId: 'view-1',
+        }).flow;
+
+        const factory = new DefaultExecutableFlowNodeFactory();
+
+        await expect(factory.create(flow, 'input-1').execute(flow)).rejects.toThrow(/invalid and cannot execute/);
+        await expect(factory.create(flow, 'buffer-1').execute(flow)).rejects.toThrow(/non-negative number/);
+        await expect(factory.create(flow, 'view-1').execute(flow)).rejects.toThrow(/Input packet is missing/);
     });
 });
