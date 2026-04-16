@@ -1,6 +1,6 @@
 // Skill-based agent that designs, validates, executes, and improves flows.
 import { AgentError } from '../errors/agent-error';
-import { AiGenerateBlock, BufferBlock, InputBlock, TextInputBlock, ViewBlock } from '../flow/blocks';
+import { availableFlowBlocks } from '../flow-design/catalog';
 import { FlowDesignSession } from '../flow/design-monitor';
 import type { FlowBlockDefinition } from '../flow/types';
 import { buildDefaultFlowDesignSkills } from './skills';
@@ -12,13 +12,7 @@ import type {
     FlowDesignSkill,
 } from './types';
 
-const defaultAvailableBlocks: FlowBlockDefinition[] = [
-    TextInputBlock,
-    InputBlock,
-    BufferBlock,
-    ViewBlock,
-    AiGenerateBlock,
-];
+const defaultAvailableBlocks: FlowBlockDefinition[] = [...availableFlowBlocks];
 
 function snapshotAttempt(state: FlowDesignAttemptState): FlowDesignAttemptResult {
     if (!state.intent || !state.flow || !state.validation) {

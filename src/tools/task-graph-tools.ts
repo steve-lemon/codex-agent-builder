@@ -1,15 +1,15 @@
 // Task-graph inference and preflight validation tools for flow design.
 import { z } from 'zod';
 import { defineTool, type ToolDefinition } from './types';
+import { availableFlowBlocks } from '../flow-design/catalog';
 import {
     analyzeTaskGraph,
     assessTaskGraphFeasibility,
     assessFlowFeasibility,
-    availableFlowBlocks,
     buildProposedBlocks,
     inferTaskGraph,
     refineTaskGraph,
-} from './flow-analysis';
+} from '../flow-design/analysis';
 
 /** Returns deterministic tools used by the flow-preflight-validator skill. */
 export function createTaskGraphTools(): ToolDefinition[] {

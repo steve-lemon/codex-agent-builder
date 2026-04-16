@@ -31,6 +31,7 @@ export function createRuntime(options?: Partial<AgentRuntimeOptions>) {
 export * from './agent/runtime';
 export * from './agent/types';
 export * from './flow';
+export * from './flow-design';
 export * from './flow-agent';
 export * from './graph';
 export * from './llm/gemini-gateway';
