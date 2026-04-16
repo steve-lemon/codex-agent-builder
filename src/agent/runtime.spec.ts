@@ -45,6 +45,16 @@ describe('runtime flow', () => {
         expect(result.finalResult?.summary).toContain('design pass');
         expect(result.finalResult?.summary).toContain('configured node');
         expect(result.finalResult?.summary).toContain('probe insight');
+        expect(result.finalResult?.designDetails).toEqual(
+            expect.objectContaining({
+                flowDesignImprovements: expect.any(Array),
+                nodeConfigStrategyImprovements: expect.any(Array),
+                configuredNodeCount: expect.any(Number),
+                probeInsightCount: expect.any(Number),
+            }),
+        );
+        expect((result.finalResult?.designDetails?.configuredNodeCount ?? 0) >= 3).toBe(true);
+        expect((result.finalResult?.designDetails?.probeInsightCount ?? 0) >= 1).toBe(true);
         expect(
             run?.stepResults.some(step => JSON.stringify(step).includes('"toolName":"prevalidateFlowDesignRequest"')),
         ).toBe(true);
@@ -79,6 +89,9 @@ describe('runtime flow', () => {
         expect(result.finalResult?.nextActions).toEqual(
             expect.arrayContaining([expect.stringContaining('designFlowNodeConfigurations')]),
         );
+        expect(result.finalResult?.designDetails?.nodeConfigStrategyImprovements).toEqual(
+            expect.arrayContaining([expect.stringContaining('sub-agent')]),
+        );
     });
 
     it('stops early and reports missing capabilities when the request cannot be satisfied by available blocks', async () => {
@@ -91,6 +104,9 @@ describe('runtime flow', () => {
                 success: false,
                 summary: expect.stringContaining('missing: email-read, email-reply'),
                 nextActions: expect.arrayContaining([expect.stringContaining('email-read')]),
+                designDetails: expect.objectContaining({
+                    flowDesignImprovements: expect.arrayContaining([expect.stringContaining('email-read')]),
+                }),
             }),
         );
     });
@@ -154,6 +170,10 @@ describe('runtime flow', () => {
                 success: false,
                 summary: expect.stringContaining('flow-preflight-validator'),
                 nextActions: expect.arrayContaining([expect.stringContaining('email-read-block')]),
+                designDetails: expect.objectContaining({
+                    flowDesignImprovements: expect.any(Array),
+                    nodeConfigStrategyImprovements: [],
+                }),
             }),
         );
     });
@@ -250,6 +270,10 @@ describe('runtime flow', () => {
                 summary: expect.any(String),
                 success: expect.any(Boolean),
                 nextActions: expect.any(Array),
+                designDetails: expect.objectContaining({
+                    flowDesignImprovements: expect.any(Array),
+                    nodeConfigStrategyImprovements: expect.any(Array),
+                }),
             }),
         );
     });

@@ -12,6 +12,26 @@ import type {
 export class NodeConfigDesignAgent {
     constructor(private readonly strategies: NodeBlockConfigStrategy[] = createDefaultNodeBlockConfigStrategies()) {}
 
+    private resolveStrategy(flow: FlowDocument, node: FlowDocument['nodes'][number]) {
+        const block = flow.blocks.find(candidate => candidate.id === node.blockId);
+        const preferredStrategyId = block?.nodeConfigStrategyId;
+        const hasExplicitPreferredStrategy = preferredStrategyId
+            ? this.strategies.some(
+                  candidate => candidate.blockId === node.blockId && candidate.strategyId === preferredStrategyId,
+              )
+            : false;
+
+        return this.strategies.find(candidate => {
+            if (candidate.blockId !== node.blockId) {
+                return false;
+            }
+            if (hasExplicitPreferredStrategy && candidate.strategyId !== preferredStrategyId) {
+                return false;
+            }
+            return candidate.supports ? candidate.supports(node) : true;
+        });
+    }
+
     design(input: NodeConfigurationDesignInput): NodeConfigurationDesignResult {
         const probeInsightsApplied = [
             ...(input.probeResult?.behaviorNotes ?? []),
@@ -21,10 +41,7 @@ export class NodeConfigDesignAgent {
         const nextFlow: FlowDocument = {
             ...input.flow,
             nodes: input.flow.nodes.map(node => {
-                const strategy = this.strategies.find(
-                    candidate =>
-                        candidate.blockId === node.blockId && (candidate.supports ? candidate.supports(node) : true),
-                );
+                const strategy = this.resolveStrategy(input.flow, node);
                 if (!strategy) {
                     return node;
                 }
@@ -59,8 +76,8 @@ export class NodeConfigDesignAgent {
             const validation = validateFlowNode(flow, node.id);
             issues.push(...validation.issues.map(issue => issue.message));
 
-            const strategy = this.strategies.find(candidate => candidate.blockId === node.blockId);
-            if (strategy?.validate && (strategy.supports ? strategy.supports(node) : true)) {
+            const strategy = this.resolveStrategy(flow, node);
+            if (strategy?.validate) {
                 issues.push(...strategy.validate(node, flow));
             }
         }

@@ -125,6 +125,9 @@ export interface FlowBlockDefinition {
     /** Optional short description of the block's behavior. */
     description?: string;
 
+    /** Optional preferred node-configuration strategy id for sub-agent orchestration. */
+    nodeConfigStrategyId?: string;
+
     /** Config field definitions supported by nodes created from this block. */
     configs?: FlowBlockConfigDefinition[];
 

@@ -6,7 +6,9 @@ import { createDefaultNodeBlockConfigStrategies } from './strategies';
 
 describe('node-config design agent', () => {
     it('uses block-specific strategy objects for the default configuration pass', () => {
-        const strategyNames = createDefaultNodeBlockConfigStrategies().map(strategy => strategy.constructor.name);
+        const strategies = createDefaultNodeBlockConfigStrategies();
+        const strategyNames = strategies.map(strategy => strategy.constructor.name);
+        const strategyIds = strategies.map(strategy => strategy.strategyId);
 
         expect(strategyNames).toEqual([
             'SystemInputNodeStrategy',
@@ -14,6 +16,13 @@ describe('node-config design agent', () => {
             'AiGenerateNodeStrategy',
             'BufferNodeStrategy',
             'ViewNodeStrategy',
+        ]);
+        expect(strategyIds).toEqual([
+            'system-input',
+            'prompt-input',
+            'ai-generation',
+            'buffer-timing',
+            'view-observer',
         ]);
     });
 

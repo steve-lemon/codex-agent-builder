@@ -557,6 +557,13 @@ export class FakeLlmGateway implements LlmGateway {
                               `Add capabilities: ${(preflightData?.missingCapabilities ?? []).join(', ')}`,
                           ]
                         : ['Proceed to flow design'],
+                designDetails: {
+                    flowDesignImprovements:
+                        preflightData?.feasible === false
+                            ? [`Add capabilities: ${(preflightData?.missingCapabilities ?? []).join(', ')}`]
+                            : [],
+                    nodeConfigStrategyImprovements: [],
+                },
             };
         }
 
@@ -569,6 +576,13 @@ export class FakeLlmGateway implements LlmGateway {
                     'Run this skill after flow-designer has produced a concrete flow draft.',
                     'Use designFlowNodeConfigurations and validateFlowNodeConfigurations on the draft flow.',
                 ],
+                designDetails: {
+                    flowDesignImprovements: [],
+                    nodeConfigStrategyImprovements: [
+                        'Apply this sub-agent after the graph structure is stable.',
+                        'Review block-specific strategies before executing the draft.',
+                    ],
+                },
             };
         }
 
@@ -627,6 +641,12 @@ export class FakeLlmGateway implements LlmGateway {
                         `Add blocks or tools for: ${missingCapabilities.join(', ')}`,
                         'Retry flow design after the missing capabilities are available',
                     ],
+                    designDetails: {
+                        flowDesignImprovements: [
+                            `Add missing capabilities before attempting another flow design pass: ${missingCapabilities.join(', ')}`,
+                        ],
+                        nodeConfigStrategyImprovements: [],
+                    },
                 };
             }
 
@@ -650,6 +670,12 @@ export class FakeLlmGateway implements LlmGateway {
                             .slice(0, 2)
                             .map((note: string) => `Update node-config strategy: ${note}`),
                     ],
+                    designDetails: {
+                        flowDesignImprovements: latestReflection.issues ?? [],
+                        nodeConfigStrategyImprovements: latestNodeConfigImprovements,
+                        configuredNodeCount: latestConfiguration?.suggestions?.length ?? 0,
+                        probeInsightCount: latestConfiguration?.probeInsightsApplied?.length ?? 0,
+                    },
                 };
             }
 
@@ -657,6 +683,7 @@ export class FakeLlmGateway implements LlmGateway {
                 const latestConfiguration = nodeConfigurations[nodeConfigurations.length - 1]?.toolResults?.[0]?.data;
                 const configuredNodeCount = latestConfiguration?.suggestions?.length ?? 0;
                 const probeInsightCount = latestConfiguration?.probeInsightsApplied?.length ?? 0;
+                const latestNodeConfigImprovements = latestReflection.nodeConfigSkillImprovements ?? [];
                 return {
                     summary: `Handled with skill flow-designer. The flow satisfied the request after ${designPasses} design pass(es), ${refinedGraphs.length} task-graph refinement step(s), and ${configuredNodeCount} configured node(s)${probeInsightCount > 0 ? ` informed by ${probeInsightCount} probe insight(s)` : ''}.`,
                     success: true,
@@ -664,6 +691,12 @@ export class FakeLlmGateway implements LlmGateway {
                         designPasses > 1
                             ? ['Review the revised flow draft and keep the applied improvement notes for future runs']
                             : ['Review the generated flow and sample output'],
+                    designDetails: {
+                        flowDesignImprovements: latestReflection.improvementNotes ?? [],
+                        nodeConfigStrategyImprovements: latestNodeConfigImprovements,
+                        configuredNodeCount,
+                        probeInsightCount,
+                    },
                 };
             }
         }
@@ -672,6 +705,10 @@ export class FakeLlmGateway implements LlmGateway {
             summary: `Handled with skill ${input.skillName}. Processed ${input.stepResults.length} step results.`,
             success: true,
             nextActions: ['Review trace logs if needed'],
+            designDetails: {
+                flowDesignImprovements: [],
+                nodeConfigStrategyImprovements: [],
+            },
         };
     }
 }

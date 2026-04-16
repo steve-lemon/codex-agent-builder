@@ -59,10 +59,19 @@ export interface RunState {
 }
 
 /** Final structured response returned to the caller. */
+export interface FinalResultDesignDetails {
+    flowDesignImprovements: string[];
+    nodeConfigStrategyImprovements: string[];
+    configuredNodeCount?: number;
+    probeInsightCount?: number;
+}
+
+/** Final structured response returned to the caller. */
 export interface FinalResult {
     summary: string;
     success: boolean;
     nextActions: string[];
+    designDetails?: FinalResultDesignDetails;
 }
 
 /** Top-level result returned by `run` and `resume`. */
@@ -79,6 +88,14 @@ export const FinalResultSchema = z.object({
     summary: z.string(),
     success: z.boolean(),
     nextActions: z.array(z.string()),
+    designDetails: z
+        .object({
+            flowDesignImprovements: z.array(z.string()),
+            nodeConfigStrategyImprovements: z.array(z.string()),
+            configuredNodeCount: z.number().int().nonnegative().optional(),
+            probeInsightCount: z.number().int().nonnegative().optional(),
+        })
+        .optional(),
 });
 
 /** Execution metadata passed into step execution. */

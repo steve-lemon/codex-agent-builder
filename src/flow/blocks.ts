@@ -56,6 +56,7 @@ export const TextInputBlock = defineFlowBlock({
     id: 'text-input',
     label: 'Text Input',
     description: 'Accepts user text and emits it through a single output port.',
+    nodeConfigStrategyId: 'generic-text-input',
     configs: [
         {
             id: 'label',
@@ -87,6 +88,7 @@ export const InputBlock = defineFlowBlock({
     id: 'input',
     label: 'Input',
     description: 'Emits the configured input string as a packet on the output port.',
+    nodeConfigStrategyId: 'prompt-input-family',
     configs: [
         {
             id: 'input',
@@ -111,6 +113,7 @@ export const BufferBlock = defineFlowBlock({
     id: 'buffer',
     label: 'Buffer',
     description: 'Waits for the configured duration, then forwards the input packet.',
+    nodeConfigStrategyId: 'buffer-timing',
     configs: [
         {
             id: 'wait',
@@ -143,6 +146,7 @@ export const ViewBlock = defineFlowBlock({
     id: 'view',
     label: 'View',
     description: 'Logs the current input packet value.',
+    nodeConfigStrategyId: 'view-observer',
     inputs: [
         {
             localId: 'input',
@@ -164,6 +168,7 @@ export const AiGenerateBlock = defineFlowBlock({
     id: 'ai-generate',
     label: 'AI Generate',
     description: 'Consumes system and prompt text, then emits a mocked model response.',
+    nodeConfigStrategyId: 'ai-generation',
     configs: [
         {
             id: 'model',
