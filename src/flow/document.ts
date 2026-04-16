@@ -1,14 +1,19 @@
-// Flow document creation and mutation helpers.
+// Flow document creation, connection, and packet helpers.
 import { AgentError } from '../errors/agent-error';
+import { now } from '../time/now';
 import type {
     ConnectFlowPortsOptions,
     CreateFlowNodeOptions,
     FlowBlockDefinition,
     FlowDocument,
     FlowEdge,
+    FlowImageValue,
     FlowNode,
+    FlowPacket,
+    FlowPacketValueMap,
     FlowPort,
     FlowPortDataType,
+    SetFlowPortPacketOptions,
 } from './types';
 
 /** Creates an empty flow document with optional initial block definitions. */
@@ -91,6 +96,10 @@ export function connectFlowPorts(
         throw new AgentError(`Flow target input port not found: ${options.targetNodeId}:${options.targetPort}`);
     }
 
+    if (flow.edges.some(edge => edge.targetPortId === targetPort.id)) {
+        throw new AgentError(`Flow input port already connected: ${targetPort.id}`);
+    }
+
     if (!arePortTypesCompatible(sourcePort.dataType, targetPort.dataType)) {
         throw new AgentError(`Flow port types are incompatible: ${sourcePort.dataType} -> ${targetPort.dataType}`);
     }
@@ -112,28 +121,139 @@ export function connectFlowPorts(
         throw new AgentError(`Flow edge id already exists: ${edge.id}`);
     }
 
+    let nextFlow: FlowDocument = {
+        ...flow,
+        edges: [...flow.edges, edge],
+    };
+
+    // Keep connected input ports aligned with the source packet when present.
+    if (sourcePort.packet) {
+        nextFlow = setFlowPortPacket(nextFlow, {
+            nodeId: targetNode.id,
+            port: targetPort.id,
+            packet: sourcePort.packet,
+        }).flow;
+    }
+
     return {
-        flow: {
-            ...flow,
-            edges: [...flow.edges, edge],
-        },
+        flow: nextFlow,
         edge,
     };
 }
 
-/** Returns whether two port types can be connected. */
+/** Writes a packet to a port while coercing it to the port's effective data type. */
+export function setFlowPortPacket(
+    flow: FlowDocument,
+    options: SetFlowPortPacketOptions,
+): { flow: FlowDocument; port: FlowPort } {
+    const node = flow.nodes.find(candidate => candidate.id === options.nodeId);
+    if (!node) {
+        throw new AgentError(`Flow node not found: ${options.nodeId}`);
+    }
+
+    const port = findPort([...node.inputPorts, ...node.outputPorts], options.port);
+    if (!port) {
+        throw new AgentError(`Flow port not found: ${options.nodeId}:${options.port}`);
+    }
+
+    const effectiveType = resolveFlowPortDataType(flow, node.id, port.id);
+    const coercedPacket = coercePacketForPort(effectiveType, options.packet);
+    const nextFlow = updatePort(flow, port.id, {
+        packet: coercedPacket,
+    });
+
+    return {
+        flow: nextFlow,
+        port: getFlowPortById(nextFlow, port.id)!,
+    };
+}
+
+/** Resolves the effective runtime type of a concrete port. */
+export function resolveFlowPortDataType(flow: FlowDocument, nodeId: string, portIdOrLocalId: string): FlowPortDataType {
+    const node = flow.nodes.find(candidate => candidate.id === nodeId);
+    if (!node) {
+        throw new AgentError(`Flow node not found: ${nodeId}`);
+    }
+
+    const port = findPort([...node.inputPorts, ...node.outputPorts], portIdOrLocalId);
+    if (!port) {
+        throw new AgentError(`Flow port not found: ${nodeId}:${portIdOrLocalId}`);
+    }
+
+    if (port.direction === 'input' && port.dataType === 'any') {
+        const incomingEdge = flow.edges.find(edge => edge.targetPortId === port.id);
+        if (!incomingEdge) {
+            return 'any';
+        }
+
+        const sourcePort = getFlowPortById(flow, incomingEdge.sourcePortId);
+        if (!sourcePort) {
+            throw new AgentError(`Flow source port not found for edge: ${incomingEdge.id}`);
+        }
+
+        return sourcePort.dataType;
+    }
+
+    return port.dataType;
+}
+
+/** Returns whether two port types can be connected using the built-in coercion rules. */
 export function arePortTypesCompatible(sourceType: FlowPortDataType, targetType: FlowPortDataType): boolean {
-    return sourceType === 'any' || targetType === 'any' || sourceType === targetType;
+    if (sourceType === targetType || sourceType === 'any' || targetType === 'any') {
+        return true;
+    }
+
+    if ((sourceType === 'json' && targetType === 'text') || (sourceType === 'text' && targetType === 'json')) {
+        return true;
+    }
+
+    if ((sourceType === 'image' && targetType === 'text') || (sourceType === 'text' && targetType === 'image')) {
+        return true;
+    }
+
+    return false;
+}
+
+/** Coerces a packet into the requested target type using the flow's built-in conversion rules. */
+export function coercePacketForPort<TTargetType extends FlowPortDataType>(
+    targetType: TTargetType,
+    packet: FlowPacket,
+): FlowPacket<FlowPacketValueMap[TTargetType]> {
+    return {
+        value: coercePacketValue(targetType, packet.value) as FlowPacketValueMap[TTargetType],
+        ts: packet.ts,
+    };
+}
+
+/** Creates a timestamped packet using the current clock. */
+export function createFlowPacket<TValue>(value: TValue, ts = now()): FlowPacket<TValue> {
+    return {
+        value,
+        ts,
+    };
+}
+
+/** Returns a concrete flow port by its global id. */
+export function getFlowPortById(flow: FlowDocument, portId: string): FlowPort | undefined {
+    for (const node of flow.nodes) {
+        const match = [...node.inputPorts, ...node.outputPorts].find(port => port.id === portId);
+        if (match) {
+            return match;
+        }
+    }
+
+    return undefined;
 }
 
 function materializePort(nodeId: string, port: FlowBlockDefinition['inputs'][number]): FlowPort {
     return {
-        id: `${nodeId}:${port.key}`,
+        id: `${nodeId}:${port.localId}`,
         nodeId,
-        key: port.key,
+        localId: port.localId,
         label: port.label,
         direction: port.direction,
         dataType: port.dataType,
+        packet: undefined,
         description: port.description,
     };
 }
@@ -149,6 +269,62 @@ function nextNodeId(blockId: string, nodes: FlowNode[]): string {
     return `${blockId}-${maxNo + 1}`;
 }
 
-function findPort(ports: FlowPort[], portKeyOrId: string): FlowPort | undefined {
-    return ports.find(port => port.key === portKeyOrId || port.id === portKeyOrId);
+function findPort(ports: FlowPort[], portLocalIdOrGlobalId: string): FlowPort | undefined {
+    return ports.find(port => port.localId === portLocalIdOrGlobalId || port.id === portLocalIdOrGlobalId);
+}
+
+function updatePort(flow: FlowDocument, portId: string, patch: Partial<FlowPort>): FlowDocument {
+    return {
+        ...flow,
+        nodes: flow.nodes.map(node => ({
+            ...node,
+            inputPorts: node.inputPorts.map(port => (port.id === portId ? { ...port, ...patch } : port)),
+            outputPorts: node.outputPorts.map(port => (port.id === portId ? { ...port, ...patch } : port)),
+        })),
+    };
+}
+
+function coercePacketValue(targetType: FlowPortDataType, value: unknown): unknown {
+    switch (targetType) {
+        case 'any':
+            return value;
+        case 'text':
+            return coerceToText(value);
+        case 'json':
+            return coerceToJson(value);
+        case 'image':
+            return coerceToImage(value);
+        default:
+            return value;
+    }
+}
+
+function coerceToText(value: unknown): string {
+    if (typeof value === 'string') {
+        return value;
+    }
+
+    return JSON.stringify(value);
+}
+
+function coerceToJson(value: unknown): unknown {
+    if (typeof value === 'string') {
+        try {
+            return JSON.parse(value);
+        } catch (error) {
+            throw new AgentError('Flow text packet could not be parsed as JSON', {
+                cause: AgentError.rootCause(error),
+            });
+        }
+    }
+
+    return value;
+}
+
+function coerceToImage(value: unknown): FlowImageValue {
+    if (typeof value === 'string') {
+        return value;
+    }
+
+    throw new AgentError('Flow image packet must be a URL string or base64-encoded string');
 }

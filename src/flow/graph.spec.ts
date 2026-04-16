@@ -11,7 +11,7 @@ describe('flow graph conversion', () => {
             label: 'Text Consumer',
             inputs: [
                 {
-                    key: 'input',
+                    localId: 'input',
                     label: 'Input',
                     direction: 'input',
                     dataType: 'text',
@@ -78,7 +78,7 @@ describe('flow graph conversion', () => {
             label: 'Passthrough',
             inputs: [
                 {
-                    key: 'input',
+                    localId: 'input',
                     label: 'Input',
                     direction: 'input',
                     dataType: 'text',
@@ -86,7 +86,7 @@ describe('flow graph conversion', () => {
             ],
             outputs: [
                 {
-                    key: 'output',
+                    localId: 'output',
                     label: 'Output',
                     direction: 'output',
                     dataType: 'text',
@@ -98,8 +98,14 @@ describe('flow graph conversion', () => {
             label: 'Text Sink',
             inputs: [
                 {
-                    key: 'input',
-                    label: 'Input',
+                    localId: 'inputA',
+                    label: 'Input A',
+                    direction: 'input',
+                    dataType: 'text',
+                },
+                {
+                    localId: 'inputB',
+                    label: 'Input B',
                     direction: 'input',
                     dataType: 'text',
                 },
@@ -133,14 +139,14 @@ describe('flow graph conversion', () => {
             sourceNodeId: 'branchA',
             sourcePort: 'output',
             targetNodeId: 'sink',
-            targetPort: 'input',
+            targetPort: 'inputA',
             edgeId: 'branchA->sink',
         }).flow;
         flow = connectFlowPorts(flow, {
             sourceNodeId: 'branchB',
             sourcePort: 'output',
             targetNodeId: 'sink',
-            targetPort: 'input',
+            targetPort: 'inputB',
             edgeId: 'branchB->sink',
         }).flow;
 

@@ -4,14 +4,19 @@ import { AgentError } from '../errors/agent-error';
 import { TextInputBlock, defineFlowBlock } from './blocks';
 import {
     arePortTypesCompatible,
+    coercePacketForPort,
     connectFlowPorts,
     createFlowDocument,
     createFlowNode,
+    createFlowPacket,
+    getFlowPortById,
     registerFlowBlock,
+    resolveFlowPortDataType,
+    setFlowPortPacket,
 } from './document';
 
 describe('flow document', () => {
-    it('creates nodes from block definitions with materialized ports', () => {
+    it('creates nodes from block definitions with materialized ports and global ids', () => {
         const flow = createFlowDocument([TextInputBlock]);
 
         const created = createFlowNode(flow, 'text-input');
@@ -25,10 +30,11 @@ describe('flow document', () => {
                 {
                     id: 'text-input-1:text',
                     nodeId: 'text-input-1',
-                    key: 'text',
+                    localId: 'text',
                     label: 'Text',
                     direction: 'output',
                     dataType: 'text',
+                    packet: undefined,
                 },
             ],
         });
@@ -41,7 +47,7 @@ describe('flow document', () => {
             label: 'JSON Sink',
             inputs: [
                 {
-                    key: 'payload',
+                    localId: 'in',
                     label: 'Payload',
                     direction: 'input',
                     dataType: 'json',
@@ -60,14 +66,13 @@ describe('flow document', () => {
         expect(created.node.inputPorts[0]?.dataType).toBe('json');
     });
 
-    it('connects compatible ports between nodes', () => {
-        const textOutput = TextInputBlock;
+    it('connects compatible ports between nodes and enforces single incoming edge per input port', () => {
         const textConsumer = defineFlowBlock({
             id: 'text-consumer',
             label: 'Text Consumer',
             inputs: [
                 {
-                    key: 'input',
+                    localId: 'in',
                     label: 'Input',
                     direction: 'input',
                     dataType: 'text',
@@ -75,45 +80,47 @@ describe('flow document', () => {
             ],
             outputs: [],
         });
-        let flow = createFlowDocument([textOutput, textConsumer]);
-        const source = createFlowNode(flow, 'text-input');
+        let flow = createFlowDocument([TextInputBlock, textConsumer]);
+        const source = createFlowNode(flow, 'text-input', { nodeId: 'source' });
         flow = source.flow;
-        const target = createFlowNode(flow, 'text-consumer');
+        const target = createFlowNode(flow, 'text-consumer', { nodeId: 'target' });
         flow = target.flow;
 
         const connected = connectFlowPorts(flow, {
-            sourceNodeId: source.node.id,
+            sourceNodeId: 'source',
             sourcePort: 'text',
-            targetNodeId: target.node.id,
-            targetPort: 'input',
+            targetNodeId: 'target',
+            targetPort: 'in',
         });
 
         expect(connected.edge).toEqual({
-            id: `${source.node.id}:text->${target.node.id}:input`,
-            sourceNodeId: source.node.id,
-            sourcePortId: `${source.node.id}:text`,
-            targetNodeId: target.node.id,
-            targetPortId: `${target.node.id}:input`,
+            id: 'source:text->target:in',
+            sourceNodeId: 'source',
+            sourcePortId: 'source:text',
+            targetNodeId: 'target',
+            targetPortId: 'target:in',
             label: undefined,
         });
-        expect(connected.flow.edges).toHaveLength(1);
+
+        const secondSource = createFlowNode(connected.flow, 'text-input', { nodeId: 'source2' });
+        expect(() =>
+            connectFlowPorts(secondSource.flow, {
+                sourceNodeId: 'source2',
+                sourcePort: 'text',
+                targetNodeId: 'target',
+                targetPort: 'in',
+            }),
+        ).toThrow(/already connected/);
     });
 
-    it('allows any-typed ports to connect with typed ports', () => {
-        expect(arePortTypesCompatible('any', 'json')).toBe(true);
-        expect(arePortTypesCompatible('text', 'any')).toBe(true);
-        expect(arePortTypesCompatible('image', 'image')).toBe(true);
-        expect(arePortTypesCompatible('text', 'json')).toBe(false);
-    });
-
-    it('rejects incompatible port connections', () => {
+    it('supports packet creation, storage, and coercion for connected ports', () => {
         const jsonSource = defineFlowBlock({
             id: 'json-source',
             label: 'JSON Source',
             inputs: [],
             outputs: [
                 {
-                    key: 'payload',
+                    localId: 'out',
                     label: 'Payload',
                     direction: 'output',
                     dataType: 'json',
@@ -125,7 +132,7 @@ describe('flow document', () => {
             label: 'Text Consumer',
             inputs: [
                 {
-                    key: 'input',
+                    localId: 'in',
                     label: 'Input',
                     direction: 'input',
                     dataType: 'text',
@@ -133,30 +140,94 @@ describe('flow document', () => {
             ],
             outputs: [],
         });
-        let flow = createFlowDocument([jsonSource, textConsumer]);
-        const source = createFlowNode(flow, 'json-source');
-        flow = source.flow;
-        const target = createFlowNode(flow, 'text-consumer');
-        flow = target.flow;
 
-        expect(() =>
-            connectFlowPorts(flow, {
-                sourceNodeId: source.node.id,
-                sourcePort: 'payload',
-                targetNodeId: target.node.id,
-                targetPort: 'input',
-            }),
-        ).toThrow(/incompatible/);
+        let flow = createFlowDocument([jsonSource, textConsumer]);
+        const source = createFlowNode(flow, 'json-source', { nodeId: 'jsonSource' });
+        flow = source.flow;
+        const target = createFlowNode(flow, 'text-consumer', { nodeId: 'textTarget' });
+        flow = target.flow;
+        flow = setFlowPortPacket(flow, {
+            nodeId: 'jsonSource',
+            port: 'out',
+            packet: createFlowPacket({ hello: 'world' }, 123),
+        }).flow;
+        flow = connectFlowPorts(flow, {
+            sourceNodeId: 'jsonSource',
+            sourcePort: 'out',
+            targetNodeId: 'textTarget',
+            targetPort: 'in',
+        }).flow;
+
+        expect(getFlowPortById(flow, 'jsonSource:out')?.packet).toEqual({
+            value: { hello: 'world' },
+            ts: 123,
+        });
+        expect(getFlowPortById(flow, 'textTarget:in')?.packet).toEqual({
+            value: '{"hello":"world"}',
+            ts: 123,
+        });
     });
 
-    it('rejects duplicate block port keys and duplicate edges', () => {
+    it('allows any-typed inputs to adopt the connected source type', () => {
+        const anyConsumer = defineFlowBlock({
+            id: 'any-consumer',
+            label: 'Any Consumer',
+            inputs: [
+                {
+                    localId: 'in',
+                    label: 'Input',
+                    direction: 'input',
+                    dataType: 'any',
+                },
+            ],
+            outputs: [],
+        });
+        let flow = createFlowDocument([TextInputBlock, anyConsumer]);
+        const source = createFlowNode(flow, 'text-input', { nodeId: 'source' });
+        flow = source.flow;
+        const target = createFlowNode(flow, 'any-consumer', { nodeId: 'target' });
+        flow = target.flow;
+        flow = connectFlowPorts(flow, {
+            sourceNodeId: 'source',
+            sourcePort: 'text',
+            targetNodeId: 'target',
+            targetPort: 'in',
+        }).flow;
+
+        expect(resolveFlowPortDataType(flow, 'target', 'in')).toBe('text');
+    });
+
+    it('supports built-in compatibility rules and packet coercion helpers', () => {
+        expect(arePortTypesCompatible('any', 'json')).toBe(true);
+        expect(arePortTypesCompatible('text', 'any')).toBe(true);
+        expect(arePortTypesCompatible('json', 'text')).toBe(true);
+        expect(arePortTypesCompatible('text', 'json')).toBe(true);
+        expect(arePortTypesCompatible('image', 'text')).toBe(true);
+        expect(arePortTypesCompatible('text', 'image')).toBe(true);
+        expect(arePortTypesCompatible('image', 'image')).toBe(true);
+
+        expect(coercePacketForPort('json', createFlowPacket('{"a":1}', 11))).toEqual({
+            value: { a: 1 },
+            ts: 11,
+        });
+        expect(coercePacketForPort('text', createFlowPacket({ a: 1 }, 12))).toEqual({
+            value: '{"a":1}',
+            ts: 12,
+        });
+        expect(coercePacketForPort('image', createFlowPacket('https://example.com/a.png', 13))).toEqual({
+            value: 'https://example.com/a.png',
+            ts: 13,
+        });
+    });
+
+    it('rejects invalid conversions, duplicate local ids, and duplicate edges', () => {
         expect(() =>
             defineFlowBlock({
                 id: 'bad-block',
                 label: 'Bad Block',
                 inputs: [
                     {
-                        key: 'same',
+                        localId: 'same',
                         label: 'Same',
                         direction: 'input',
                         dataType: 'text',
@@ -164,7 +235,7 @@ describe('flow document', () => {
                 ],
                 outputs: [
                     {
-                        key: 'same',
+                        localId: 'same',
                         label: 'Same',
                         direction: 'output',
                         dataType: 'text',
@@ -173,12 +244,15 @@ describe('flow document', () => {
             }),
         ).toThrow(AgentError);
 
+        expect(() => coercePacketForPort('json', createFlowPacket('not-json', 1))).toThrow(/parsed as JSON/);
+        expect(() => coercePacketForPort('image', createFlowPacket({ bad: true }, 1))).toThrow(/image packet/);
+
         const consumer = defineFlowBlock({
             id: 'text-consumer',
             label: 'Text Consumer',
             inputs: [
                 {
-                    key: 'input',
+                    localId: 'in',
                     label: 'Input',
                     direction: 'input',
                     dataType: 'text',
@@ -187,24 +261,25 @@ describe('flow document', () => {
             outputs: [],
         });
         let flow = createFlowDocument([TextInputBlock, consumer]);
-        const source = createFlowNode(flow, 'text-input');
+        const source = createFlowNode(flow, 'text-input', { nodeId: 'source' });
         flow = source.flow;
-        const target = createFlowNode(flow, 'text-consumer');
+        const target = createFlowNode(flow, 'text-consumer', { nodeId: 'target' });
         flow = target.flow;
         const first = connectFlowPorts(flow, {
-            sourceNodeId: source.node.id,
+            sourceNodeId: 'source',
             sourcePort: 'text',
-            targetNodeId: target.node.id,
-            targetPort: 'input',
+            targetNodeId: 'target',
+            targetPort: 'in',
         });
 
         expect(() =>
             connectFlowPorts(first.flow, {
-                sourceNodeId: source.node.id,
+                sourceNodeId: 'source',
                 sourcePort: 'text',
-                targetNodeId: target.node.id,
-                targetPort: 'input',
+                targetNodeId: 'target',
+                targetPort: 'in',
+                edgeId: 'duplicate',
             }),
-        ).toThrow(/already exists/);
+        ).toThrow(/already connected/);
     });
 });

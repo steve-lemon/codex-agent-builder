@@ -11,15 +11,17 @@ export function defineFlowBlock(definition: FlowBlockDefinition): FlowBlockDefin
         throw new AgentError(`Flow block label must be a non-empty string: ${definition.id}`);
     }
 
-    const seenPortKeys = new Set<string>();
+    const seenPortLocalIds = new Set<string>();
     for (const port of [...definition.inputs, ...definition.outputs]) {
-        if (!port.key.trim()) {
-            throw new AgentError(`Flow block port key must be a non-empty string: ${definition.id}`);
+        if (!port.localId.trim()) {
+            throw new AgentError(`Flow block port localId must be a non-empty string: ${definition.id}`);
         }
-        if (seenPortKeys.has(port.key)) {
-            throw new AgentError(`Flow block port keys must be unique within a block: ${definition.id}:${port.key}`);
+        if (seenPortLocalIds.has(port.localId)) {
+            throw new AgentError(
+                `Flow block port localIds must be unique within a block: ${definition.id}:${port.localId}`,
+            );
         }
-        seenPortKeys.add(port.key);
+        seenPortLocalIds.add(port.localId);
     }
 
     return {
@@ -42,7 +44,7 @@ export const TextInputBlock = defineFlowBlock({
     inputs: [],
     outputs: [
         {
-            key: 'text',
+            localId: 'text',
             label: 'Text',
             direction: 'output',
             dataType: 'text',

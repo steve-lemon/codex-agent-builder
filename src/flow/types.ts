@@ -8,6 +8,26 @@
  */
 export type FlowPortDataType = 'text' | 'json' | 'image' | 'any';
 
+/** String payload used for image ports. It may contain a URL or base64-encoded image data. */
+export type FlowImageValue = string;
+
+/** Runtime payload map keyed by flow port data type. */
+export interface FlowPacketValueMap {
+    text: string;
+    json: unknown;
+    image: FlowImageValue;
+    any: unknown;
+}
+
+/** Timestamped value carried through a flow port. */
+export interface FlowPacket<TValue = unknown> {
+    /** Payload value carried by the packet. */
+    value: TValue;
+
+    /** Unix timestamp in milliseconds when the packet was last written. */
+    ts: number;
+}
+
 /** Direction of data travel relative to a node. */
 export type FlowPortDirection = 'input' | 'output';
 
@@ -18,8 +38,8 @@ export type FlowPortDirection = 'input' | 'output';
  * materialized from these templates when a node is created from a block.
  */
 export interface FlowBlockPortDefinition {
-    /** Stable key unique within the owning block definition. */
-    key: string;
+    /** Stable local id unique within the owning block definition across both inputs and outputs. */
+    localId: string;
 
     /** Human-friendly label shown in editors and inspectors. */
     label: string;
@@ -69,8 +89,8 @@ export interface FlowPort {
     /** Id of the node that owns this port. */
     nodeId: string;
 
-    /** Template key copied from the originating block definition. */
-    key: string;
+    /** Stable local id copied from the originating block definition. */
+    localId: string;
 
     /** Human-friendly label shown in editors. */
     label: string;
@@ -80,6 +100,9 @@ export interface FlowPort {
 
     /** Payload type accepted or emitted by the port. */
     dataType: FlowPortDataType;
+
+    /** Optional packet currently stored on the port. */
+    packet?: FlowPacket;
 
     /** Optional free-form description for UI help text. */
     description?: string;
@@ -165,13 +188,13 @@ export interface ConnectFlowPortsOptions {
     /** Source node id. */
     sourceNodeId: string;
 
-    /** Source output port key or id. */
+    /** Source output port local id or global id. */
     sourcePort: string;
 
     /** Target node id. */
     targetNodeId: string;
 
-    /** Target input port key or id. */
+    /** Target input port local id or global id. */
     targetPort: string;
 
     /** Optional explicit edge id. When omitted, a deterministic id is generated. */
@@ -179,4 +202,16 @@ export interface ConnectFlowPortsOptions {
 
     /** Optional connection label. */
     label?: string;
+}
+
+/** Options used when writing a packet to a concrete flow port. */
+export interface SetFlowPortPacketOptions {
+    /** Target node id. */
+    nodeId: string;
+
+    /** Target port local id or global id. */
+    port: string;
+
+    /** Packet to write to the port after any required coercion. */
+    packet: FlowPacket;
 }
