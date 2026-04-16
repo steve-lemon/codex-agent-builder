@@ -1,8 +1,6 @@
 // Runtime factory and public exports.
-import { AgentRuntime, AgentRuntimeOptions } from './agent/runtime';
-import { FakeLlmGateway } from './llm/fake-gateway';
-import { GeminiGateway } from './llm/gemini-gateway';
-import { OpenAiGateway } from './llm/openai-gateway';
+import { AgentRuntime, type AgentRuntimeOptions } from './agent';
+import { FakeLlmGateway, GeminiGateway, OpenAiGateway } from './llm';
 import { InMemoryRunStateStore } from './state/memory-store';
 import { buildDefaultToolRegistry } from './tools';
 
@@ -28,14 +26,17 @@ export function createRuntime(options?: Partial<AgentRuntimeOptions>) {
     });
 }
 
-export * from './agent/runtime';
-export * from './agent/types';
+// Shared runtime and result contracts.
+export * from './agent';
+// Flow graph/document runtime and shared design core.
 export * from './flow';
 export * from './flow-design';
 export * from './flow-agent';
 export * from './graph';
-export * from './llm/gemini-gateway';
-export * from './llm/structured-schema';
+// LLM gateways plus deterministic fake adapters.
+export * from './llm';
+// Node-configuration design core and wrapper agent.
 export * from './node-config-design';
 export * from './node-config-agent';
-export * from './observability/unified-timeline';
+// Observability and live runtime monitoring.
+export * from './observability';

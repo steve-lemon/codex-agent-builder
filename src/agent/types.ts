@@ -62,17 +62,55 @@ export interface RunState {
 
 /** Final structured response returned to the caller. */
 export interface FinalResultDesignDetails {
+    /** Deprecated compatibility field. Prefer `flowDesign.improvements`. */
     flowDesignImprovements: string[];
+    /** Deprecated compatibility field. Prefer `nodeConfiguration.improvements`. */
     nodeConfigStrategyImprovements: string[];
     flowDesign?: FlowDesignDetailsDto;
     nodeConfiguration?: NodeConfigDesignDetailsDto;
+    /** Deprecated compatibility field. Prefer `nodeConfiguration.appliedStrategies`. */
     appliedNodeConfigStrategies?: string[];
+    /** Deprecated compatibility field. Prefer `nodeConfiguration.nodeStrategyAssignments`. */
     nodeStrategyAssignments?: Array<{
         nodeId: string;
         strategyId: string;
     }>;
+    /** Deprecated compatibility field. Prefer `nodeConfiguration.configuredNodeCount`. */
     configuredNodeCount?: number;
+    /** Deprecated compatibility field. Prefer `nodeConfiguration.probeInsightCount`. */
     probeInsightCount?: number;
+}
+
+/** Skill-specific payload returned alongside the shared final-result shape. */
+export type FinalResultSkillPayload =
+    | FlowDesignerFinalPayload
+    | FlowPreflightValidatorFinalPayload
+    | NodeConfigDesignerFinalPayload;
+
+/** Structured payload for `flow-designer` runs. */
+export interface FlowDesignerFinalPayload {
+    kind: 'flow-designer';
+    feasible: boolean;
+    designPassCount: number;
+    taskGraphRefinementCount: number;
+    configuredNodeCount: number;
+    probeInsightCount: number;
+    missingCapabilities: string[];
+}
+
+/** Structured payload for `flow-preflight-validator` runs. */
+export interface FlowPreflightValidatorFinalPayload {
+    kind: 'flow-preflight-validator';
+    feasible: boolean;
+    missingCapabilities: string[];
+    proposedBlockIds: string[];
+}
+
+/** Structured payload for `node-config-designer` runs. */
+export interface NodeConfigDesignerFinalPayload {
+    kind: 'node-config-designer';
+    requiresExistingFlowDraft: boolean;
+    suggestedNextTools: string[];
 }
 
 /** Final structured response returned to the caller. */
@@ -81,6 +119,7 @@ export interface FinalResult {
     success: boolean;
     nextActions: string[];
     designDetails?: FinalResultDesignDetails;
+    payload?: FinalResultSkillPayload;
 }
 
 /** Top-level result returned by `run` and `resume`. */
@@ -136,6 +175,30 @@ export const FinalResultSchema = z.object({
             configuredNodeCount: z.number().int().nonnegative().optional(),
             probeInsightCount: z.number().int().nonnegative().optional(),
         })
+        .optional(),
+    payload: z
+        .discriminatedUnion('kind', [
+            z.object({
+                kind: z.literal('flow-designer'),
+                feasible: z.boolean(),
+                designPassCount: z.number().int().nonnegative(),
+                taskGraphRefinementCount: z.number().int().nonnegative(),
+                configuredNodeCount: z.number().int().nonnegative(),
+                probeInsightCount: z.number().int().nonnegative(),
+                missingCapabilities: z.array(z.string()),
+            }),
+            z.object({
+                kind: z.literal('flow-preflight-validator'),
+                feasible: z.boolean(),
+                missingCapabilities: z.array(z.string()),
+                proposedBlockIds: z.array(z.string()),
+            }),
+            z.object({
+                kind: z.literal('node-config-designer'),
+                requiresExistingFlowDraft: z.boolean(),
+                suggestedNextTools: z.array(z.string()),
+            }),
+        ])
         .optional(),
 });
 

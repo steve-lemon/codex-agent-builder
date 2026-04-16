@@ -9,6 +9,18 @@ export interface FlowDesignDetailsDto {
     taskGraphRefinementCount: number;
 }
 
+/** Creates an empty-but-valid flow-design DTO for fallback and compatibility paths. */
+export function createEmptyFlowDesignDetailsDto(overrides: Partial<FlowDesignDetailsDto> = {}): FlowDesignDetailsDto {
+    return {
+        improvements: [],
+        feasible: true,
+        missingCapabilities: [],
+        designPassCount: 0,
+        taskGraphRefinementCount: 0,
+        ...overrides,
+    };
+}
+
 /** Builds a stable DTO from flow-design summary facts. */
 export function toFlowDesignDetailsDto(args: {
     improvements?: string[];
@@ -17,11 +29,11 @@ export function toFlowDesignDetailsDto(args: {
     designPassCount?: number;
     taskGraphRefinementCount?: number;
 }): FlowDesignDetailsDto {
-    return {
+    return createEmptyFlowDesignDetailsDto({
         improvements: args.improvements ?? [],
         feasible: args.feasible,
         missingCapabilities: args.missingCapabilities ?? [],
         designPassCount: args.designPassCount ?? 0,
         taskGraphRefinementCount: args.taskGraphRefinementCount ?? 0,
-    };
+    });
 }

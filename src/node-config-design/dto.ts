@@ -12,6 +12,20 @@ export interface NodeConfigDesignDetailsDto {
     probeInsightCount: number;
 }
 
+/** Creates an empty-but-valid node-config DTO for fallback and compatibility paths. */
+export function createEmptyNodeConfigDesignDetailsDto(
+    overrides: Partial<NodeConfigDesignDetailsDto> = {},
+): NodeConfigDesignDetailsDto {
+    return {
+        improvements: [],
+        appliedStrategies: [],
+        nodeStrategyAssignments: [],
+        configuredNodeCount: 0,
+        probeInsightCount: 0,
+        ...overrides,
+    };
+}
+
 /** Converts a node-config design result into a stable DTO for higher layers. */
 export function toNodeConfigDesignDetailsDto(
     result: {
@@ -25,11 +39,11 @@ export function toNodeConfigDesignDetailsDto(
     },
     improvements: string[] = [],
 ): NodeConfigDesignDetailsDto {
-    return {
+    return createEmptyNodeConfigDesignDetailsDto({
         improvements,
         appliedStrategies: result.appliedStrategyIds ?? [],
         nodeStrategyAssignments: result.nodeStrategyAssignments ?? [],
         configuredNodeCount: result.suggestions?.length ?? 0,
         probeInsightCount: result.probeInsightsApplied?.length ?? 0,
-    };
+    });
 }

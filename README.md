@@ -24,6 +24,75 @@ Core flow:
 8. `Reflector` checks completion and `Finalizer` returns structured output.
 9. `AgentTracer` captures structured run events.
 
+Layered structure:
+
+1. `src/agent/*`
+   Shared runtime contracts, execution flow, persistence hooks, and final-result assembly helpers.
+2. `src/flow-design/*`
+   Core flow-design logic: intent analysis, task-graph reasoning, draft composition, sample execution, reflection, DTOs, provider boundary, and deterministic mocks.
+3. `src/node-config-design/*`
+   Core node-configuration logic: block-family strategies, knowledge sources, validation, and DTOs.
+4. `src/tools/*`
+   Thin runtime-facing tool wrappers that delegate into the shared design cores.
+5. `src/flow-agent/*`, `src/node-config-agent/*`
+   Compatibility/wrapper agents that compose the cores for skill-oriented usage.
+6. `src/llm/fake-*.ts`
+   Deterministic fake planning, reflection, and final formatting helpers used by tests and demos.
+
+Architecture sketch:
+
+```mermaid
+flowchart TD
+    A["Agent Runtime"] --> B["Skill Selection"]
+    B --> C["Tool Routing"]
+    C --> D["Planner Gateway"]
+    D --> E["flow-design core"]
+    D --> F["node-config-design core"]
+    E --> G["Tool wrappers"]
+    F --> G
+    G --> H["Flow / Graph execution"]
+    H --> I["Reflection"]
+    I --> J["Final result formatters"]
+    J --> K["FinalResult: designDetails + payload"]
+    D -. fake mode .-> L["fake-plan-builders / fake-reflectors"]
+```
+
+Design boundary summary:
+
+- `designDetails` in `FinalResult` is the shared DTO-oriented summary for UI and persistence.
+- `payload` in `FinalResult` is the skill-specific structured result.
+- `FakeLlmGateway` is intentionally thin and delegates planning, reflection, and formatting to helper modules.
+- Example/demo strings are kept in deterministic mock modules where practical so core orchestration code stays focused on design flow rather than fixtures.
+
+## Recommended Imports
+
+Use the root barrel for most application code:
+
+```ts
+import {
+    AgentRuntime,
+    FakeLlmGateway,
+    buildDefaultToolRegistry,
+    InMemoryRunStateStore,
+    createRuntime,
+} from '/Users/dujung/Documents/Codex/src';
+```
+
+Use layer-specific barrels when you want tighter boundaries:
+
+```ts
+import { buildFlowDesignerPayload } from '/Users/dujung/Documents/Codex/src/agent';
+import { buildFlowDesignerPlan } from '/Users/dujung/Documents/Codex/src/llm';
+import { designFlowDraft } from '/Users/dujung/Documents/Codex/src/flow-design';
+import { NodeConfigDesignService } from '/Users/dujung/Documents/Codex/src/node-config-design';
+import { UnifiedRunEventBus } from '/Users/dujung/Documents/Codex/src/observability';
+```
+
+That split mirrors the current architecture:
+
+- root barrel: convenient app-facing API
+- layer barrels: clearer internal boundaries and lower accidental coupling
+
 ## File Structure
 
 ```text
@@ -37,6 +106,10 @@ Core flow:
 │  ├─ index.ts
 │  ├─ demo.ts
 │  ├─ agent/
+│  ├─ flow-design/
+│  ├─ node-config-design/
+│  ├─ flow-agent/
+│  ├─ node-config-agent/
 │  ├─ llm/
 │  ├─ tools/
 │  ├─ policy/
@@ -121,3 +194,5 @@ The Gemini SDK requires Node.js 20 or newer for real API execution, and this pro
 - Attach a web UI for approvals and trace inspection
 - Add distributed tracing / metrics sink
 - Expand skill packs and external tool adapters
+
+See [docs/ROADMAP.md](/Users/dujung/Documents/Codex/docs/ROADMAP.md) for the current TODOs grouped by layer.

@@ -55,9 +55,3 @@ export type TraceStage =
     | 'trace'
     | 'error'
     | 'runtime';
-
-/** state of run condition */
-export type RunStatus = 'idle' | 'running' | 'waiting_for_approval' | 'completed' | 'failed';
-
-/** approval-decistion-type */
-export type ApprovalDecisionType = 'approve' | 'reject' | 'edit-and-approve';

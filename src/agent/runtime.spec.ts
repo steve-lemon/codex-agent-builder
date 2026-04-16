@@ -10,6 +10,12 @@ import type { LlmGateway } from '../llm/types';
 import { now } from '../time/now';
 import { CallbackFlowDesignConnection, type FlowDesignEvent } from '../flow/design-monitor';
 import { CallbackUnifiedRunEventConnection, type UnifiedRunEvent } from '../observability/unified-timeline';
+import { getFlowDesignDetails, getNodeConfigurationDetails } from './design-details';
+import {
+    getFlowDesignerPayload,
+    getFlowPreflightValidatorPayload,
+    getNodeConfigDesignerPayload,
+} from './final-result-payload';
 
 function buildDefaultRuntime() {
     return new AgentRuntime({
@@ -45,24 +51,25 @@ describe('runtime flow', () => {
         expect(result.finalResult?.summary).toContain('design pass');
         expect(result.finalResult?.summary).toContain('configured node');
         expect(result.finalResult?.summary).toContain('probe insight');
-        expect(result.finalResult?.designDetails).toEqual(
+        expect(getFlowDesignerPayload(result.finalResult?.payload)).toEqual(
             expect.objectContaining({
-                flowDesignImprovements: expect.any(Array),
-                nodeConfigStrategyImprovements: expect.any(Array),
-                flowDesign: expect.objectContaining({
-                    improvements: expect.any(Array),
-                    feasible: true,
-                    designPassCount: expect.any(Number),
-                    taskGraphRefinementCount: expect.any(Number),
-                }),
-                nodeConfiguration: expect.objectContaining({
-                    improvements: expect.any(Array),
-                    appliedStrategies: expect.arrayContaining(['system-input', 'prompt-input', 'ai-generation']),
-                    nodeStrategyAssignments: expect.arrayContaining([
-                        expect.objectContaining({ nodeId: 'system-input', strategyId: 'system-input' }),
-                    ]),
-                }),
-                appliedNodeConfigStrategies: expect.arrayContaining(['system-input', 'prompt-input', 'ai-generation']),
+                feasible: true,
+                designPassCount: 3,
+                taskGraphRefinementCount: 2,
+            }),
+        );
+        expect(result.finalResult?.designDetails?.flowDesign).toEqual(
+            expect.objectContaining({
+                improvements: expect.any(Array),
+                feasible: true,
+                designPassCount: expect.any(Number),
+                taskGraphRefinementCount: expect.any(Number),
+            }),
+        );
+        expect(result.finalResult?.designDetails?.nodeConfiguration).toEqual(
+            expect.objectContaining({
+                improvements: expect.any(Array),
+                appliedStrategies: expect.arrayContaining(['system-input', 'prompt-input', 'ai-generation']),
                 nodeStrategyAssignments: expect.arrayContaining([
                     expect.objectContaining({ nodeId: 'system-input', strategyId: 'system-input' }),
                     expect.objectContaining({ nodeId: 'prompt-input', strategyId: 'prompt-input' }),
@@ -72,8 +79,8 @@ describe('runtime flow', () => {
                 probeInsightCount: expect.any(Number),
             }),
         );
-        expect((result.finalResult?.designDetails?.configuredNodeCount ?? 0) >= 3).toBe(true);
-        expect((result.finalResult?.designDetails?.probeInsightCount ?? 0) >= 1).toBe(true);
+        expect((result.finalResult?.designDetails?.nodeConfiguration?.configuredNodeCount ?? 0) >= 3).toBe(true);
+        expect((result.finalResult?.designDetails?.nodeConfiguration?.probeInsightCount ?? 0) >= 1).toBe(true);
         expect(
             run?.stepResults.some(step => JSON.stringify(step).includes('"toolName":"prevalidateFlowDesignRequest"')),
         ).toBe(true);
@@ -108,7 +115,13 @@ describe('runtime flow', () => {
         expect(result.finalResult?.nextActions).toEqual(
             expect.arrayContaining([expect.stringContaining('designFlowNodeConfigurations')]),
         );
-        expect(result.finalResult?.designDetails?.nodeConfigStrategyImprovements).toEqual(
+        expect(getNodeConfigDesignerPayload(result.finalResult?.payload)).toEqual(
+            expect.objectContaining({
+                requiresExistingFlowDraft: true,
+                suggestedNextTools: expect.arrayContaining(['designFlowNodeConfigurations']),
+            }),
+        );
+        expect(getNodeConfigurationDetails(result.finalResult?.designDetails).improvements).toEqual(
             expect.arrayContaining([expect.stringContaining('sub-agent')]),
         );
     });
@@ -124,12 +137,17 @@ describe('runtime flow', () => {
                 summary: expect.stringContaining('missing: email-read, email-reply'),
                 nextActions: expect.arrayContaining([expect.stringContaining('email-read')]),
                 designDetails: expect.objectContaining({
-                    flowDesignImprovements: expect.arrayContaining([expect.stringContaining('email-read')]),
                     flowDesign: expect.objectContaining({
                         feasible: false,
                         missingCapabilities: expect.arrayContaining(['email-read', 'email-reply']),
                     }),
                 }),
+            }),
+        );
+        expect(getFlowDesignerPayload(result.finalResult?.payload)).toEqual(
+            expect.objectContaining({
+                feasible: false,
+                missingCapabilities: ['email-read', 'email-reply'],
             }),
         );
     });
@@ -194,11 +212,22 @@ describe('runtime flow', () => {
                 summary: expect.stringContaining('flow-preflight-validator'),
                 nextActions: expect.arrayContaining([expect.stringContaining('email-read-block')]),
                 designDetails: expect.objectContaining({
-                    flowDesignImprovements: expect.any(Array),
-                    nodeConfigStrategyImprovements: [],
+                    flowDesign: expect.objectContaining({
+                        improvements: expect.any(Array),
+                        feasible: false,
+                        missingCapabilities: expect.arrayContaining(['email-read', 'email-reply']),
+                    }),
                 }),
             }),
         );
+        expect(getFlowPreflightValidatorPayload(result.finalResult?.payload)).toEqual(
+            expect.objectContaining({
+                feasible: false,
+                missingCapabilities: ['email-read', 'email-reply'],
+                proposedBlockIds: expect.arrayContaining(['email-read-block']),
+            }),
+        );
+        expect(getNodeConfigurationDetails(result.finalResult?.designDetails).improvements).toEqual([]);
     });
 
     it('runs parallel-safe tools concurrently in parallel step', async () => {
@@ -294,10 +323,20 @@ describe('runtime flow', () => {
                 success: expect.any(Boolean),
                 nextActions: expect.any(Array),
                 designDetails: expect.objectContaining({
-                    flowDesignImprovements: expect.any(Array),
-                    nodeConfigStrategyImprovements: expect.any(Array),
+                    flowDesign: expect.objectContaining({
+                        improvements: expect.any(Array),
+                    }),
+                    nodeConfiguration: expect.objectContaining({
+                        improvements: expect.any(Array),
+                    }),
                 }),
             }),
+        );
+        expect(getFlowDesignDetails(result.finalResult?.designDetails)).toEqual(
+            result.finalResult?.designDetails?.flowDesign,
+        );
+        expect(getNodeConfigurationDetails(result.finalResult?.designDetails)).toEqual(
+            result.finalResult?.designDetails?.nodeConfiguration,
         );
     });
 
