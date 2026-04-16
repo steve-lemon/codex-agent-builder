@@ -1,6 +1,6 @@
 // Vitest specs for executable flow node runtimes.
 import { describe, expect, it } from 'vitest';
-import { BufferBlock, InputBlock, ViewBlock } from './blocks';
+import { AiGenerateBlock, BufferBlock, InputBlock, ViewBlock } from './blocks';
 import { connectFlowPorts, createFlowDocument, createFlowNode, getFlowPortById, setFlowPortPacket } from './document';
 import { DefaultExecutableFlowNodeFactory } from './runtime';
 
@@ -186,7 +186,7 @@ describe('flow runtime', () => {
     });
 
     it('fails execution when required config is missing or invalid', async () => {
-        let flow = createFlowDocument([InputBlock, BufferBlock, ViewBlock]);
+        let flow = createFlowDocument([InputBlock, BufferBlock, ViewBlock, AiGenerateBlock]);
         flow = createFlowNode(flow, 'input', {
             nodeId: 'input-1',
         }).flow;
@@ -199,11 +199,109 @@ describe('flow runtime', () => {
         flow = createFlowNode(flow, 'view', {
             nodeId: 'view-1',
         }).flow;
+        flow = createFlowNode(flow, 'ai-generate', {
+            nodeId: 'ai-1',
+            config: {
+                model: 'mock-gpt',
+            },
+        }).flow;
 
         const factory = new DefaultExecutableFlowNodeFactory();
 
         await expect(factory.create(flow, 'input-1').execute(flow)).rejects.toThrow(/invalid and cannot execute/);
         await expect(factory.create(flow, 'buffer-1').execute(flow)).rejects.toThrow(/non-negative number/);
         await expect(factory.create(flow, 'view-1').execute(flow)).rejects.toThrow(/Input packet is missing/);
+        await expect(factory.create(flow, 'ai-1').execute(flow)).rejects.toThrow(/Input packet is missing/);
+    });
+
+    it('executes the ai generate block with mocked text output', async () => {
+        let flow = createFlowDocument([InputBlock, AiGenerateBlock]);
+        flow = createFlowNode(flow, 'input', {
+            nodeId: 'system-1',
+            config: {
+                input: 'You are helpful.',
+            },
+        }).flow;
+        flow = createFlowNode(flow, 'input', {
+            nodeId: 'prompt-1',
+            config: {
+                input: 'Summarize the release notes.',
+            },
+        }).flow;
+        flow = createFlowNode(flow, 'ai-generate', {
+            nodeId: 'ai-1',
+            config: {
+                model: 'mock-gpt',
+                jsonOutput: 'false',
+            },
+        }).flow;
+        flow = connectFlowPorts(flow, {
+            sourceNodeId: 'system-1',
+            sourcePort: 'output',
+            targetNodeId: 'ai-1',
+            targetPort: 'system',
+        }).flow;
+        flow = connectFlowPorts(flow, {
+            sourceNodeId: 'prompt-1',
+            sourcePort: 'output',
+            targetNodeId: 'ai-1',
+            targetPort: 'prompt',
+        }).flow;
+
+        const factory = new DefaultExecutableFlowNodeFactory({
+            aiGenerate: async request => {
+                return `[${request.model}] ${request.system} :: ${request.prompt}`;
+            },
+        });
+
+        flow = await factory.create(flow, 'system-1').execute(flow);
+        flow = await factory.create(flow, 'prompt-1').execute(flow);
+        flow = await factory.create(flow, 'ai-1').execute(flow);
+
+        expect(getFlowPortById(flow, 'ai-1:output')?.packet?.value).toBe(
+            '[mock-gpt] You are helpful. :: Summarize the release notes.',
+        );
+    });
+
+    it('executes the ai generate block with mocked json output', async () => {
+        let flow = createFlowDocument([InputBlock, AiGenerateBlock]);
+        flow = createFlowNode(flow, 'input', {
+            nodeId: 'prompt-1',
+            config: {
+                input: 'Return a JSON object.',
+            },
+        }).flow;
+        flow = createFlowNode(flow, 'ai-generate', {
+            nodeId: 'ai-1',
+            config: {
+                model: 'mock-json-model',
+                jsonOutput: 'true',
+            },
+        }).flow;
+        flow = connectFlowPorts(flow, {
+            sourceNodeId: 'prompt-1',
+            sourcePort: 'output',
+            targetNodeId: 'ai-1',
+            targetPort: 'prompt',
+        }).flow;
+
+        const factory = new DefaultExecutableFlowNodeFactory({
+            aiGenerate: async request => {
+                return {
+                    model: request.model,
+                    ok: true,
+                    prompt: request.prompt,
+                };
+            },
+        });
+
+        flow = await factory.create(flow, 'prompt-1').execute(flow);
+        flow = await factory.create(flow, 'ai-1').execute(flow);
+
+        expect(getFlowPortById(flow, 'ai-1:output')?.packet?.value).toEqual({
+            model: 'mock-json-model',
+            ok: true,
+            prompt: 'Return a JSON object.',
+        });
     });
 });

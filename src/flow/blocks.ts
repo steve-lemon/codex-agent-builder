@@ -153,3 +153,52 @@ export const ViewBlock = defineFlowBlock({
     ],
     outputs: [],
 });
+
+/**
+ * Sample AI generation block for concept validation.
+ *
+ * The runtime implementation is intentionally mocked so the flow contract can
+ * be validated before wiring a real LLM provider.
+ */
+export const AiGenerateBlock = defineFlowBlock({
+    id: 'ai-generate',
+    label: 'AI Generate',
+    description: 'Consumes system and prompt text, then emits a mocked model response.',
+    configs: [
+        {
+            id: 'model',
+            label: 'Model',
+            hint: 'text',
+            required: true,
+            defaultValue: 'mock-gpt',
+        },
+        {
+            id: 'jsonOutput',
+            label: 'JSON Output',
+            hint: 'checkbox',
+            defaultValue: 'false',
+        },
+    ],
+    inputs: [
+        {
+            localId: 'system',
+            label: 'System',
+            direction: 'input',
+            dataType: 'text',
+        },
+        {
+            localId: 'prompt',
+            label: 'Prompt',
+            direction: 'input',
+            dataType: 'text',
+        },
+    ],
+    outputs: [
+        {
+            localId: 'output',
+            label: 'Output',
+            direction: 'output',
+            dataType: 'any',
+        },
+    ],
+});

@@ -3,6 +3,21 @@ import { AgentError } from '../errors/agent-error';
 import { DefaultFlowDocumentController, FlowDocumentController } from './document';
 import type { FlowBlockDefinition, FlowDocument, FlowNode, FlowPacket, FlowPort } from './types';
 
+/** Minimal request contract for the mock AI generator hook. */
+export interface FlowAiGenerateRequest {
+    /** Requested model identifier from node config. */
+    model: string;
+
+    /** Optional system instruction string. */
+    system: string;
+
+    /** User prompt string used for generation. */
+    prompt: string;
+
+    /** Whether the caller expects a JSON-shaped response. */
+    jsonOutput: boolean;
+}
+
 /** Runtime services shared by executable flow nodes. */
 export interface FlowNodeExecutionServices {
     /** Flow controller used to mutate documents and packets. */
@@ -13,6 +28,9 @@ export interface FlowNodeExecutionServices {
 
     /** Sleep function used by time-based nodes. */
     sleep?: (ms: number) => Promise<void>;
+
+    /** Mockable AI generation hook used by the sample AI block. */
+    aiGenerate?: (request: FlowAiGenerateRequest) => Promise<unknown>;
 }
 
 /** Default runtime services used when the caller does not provide overrides. */
@@ -23,6 +41,18 @@ export const defaultFlowNodeExecutionServices: Required<FlowNodeExecutionService
     },
     sleep: async (ms: number) => {
         await new Promise(resolve => setTimeout(resolve, ms));
+    },
+    aiGenerate: async request => {
+        if (request.jsonOutput) {
+            return {
+                model: request.model,
+                system: request.system,
+                prompt: request.prompt,
+                output: `mocked response for: ${request.prompt}`,
+            };
+        }
+
+        return `[${request.model}] mocked response for: ${request.prompt}`;
     },
 };
 
@@ -36,6 +66,7 @@ export abstract class ExecutableFlowNode {
     protected readonly controller: FlowDocumentController;
     protected readonly logger: (message: string) => void;
     protected readonly sleep: (ms: number) => Promise<void>;
+    protected readonly aiGenerate: (request: FlowAiGenerateRequest) => Promise<unknown>;
 
     constructor(
         readonly node: FlowNode,
@@ -45,6 +76,7 @@ export abstract class ExecutableFlowNode {
         this.controller = services.controller ?? defaultFlowNodeExecutionServices.controller;
         this.logger = services.logger ?? defaultFlowNodeExecutionServices.logger;
         this.sleep = services.sleep ?? defaultFlowNodeExecutionServices.sleep;
+        this.aiGenerate = services.aiGenerate ?? defaultFlowNodeExecutionServices.aiGenerate;
     }
 
     /** Executes the node and returns the updated flow document. */
@@ -152,6 +184,33 @@ export class ViewExecutableFlowNode extends ExecutableFlowNode {
     }
 }
 
+/** Executable node for the sample AI generation block. */
+export class AiGenerateExecutableFlowNode extends ExecutableFlowNode {
+    override async execute(flow: FlowDocument): Promise<FlowDocument> {
+        this.ensureValid(flow);
+        const model = this.getRequiredConfig('model');
+        const jsonOutput = (this.node.config?.jsonOutput ?? 'false').trim().toLowerCase() === 'true';
+        const promptPacket = this.requireInputPacket(flow, 'prompt');
+        const systemPacket = this.controller.getPortById(flow, this.getInputPort('system').id)?.packet;
+
+        if (typeof promptPacket.value !== 'string') {
+            throw new AgentError(`AI generate prompt packet must be text on node ${this.node.id}`);
+        }
+        if (systemPacket?.value !== undefined && systemPacket.value !== null && typeof systemPacket.value !== 'string') {
+            throw new AgentError(`AI generate system packet must be text on node ${this.node.id}`);
+        }
+
+        const result = await this.aiGenerate({
+            model,
+            system: typeof systemPacket?.value === 'string' ? systemPacket.value : '',
+            prompt: promptPacket.value,
+            jsonOutput,
+        });
+
+        return this.writeOutputPacket(flow, 'output', this.controller.createPacket(result));
+    }
+}
+
 /**
  * Base factory for turning flow nodes into executable runtime objects.
  *
@@ -162,11 +221,13 @@ export abstract class ExecutableFlowNodeFactory {
     protected readonly controller: FlowDocumentController;
     protected readonly logger: (message: string) => void;
     protected readonly sleep: (ms: number) => Promise<void>;
+    protected readonly aiGenerate: (request: FlowAiGenerateRequest) => Promise<unknown>;
 
     constructor(services: FlowNodeExecutionServices = {}) {
         this.controller = services.controller ?? defaultFlowNodeExecutionServices.controller;
         this.logger = services.logger ?? defaultFlowNodeExecutionServices.logger;
         this.sleep = services.sleep ?? defaultFlowNodeExecutionServices.sleep;
+        this.aiGenerate = services.aiGenerate ?? defaultFlowNodeExecutionServices.aiGenerate;
     }
 
     create(flow: FlowDocument, nodeId: string): ExecutableFlowNode {
@@ -193,6 +254,7 @@ export class DefaultExecutableFlowNodeFactory extends ExecutableFlowNodeFactory 
             controller: this.controller,
             logger: this.logger,
             sleep: this.sleep,
+            aiGenerate: this.aiGenerate,
         };
 
         switch (block.id) {
@@ -202,6 +264,8 @@ export class DefaultExecutableFlowNodeFactory extends ExecutableFlowNodeFactory 
                 return new BufferExecutableFlowNode(node, block, services);
             case 'view':
                 return new ViewExecutableFlowNode(node, block, services);
+            case 'ai-generate':
+                return new AiGenerateExecutableFlowNode(node, block, services);
             default:
                 throw new AgentError(`No executable flow node runtime is registered for block: ${block.id}`);
         }
