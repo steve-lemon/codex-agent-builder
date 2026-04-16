@@ -13,19 +13,34 @@ export type FlowImageValue = string;
 
 /** Runtime payload map keyed by flow port data type. */
 export interface FlowPacketValueMap {
-    text: string;
-    json: unknown;
-    image: FlowImageValue;
-    any: unknown;
+    text: string | null;
+    json: unknown | null;
+    image: FlowImageValue | null;
+    any: unknown | null;
 }
 
 /** Timestamped value carried through a flow port. */
 export interface FlowPacket<TValue = unknown> {
     /** Payload value carried by the packet. */
-    value: TValue;
+    value: TValue | null;
 
     /** Unix timestamp in milliseconds when the packet was last written. */
     ts: number;
+}
+
+/** String-safe packet representation intended for database storage. */
+export interface SerializedFlowPacket {
+    /** Declared runtime type of the original packet. */
+    dataType: FlowPortDataType;
+
+    /** Unix timestamp in milliseconds when the packet was last written. */
+    ts: number;
+
+    /** Storage encoding used for the serialized value. */
+    encoding: 'string' | 'json' | 'null';
+
+    /** Serialized payload value. */
+    value: string;
 }
 
 /** Direction of data travel relative to a node. */

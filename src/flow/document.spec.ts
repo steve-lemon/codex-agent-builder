@@ -168,6 +168,59 @@ describe('flow document', () => {
         });
     });
 
+    it('preserves null packet values across connected ports without coercing them', () => {
+        const jsonSource = defineFlowBlock({
+            id: 'json-source',
+            label: 'JSON Source',
+            inputs: [],
+            outputs: [
+                {
+                    localId: 'out',
+                    label: 'Payload',
+                    direction: 'output',
+                    dataType: 'json',
+                },
+            ],
+        });
+        const textConsumer = defineFlowBlock({
+            id: 'text-consumer',
+            label: 'Text Consumer',
+            inputs: [
+                {
+                    localId: 'in',
+                    label: 'Input',
+                    direction: 'input',
+                    dataType: 'text',
+                },
+            ],
+            outputs: [],
+        });
+
+        let flow = createFlowDocument([jsonSource, textConsumer]);
+        flow = createFlowNode(flow, 'json-source', { nodeId: 'jsonSource' }).flow;
+        flow = createFlowNode(flow, 'text-consumer', { nodeId: 'textTarget' }).flow;
+        flow = setFlowPortPacket(flow, {
+            nodeId: 'jsonSource',
+            port: 'out',
+            packet: createFlowPacket(null, 456),
+        }).flow;
+        flow = connectFlowPorts(flow, {
+            sourceNodeId: 'jsonSource',
+            sourcePort: 'out',
+            targetNodeId: 'textTarget',
+            targetPort: 'in',
+        }).flow;
+
+        expect(getFlowPortById(flow, 'jsonSource:out')?.packet).toEqual({
+            value: null,
+            ts: 456,
+        });
+        expect(getFlowPortById(flow, 'textTarget:in')?.packet).toEqual({
+            value: null,
+            ts: 456,
+        });
+    });
+
     it('allows any-typed inputs to adopt the connected source type', () => {
         const anyConsumer = defineFlowBlock({
             id: 'any-consumer',
@@ -217,6 +270,14 @@ describe('flow document', () => {
         expect(coercePacketForPort('image', createFlowPacket('https://example.com/a.png', 13))).toEqual({
             value: 'https://example.com/a.png',
             ts: 13,
+        });
+        expect(coercePacketForPort('text', createFlowPacket(null, 14))).toEqual({
+            value: null,
+            ts: 14,
+        });
+        expect(coercePacketForPort('json', createFlowPacket(null, 15))).toEqual({
+            value: null,
+            ts: 15,
         });
     });
 

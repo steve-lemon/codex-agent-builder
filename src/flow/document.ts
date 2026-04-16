@@ -285,6 +285,10 @@ function updatePort(flow: FlowDocument, portId: string, patch: Partial<FlowPort>
 }
 
 function coercePacketValue(targetType: FlowPortDataType, value: unknown): unknown {
+    if (value === null) {
+        return null;
+    }
+
     switch (targetType) {
         case 'any':
             return value;

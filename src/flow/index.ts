@@ -2,4 +2,5 @@
 export * from './blocks';
 export * from './document';
 export * from './graph';
+export * from './serialization';
 export * from './types';

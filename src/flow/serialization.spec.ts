@@ -1,0 +1,104 @@
+// Vitest specs for flow packet serialization helpers.
+import { describe, expect, it } from 'vitest';
+import { AgentError } from '../errors/agent-error';
+import { createFlowPacket } from './document';
+import { deserializeFlowPacket, serializeFlowPacket } from './serialization';
+
+describe('flow packet serialization', () => {
+    it('serializes and deserializes text packets for database storage', () => {
+        const packet = createFlowPacket('hello', 101);
+
+        const serialized = serializeFlowPacket('text', packet);
+        const restored = deserializeFlowPacket(serialized);
+
+        expect(serialized).toEqual({
+            dataType: 'text',
+            ts: 101,
+            encoding: 'string',
+            value: 'hello',
+        });
+        expect(restored).toEqual(packet);
+    });
+
+    it('serializes and deserializes json packets as json strings', () => {
+        const packet = createFlowPacket({ answer: 42 }, 202);
+
+        const serialized = serializeFlowPacket('json', packet);
+        const restored = deserializeFlowPacket(serialized);
+
+        expect(serialized).toEqual({
+            dataType: 'json',
+            ts: 202,
+            encoding: 'json',
+            value: '{"answer":42}',
+        });
+        expect(restored).toEqual(packet);
+    });
+
+    it('supports image packets backed by URLs or base64 strings', () => {
+        const urlPacket = createFlowPacket('https://example.com/image.png', 303);
+        const base64Packet = createFlowPacket('data:image/png;base64,abc123', 304);
+
+        expect(deserializeFlowPacket(serializeFlowPacket('image', urlPacket))).toEqual(urlPacket);
+        expect(deserializeFlowPacket(serializeFlowPacket('image', base64Packet))).toEqual(base64Packet);
+    });
+
+    it('preserves null packet values for every supported data type', () => {
+        expect(serializeFlowPacket('text', createFlowPacket(null, 501))).toEqual({
+            dataType: 'text',
+            ts: 501,
+            encoding: 'null',
+            value: 'null',
+        });
+        expect(deserializeFlowPacket(serializeFlowPacket('text', createFlowPacket(null, 501)))).toEqual({
+            value: null,
+            ts: 501,
+        });
+        expect(deserializeFlowPacket(serializeFlowPacket('json', createFlowPacket(null, 502)))).toEqual({
+            value: null,
+            ts: 502,
+        });
+        expect(deserializeFlowPacket(serializeFlowPacket('image', createFlowPacket(null, 503)))).toEqual({
+            value: null,
+            ts: 503,
+        });
+    });
+
+    it('supports any packets through json encoding', () => {
+        const packet = createFlowPacket(['a', 1, { ok: true }], 404);
+
+        const serialized = serializeFlowPacket('any', packet);
+        const restored = deserializeFlowPacket(serialized);
+
+        expect(serialized.encoding).toBe('json');
+        expect(restored).toEqual(packet);
+    });
+
+    it('rejects invalid serialization or deserialization payloads', () => {
+        expect(() => serializeFlowPacket('image', createFlowPacket({ bad: true }, 1))).toThrow(AgentError);
+        expect(() =>
+            deserializeFlowPacket({
+                dataType: 'json',
+                ts: 1,
+                encoding: 'string',
+                value: '{"bad":true}',
+            }),
+        ).toThrow(/must use json encoding/);
+        expect(() =>
+            deserializeFlowPacket({
+                dataType: 'json',
+                ts: 1,
+                encoding: 'json',
+                value: 'not-json',
+            }),
+        ).toThrow(/could not be parsed from JSON/);
+        expect(() =>
+            deserializeFlowPacket({
+                dataType: 'text',
+                ts: 1,
+                encoding: 'json',
+                value: '"hello"',
+            }),
+        ).toThrow(/must use string encoding/);
+    });
+});
