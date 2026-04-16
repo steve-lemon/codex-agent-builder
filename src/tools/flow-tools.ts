@@ -1237,6 +1237,10 @@ export function createFlowDesignTools(): ToolDefinition[] {
 
                 const nodeConfigSkillImprovements: string[] = [];
                 const nodeConfigStrategyDirectives: Array<{ strategyId: string; note: string }> = [];
+
+                // TODO(flow-agent): Replace this heuristic issue-to-strategy
+                // routing with a richer reflection model that can point to
+                // concrete nodes, strategies, and evidence spans from the run.
                 if (wantsJson) {
                     nodeConfigSkillImprovements.push(
                         'Prefer a structured-output model profile and stricter system instructions for JSON mode.',

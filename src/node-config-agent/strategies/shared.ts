@@ -20,6 +20,10 @@ export interface NodeBlockConfigStrategy {
     supports?(node: FlowNode): boolean;
     apply(node: FlowNode, context: NodeBlockConfigStrategyContext): NodeBlockConfigStrategyResult;
     validate?(node: FlowNode, flow: FlowDocument): string[];
+
+    // TODO(node-config): Add optional ordering or priority metadata so future
+    // orchestration can intentionally sequence multiple strategies on the same
+    // node instead of picking only one matching strategy.
 }
 
 export function inferTaskType(
@@ -46,6 +50,8 @@ export function collectStrategyNotes(input: NodeConfigurationDesignInput): strin
 }
 
 export function collectStrategyNotesFor(input: NodeConfigurationDesignInput, strategyId: string): string[] {
+    // TODO(node-config): Preserve note provenance so UIs can explain whether a
+    // strategy note came from reflection, block probing, or direct user input.
     return [
         ...(input.strategyNotes ?? []),
         ...(input.strategyDirectives ?? [])

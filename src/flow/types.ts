@@ -128,6 +128,10 @@ export interface FlowBlockDefinition {
     /** Optional preferred node-configuration strategy id for sub-agent orchestration. */
     nodeConfigStrategyId?: string;
 
+    // TODO(flow): Let blocks optionally advertise multiple compatible strategy
+    // ids or capability tags once node configuration needs layered behavior
+    // such as prompt shaping + provider policy + output schema control.
+
     /** Config field definitions supported by nodes created from this block. */
     configs?: FlowBlockConfigDefinition[];
 

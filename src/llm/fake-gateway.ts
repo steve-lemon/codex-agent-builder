@@ -637,6 +637,10 @@ export class FakeLlmGateway implements LlmGateway {
                 }>;
             }>;
 
+            // TODO(flow-agent): Persist pass-by-pass design details instead of
+            // only the last configured snapshot so UIs can show how strategy
+            // assignments changed across retries.
+
             if (feasibilityData?.feasible === false) {
                 const missingCapabilities = feasibilityData.missingCapabilities ?? [];
                 return {
@@ -653,7 +657,9 @@ export class FakeLlmGateway implements LlmGateway {
                     ],
                     designDetails: {
                         flowDesignImprovements: [
-                            `Add missing capabilities before attempting another flow design pass: ${missingCapabilities.join(', ')}`,
+                            `Add missing capabilities before attempting another flow design pass: ${missingCapabilities.join(
+                                ', ',
+                            )}`,
                         ],
                         nodeConfigStrategyImprovements: [],
                     },
@@ -667,7 +673,9 @@ export class FakeLlmGateway implements LlmGateway {
                 const latestConfiguration = nodeConfigurations[nodeConfigurations.length - 1]?.toolResults?.[0]?.data;
                 const latestNodeConfigImprovements = latestReflection.nodeConfigSkillImprovements ?? [];
                 return {
-                    summary: `Handled with skill flow-designer. The flow still needs improvement after ${designPasses} design pass(es) while configuring ${latestConfiguration?.suggestions?.length ?? 0} node(s).`,
+                    summary: `Handled with skill flow-designer. The flow still needs improvement after ${designPasses} design pass(es) while configuring ${
+                        latestConfiguration?.suggestions?.length ?? 0
+                    } node(s).`,
                     success: false,
                     nextActions: [
                         ...(latestReflection.issues ?? [])
@@ -697,7 +705,11 @@ export class FakeLlmGateway implements LlmGateway {
                 const probeInsightCount = latestConfiguration?.probeInsightsApplied?.length ?? 0;
                 const latestNodeConfigImprovements = latestReflection.nodeConfigSkillImprovements ?? [];
                 return {
-                    summary: `Handled with skill flow-designer. The flow satisfied the request after ${designPasses} design pass(es), ${refinedGraphs.length} task-graph refinement step(s), and ${configuredNodeCount} configured node(s)${probeInsightCount > 0 ? ` informed by ${probeInsightCount} probe insight(s)` : ''}.`,
+                    summary: `Handled with skill flow-designer. The flow satisfied the request after ${designPasses} design pass(es), ${
+                        refinedGraphs.length
+                    } task-graph refinement step(s), and ${configuredNodeCount} configured node(s)${
+                        probeInsightCount > 0 ? ` informed by ${probeInsightCount} probe insight(s)` : ''
+                    }.`,
                     success: true,
                     nextActions:
                         designPasses > 1

@@ -1,6 +1,6 @@
 // Sub-agent that specializes in configuring flow nodes after the graph structure exists.
 import { validateFlowNode } from '../flow/document';
-import type { FlowDocument } from '../flow/types';
+import type { FlowDocument, FlowNode } from '../flow/types';
 import { createDefaultNodeBlockConfigStrategies, type NodeBlockConfigStrategy } from './strategies';
 import type {
     NodeConfigurationDesignInput,
@@ -12,7 +12,7 @@ import type {
 export class NodeConfigDesignAgent {
     constructor(private readonly strategies: NodeBlockConfigStrategy[] = createDefaultNodeBlockConfigStrategies()) {}
 
-    private resolveStrategy(flow: FlowDocument, node: FlowDocument['nodes'][number]) {
+    private resolveStrategy(flow: FlowDocument, node: FlowNode): NodeBlockConfigStrategy | undefined {
         const block = flow.blocks.find(candidate => candidate.id === node.blockId);
         const preferredStrategyId = block?.nodeConfigStrategyId;
         const hasExplicitPreferredStrategy = preferredStrategyId
@@ -21,6 +21,9 @@ export class NodeConfigDesignAgent {
               )
             : false;
 
+        // TODO(node-config): Allow multiple strategies to cooperate on one node
+        // when blocks eventually need layered configuration passes such as
+        // provider selection + prompt shaping + output schema enforcement.
         return this.strategies.find(candidate => {
             if (candidate.blockId !== node.blockId) {
                 return false;
