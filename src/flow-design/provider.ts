@@ -41,21 +41,21 @@ export class DeterministicFlowDesignProvider implements FlowDesignProvider {
         private readonly knowledgeSource: FlowDesignKnowledgeSource = createDefaultFlowDesignKnowledgeSource(),
     ) {}
 
-    analyzeRequest(userRequest: string): FlowDesignIntent {
-        return analyzeFlowRequest(userRequest);
+    async analyzeRequest(userRequest: string): Promise<FlowDesignIntent> {
+        return await analyzeFlowRequest(userRequest);
     }
 
     async composeDraft(args: Parameters<FlowDesignProvider['composeDraft']>[0]): Promise<FlowDesignDraftResult> {
-        const intent = analyzeFlowRequest(args.userRequest);
+        const intent = await analyzeFlowRequest(args.userRequest);
         const guidanceNotes = await Promise.resolve(this.knowledgeSource.getDraftNotes(intent));
-        return designFlowDraft({
+        return await designFlowDraft({
             ...args,
             guidanceNotes,
         });
     }
 
     async reflectExecution(args: Parameters<FlowDesignProvider['reflectExecution']>[0]): Promise<FlowDesignReflection> {
-        const intent = analyzeFlowRequest(args.userRequest);
+        const intent = await analyzeFlowRequest(args.userRequest);
         const baseReflection = reflectFlowExecution(args);
         const reflectionNotes = await Promise.resolve(
             this.knowledgeSource.getReflectionNotes({

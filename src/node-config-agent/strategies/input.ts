@@ -1,5 +1,6 @@
 // Input-node configuration strategies for system and user prompt blocks.
 import type { FlowNode } from '../../flow/types';
+import { getNodeConfigSystemPromptDefault } from '../../node-config-design/resources';
 import type { NodeConfigurationDesignInput } from '../types';
 import {
     applyNodeConfig,
@@ -10,14 +11,9 @@ import {
     type NodeBlockConfigStrategyResult,
 } from './shared';
 
-function buildSystemPrompt(input: NodeConfigurationDesignInput): string {
+async function buildSystemPrompt(input: NodeConfigurationDesignInput): Promise<string> {
     const taskType = inferTaskType(input.userRequest, input.wantsJson);
-    const basePrompt =
-        taskType === 'blog-title-generation'
-            ? 'You generate clear and catchy blog titles based on one keyword.'
-            : input.wantsJson
-            ? 'You return concise structured output that can be safely parsed as JSON.'
-            : 'You transform text requests into concise useful outputs.';
+    const basePrompt = await getNodeConfigSystemPromptDefault(taskType);
     const probeHint = input.probeResult?.behaviorNotes?.[0]?.trim()
         ? ` Observed block behavior: ${input.probeResult.behaviorNotes[0].trim()}`
         : '';
@@ -61,10 +57,10 @@ export class SystemInputNodeStrategy implements NodeBlockConfigStrategy {
         return node.id === 'system-input';
     }
 
-    apply(node: FlowNode, context: NodeBlockConfigStrategyContext): NodeBlockConfigStrategyResult {
+    async apply(node: FlowNode, context: NodeBlockConfigStrategyContext): Promise<NodeBlockConfigStrategyResult> {
         const config = {
             ...(node.config ?? {}),
-            input: buildSystemPrompt(context.input),
+            input: await buildSystemPrompt(context.input),
         };
 
         return {
@@ -105,7 +101,7 @@ export class PromptInputNodeStrategy implements NodeBlockConfigStrategy {
         return node.id === 'prompt-input';
     }
 
-    apply(node: FlowNode, context: NodeBlockConfigStrategyContext): NodeBlockConfigStrategyResult {
+    async apply(node: FlowNode, context: NodeBlockConfigStrategyContext): Promise<NodeBlockConfigStrategyResult> {
         const config = {
             ...(node.config ?? {}),
             input: buildUserPrompt(context.input),

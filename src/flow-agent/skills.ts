@@ -38,28 +38,29 @@ export class FlowCompositionSkill implements FlowDesignSkill {
 
     async run(state: FlowDesignAttemptState, services: FlowDesignSkillServices): Promise<void> {
         const intent = state.intent!;
-        const result = await Promise.resolve(
-            services.provider?.composeDraft({
-                userRequest: state.userRequest,
-                sampleInput: intent.sampleInput,
-                desiredCount: intent.desiredCount,
-                wantsJson: intent.wantsJson,
-                improvementNotes: state.improvementNotes,
-                availableBlocks: state.availableBlocks,
-                designSession: services.designSession,
-                toolName: 'flow-composition',
-            }) ??
-                designFlowDraft({
-                    userRequest: state.userRequest,
-                    sampleInput: intent.sampleInput,
-                    desiredCount: intent.desiredCount,
-                    wantsJson: intent.wantsJson,
-                    improvementNotes: state.improvementNotes,
-                    availableBlocks: state.availableBlocks,
-                    designSession: services.designSession,
-                    toolName: 'flow-composition',
-                }),
-        );
+        const result = services.provider
+            ? await Promise.resolve(
+                  services.provider.composeDraft({
+                      userRequest: state.userRequest,
+                      sampleInput: intent.sampleInput,
+                      desiredCount: intent.desiredCount,
+                      wantsJson: intent.wantsJson,
+                      improvementNotes: state.improvementNotes,
+                      availableBlocks: state.availableBlocks,
+                      designSession: services.designSession,
+                      toolName: 'flow-composition',
+                  }),
+              )
+            : await designFlowDraft({
+                  userRequest: state.userRequest,
+                  sampleInput: intent.sampleInput,
+                  desiredCount: intent.desiredCount,
+                  wantsJson: intent.wantsJson,
+                  improvementNotes: state.improvementNotes,
+                  availableBlocks: state.availableBlocks,
+                  designSession: services.designSession,
+                  toolName: 'flow-composition',
+              });
 
         state.flow = result.flow;
     }

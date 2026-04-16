@@ -10,8 +10,8 @@ import {
 } from './core';
 
 describe('flow-design core', () => {
-    it('analyzes a multi-result title request into reusable intent', () => {
-        const intent = analyzeFlowRequest('키워드를 줄테니 블로그 타이틀 여러개 만들기');
+    it('analyzes a multi-result title request into reusable intent', async () => {
+        const intent = await analyzeFlowRequest('키워드를 줄테니 블로그 타이틀 여러개 만들기');
 
         expect(intent).toEqual({
             userRequest: '키워드를 줄테니 블로그 타이틀 여러개 만들기',
@@ -23,8 +23,8 @@ describe('flow-design core', () => {
         });
     });
 
-    it('creates and validates a deterministic draft flow from preflight-backed inputs', () => {
-        const draft = designFlowDraft({
+    it('creates and validates a deterministic draft flow from preflight-backed inputs', async () => {
+        const draft = await designFlowDraft({
             userRequest: '키워드를 줄테니 블로그 타이틀 여러개 만들기',
             sampleInput: '생산성 향상',
             desiredCount: 5,
@@ -50,7 +50,7 @@ describe('flow-design core', () => {
     });
 
     it('executes and reflects on the shared draft flow without depending on tool wrappers', async () => {
-        const draft = designFlowDraft({
+        const draft = await designFlowDraft({
             userRequest: '상품 소개 문구를 JSON 형태로 여러개 만들어줘',
             sampleInput: '샘플 입력',
             desiredCount: 5,

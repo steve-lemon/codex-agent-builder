@@ -1,7 +1,9 @@
 // Built-in knowledge-source implementations for node-config design.
-import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { z } from 'zod';
 import type { FlowBlockDefinition } from '../flow/types';
+import { CachedJsonFileResource } from '../resources/json-file';
+import { resolveJsonResourcePath } from '../resources/path-resolver';
 import type { NodeConfigurationDesignInput, NodeConfigurationStrategyDirective } from './types';
 import type { NodeConfigKnowledgeSource } from './knowledge';
 
@@ -50,46 +52,45 @@ function collectBlockIds(flowBlocks: FlowBlockDefinition[]): Set<string> {
     return new Set(flowBlocks.map(block => block.id));
 }
 
-interface SkillKnowledgeManifest {
-    sharedNotes?: string[];
-    conditionalSharedNotes?: Array<{
-        blockIds?: string[];
-        notes?: string[];
-    }>;
-    strategyDirectives?: Array<{
-        blockIds?: string[];
-        strategyId: string;
-        note: string;
-    }>;
-}
+const SkillKnowledgeManifestSchema = z.object({
+    sharedNotes: z.array(z.string()).optional(),
+    conditionalSharedNotes: z
+        .array(
+            z.object({
+                blockIds: z.array(z.string()).optional(),
+                notes: z.array(z.string()).optional(),
+            }),
+        )
+        .optional(),
+    strategyDirectives: z
+        .array(
+            z.object({
+                blockIds: z.array(z.string()).optional(),
+                strategyId: z.string(),
+                note: z.string(),
+            }),
+        )
+        .optional(),
+});
+
+type SkillKnowledgeManifest = z.infer<typeof SkillKnowledgeManifestSchema>;
 
 /** Reads structured node-config skill guidance from a manifest file on disk. */
 export class ManifestSkillDocumentNodeConfigKnowledgeSource implements NodeConfigKnowledgeSource {
-    private manifest?: SkillKnowledgeManifest;
+    private readonly resource: CachedJsonFileResource<SkillKnowledgeManifest>;
 
     constructor(
-        private readonly manifestPath = join(
-            process.cwd(),
-            'data',
-            'skills',
-            'node-config-designer',
-            'NODE_CONFIG_KNOWLEDGE.json',
-        ),
-    ) {}
-
-    private async loadManifest(): Promise<SkillKnowledgeManifest> {
-        if (this.manifest) {
-            return this.manifest;
-        }
-
-        const raw = await readFile(this.manifestPath, 'utf-8');
-        this.manifest = JSON.parse(raw) as SkillKnowledgeManifest;
-        return this.manifest;
+        manifestPath = resolveJsonResourcePath({
+            fallbackRoot: join(process.cwd(), 'data'),
+            relativePath: join('skills', 'node-config-designer', 'NODE_CONFIG_KNOWLEDGE.json'),
+        }),
+    ) {
+        this.resource = new CachedJsonFileResource(manifestPath, SkillKnowledgeManifestSchema);
     }
 
     async getSharedNotes(input: NodeConfigurationDesignInput): Promise<string[]> {
         const blockIds = collectBlockIds(input.flow.blocks);
-        const manifest = await this.loadManifest();
+        const manifest = await this.resource.load();
         const conditionalNotes = (manifest.conditionalSharedNotes ?? [])
             .filter(entry => (entry.blockIds ?? []).some(blockId => blockIds.has(blockId)))
             .flatMap(entry => entry.notes ?? []);
@@ -99,7 +100,7 @@ export class ManifestSkillDocumentNodeConfigKnowledgeSource implements NodeConfi
 
     async getStrategyDirectives(input: NodeConfigurationDesignInput): Promise<NodeConfigurationStrategyDirective[]> {
         const blockIds = collectBlockIds(input.flow.blocks);
-        const manifest = await this.loadManifest();
+        const manifest = await this.resource.load();
         return (manifest.strategyDirectives ?? [])
             .filter(entry => (entry.blockIds ?? []).some(blockId => blockIds.has(blockId)))
             .map(entry => ({

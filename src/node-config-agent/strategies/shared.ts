@@ -18,7 +18,10 @@ export interface NodeBlockConfigStrategy {
     blockId: string;
     strategyId: string;
     supports?(node: FlowNode): boolean;
-    apply(node: FlowNode, context: NodeBlockConfigStrategyContext): NodeBlockConfigStrategyResult;
+    apply(
+        node: FlowNode,
+        context: NodeBlockConfigStrategyContext,
+    ): Promise<NodeBlockConfigStrategyResult> | NodeBlockConfigStrategyResult;
     validate?(node: FlowNode, flow: FlowDocument): string[];
 
     // TODO(node-config): Add optional ordering or priority metadata so future

@@ -17,6 +17,11 @@ import type { FlowBlockDefinition, FlowDocument } from '../flow/types';
 import { GraphExecutionEngine } from '../graph/executor';
 import { availableFlowBlocks } from './catalog';
 import { defaultMockFlowDesignGenerate } from './mocks';
+import {
+    getFlowDesignDefaultModel,
+    getFlowDesignSampleInputDefaults,
+    getFlowDesignSystemPromptDefault,
+} from './resources';
 import type {
     FlowDesignAiGenerateRequest,
     FlowDesignDraftResult,
@@ -89,20 +94,12 @@ export function inferFlowDesignTaskType(userRequest: string, wantsJson: boolean)
 }
 
 /** Builds the deterministic sample input used to probe a designed flow. */
-export function buildFlowDesignSampleInput(taskType: FlowDesignTaskType, userRequest: string): string {
-    const lowered = userRequest.toLowerCase();
-    if (lowered.includes('keyword') || lowered.includes('키워드')) {
-        return '생산성 향상';
-    }
-    if (taskType === 'blog-title-generation') {
-        return '원격 근무';
-    }
-
-    return '샘플 입력';
+export async function buildFlowDesignSampleInput(taskType: FlowDesignTaskType, userRequest: string): Promise<string> {
+    return await getFlowDesignSampleInputDefaults(taskType, userRequest);
 }
 
 /** Produces a normalized intent object from a raw user request. */
-export function analyzeFlowRequest(userRequest: string): FlowDesignIntent {
+export async function analyzeFlowRequest(userRequest: string): Promise<FlowDesignIntent> {
     const lowered = userRequest.toLowerCase();
     const wantsJson =
         lowered.includes('json') ||
@@ -118,19 +115,15 @@ export function analyzeFlowRequest(userRequest: string): FlowDesignIntent {
         wantsJson,
         wantsMultiple: desiredCount > 1,
         desiredCount,
-        sampleInput: buildFlowDesignSampleInput(taskType, userRequest),
+        sampleInput: await buildFlowDesignSampleInput(taskType, userRequest),
     };
 }
 
 /** Builds the system prompt used by the default AI generation node. */
-export function buildFlowDesignSystemPrompt(userRequest: string, improvementNotes: string[]): string {
+export async function buildFlowDesignSystemPrompt(userRequest: string, improvementNotes: string[]): Promise<string> {
     const lowered = userRequest.toLowerCase();
-    const basePrompt =
-        lowered.includes('blog') || lowered.includes('title') || lowered.includes('타이틀') || lowered.includes('제목')
-            ? 'You generate clear and catchy blog titles based on one keyword.'
-            : lowered.includes('json')
-            ? 'You return concise structured output that can be safely parsed as JSON.'
-            : 'You transform text requests into concise useful outputs.';
+    const taskType = inferFlowDesignTaskType(userRequest, lowered.includes('json'));
+    const basePrompt = await getFlowDesignSystemPromptDefault(taskType);
 
     return improvementNotes.length > 0
         ? `${basePrompt} Improvements to apply: ${improvementNotes.join(' | ')}`
@@ -193,7 +186,7 @@ export function ensureRequiredFlowBlocks(availableBlocks: FlowBlockDefinition[],
 }
 
 /** Creates the shared default flow draft used by flow-designer style wrappers. */
-export function designFlowDraft(args: {
+export async function designFlowDraft(args: {
     userRequest: string;
     sampleInput: string;
     desiredCount: number;
@@ -206,7 +199,7 @@ export function designFlowDraft(args: {
     designConnection?: FlowDesignConnection;
     designSessionId?: string;
     toolName?: string;
-}): FlowDesignDraftResult {
+}): Promise<FlowDesignDraftResult> {
     const availableBlocks = args.availableBlocks ?? availableFlowBlocks;
     const improvementNotes = [...(args.guidanceNotes ?? []), ...(args.improvementNotes ?? [])];
     ensureRequiredFlowBlocks(availableBlocks, [InputBlock.id, AiGenerateBlock.id, ViewBlock.id]);
@@ -248,7 +241,7 @@ export function designFlowDraft(args: {
         nodeId: 'system-input',
         label: 'System Input',
         config: {
-            input: buildFlowDesignSystemPrompt(args.userRequest, improvementNotes),
+            input: await buildFlowDesignSystemPrompt(args.userRequest, improvementNotes),
         },
     });
     monitor?.setNodePhase('system-input', 'ready', 'system-prompt-ready');
@@ -282,7 +275,7 @@ export function designFlowDraft(args: {
         nodeId: 'ai-node',
         label: mapping.generate?.label ?? 'AI Generate',
         config: {
-            model: 'mock-flow-model',
+            model: await getFlowDesignDefaultModel(),
             jsonOutput: String(args.wantsJson),
         },
     });
@@ -339,7 +332,7 @@ export function designFlowDraft(args: {
             nodeId: 'system-input',
             label: 'System Input',
             config: {
-                input: buildFlowDesignSystemPrompt(args.userRequest, improvementNotes),
+                input: await buildFlowDesignSystemPrompt(args.userRequest, improvementNotes),
             },
         }).flow;
         flow = createFlowNode(flow, InputBlock.id, {
@@ -359,7 +352,7 @@ export function designFlowDraft(args: {
             nodeId: 'ai-node',
             label: mapping.generate?.label ?? 'AI Generate',
             config: {
-                model: 'mock-flow-model',
+                model: await getFlowDesignDefaultModel(),
                 jsonOutput: String(args.wantsJson),
             },
         }).flow;

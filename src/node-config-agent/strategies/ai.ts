@@ -1,4 +1,5 @@
 // AI block strategy for model and structured-output configuration.
+import { getNodeConfigModelProfile } from '../../node-config-design/resources';
 import {
     collectStrategyNotesFor,
     inferTaskType,
@@ -9,23 +10,14 @@ import {
 } from './shared';
 import type { NodeConfigurationDesignInput } from '../types';
 
-function selectModel(input: NodeConfigurationDesignInput): string {
+async function selectModel(input: NodeConfigurationDesignInput): Promise<string> {
     const taskType = inferTaskType(input.userRequest, input.wantsJson);
     const strategyNotes = collectStrategyNotesFor(input, 'ai-generation').join(' ').toLowerCase();
-
-    if (strategyNotes.includes('json')) {
-        return 'mock-structured-gpt';
-    }
-    if (strategyNotes.includes('title') || strategyNotes.includes('headline')) {
-        return 'mock-blog-gpt';
-    }
-    if (input.wantsJson) {
-        return 'mock-structured-gpt';
-    }
-    if (taskType === 'blog-title-generation') {
-        return 'mock-blog-gpt';
-    }
-    return 'mock-flow-model';
+    return await getNodeConfigModelProfile({
+        taskType,
+        wantsJson: input.wantsJson,
+        strategyNotes,
+    });
 }
 
 /** Strategy for the AI block that selects model/output mode from task and reflection signals. */
@@ -36,10 +28,17 @@ export class AiGenerateNodeStrategy implements NodeBlockConfigStrategy {
     apply(
         node: Parameters<NodeBlockConfigStrategy['apply']>[0],
         context: NodeBlockConfigStrategyContext,
-    ): NodeBlockConfigStrategyResult {
+    ): Promise<NodeBlockConfigStrategyResult> {
+        return this.applyAsync(node, context);
+    }
+
+    private async applyAsync(
+        node: Parameters<NodeBlockConfigStrategy['apply']>[0],
+        context: NodeBlockConfigStrategyContext,
+    ): Promise<NodeBlockConfigStrategyResult> {
         const config = {
             ...(node.config ?? {}),
-            model: selectModel(context.input),
+            model: await selectModel(context.input),
             jsonOutput: String(context.input.wantsJson),
         };
 

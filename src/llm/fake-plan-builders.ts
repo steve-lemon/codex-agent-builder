@@ -1,13 +1,18 @@
 // Deterministic plan builders used by the fake LLM gateway.
 import type { Plan } from '../agent/schemas';
-import { defaultFlowDesignProbeSampleInputs } from '../flow-design/mocks';
-import { fakePlanCopy } from './fake-copy';
+import { getFlowDesignDefaultModel, getFlowDesignProbeDefaults } from '../flow-design/resources';
+import { getFakePlanCopy } from './fake-copy';
 import type { PlannerInput } from './types';
 
 type EnsureToolAvailable = (toolName: string) => string;
 
 /** Builds a deterministic research skill plan. */
-export function buildResearchBriefPlan(input: PlannerInput, ensureToolAvailable: EnsureToolAvailable): Plan {
+export async function buildResearchBriefPlan(
+    input: PlannerInput,
+    ensureToolAvailable: EnsureToolAvailable,
+): Promise<Plan> {
+    const fakePlanCopy = await getFakePlanCopy();
+
     return {
         steps: [
             {
@@ -32,7 +37,9 @@ export function buildResearchBriefPlan(input: PlannerInput, ensureToolAvailable:
 }
 
 /** Builds a deterministic ops automation plan. */
-export function buildOpsAutomationPlan(ensureToolAvailable: EnsureToolAvailable): Plan {
+export async function buildOpsAutomationPlan(ensureToolAvailable: EnsureToolAvailable): Promise<Plan> {
+    const fakePlanCopy = await getFakePlanCopy();
+
     return {
         steps: [
             {
@@ -61,7 +68,12 @@ export function buildOpsAutomationPlan(ensureToolAvailable: EnsureToolAvailable)
 }
 
 /** Builds a deterministic preflight validator plan. */
-export function buildFlowPreflightValidatorPlan(input: PlannerInput, ensureToolAvailable: EnsureToolAvailable): Plan {
+export async function buildFlowPreflightValidatorPlan(
+    input: PlannerInput,
+    ensureToolAvailable: EnsureToolAvailable,
+): Promise<Plan> {
+    const fakePlanCopy = await getFakePlanCopy();
+
     return {
         steps: [
             {
@@ -122,7 +134,9 @@ export function buildFlowPreflightValidatorPlan(input: PlannerInput, ensureToolA
 }
 
 /** Builds the deterministic node-config-designer plan. */
-export function buildNodeConfigDesignerPlan(): Plan {
+export async function buildNodeConfigDesignerPlan(): Promise<Plan> {
+    const fakePlanCopy = await getFakePlanCopy();
+
     return {
         steps: [
             {
@@ -141,7 +155,13 @@ export function buildNodeConfigDesignerPlan(): Plan {
 }
 
 /** Builds the deterministic flow-designer plan. */
-export function buildFlowDesignerPlan(input: PlannerInput, ensureToolAvailable: EnsureToolAvailable): Plan {
+export async function buildFlowDesignerPlan(
+    input: PlannerInput,
+    ensureToolAvailable: EnsureToolAvailable,
+): Promise<Plan> {
+    const fakePlanCopy = await getFakePlanCopy();
+    const probeDefaults = await getFlowDesignProbeDefaults();
+    const defaultModel = await getFlowDesignDefaultModel();
     const text = input.userInput.toLowerCase();
     const isClearlyInfeasible =
         text.includes('email') ||
@@ -235,10 +255,10 @@ export function buildFlowDesignerPlan(input: PlannerInput, ensureToolAvailable: 
                     args: {
                         blockId: 'ai-generate',
                         sampleConfig: {
-                            model: 'mock-flow-model',
+                            model: probeDefaults.sampleConfig.model ?? defaultModel,
                             jsonOutput: String(input.userInput.toLowerCase().includes('json')),
                         },
-                        sampleInputs: defaultFlowDesignProbeSampleInputs,
+                        sampleInputs: probeDefaults.sampleInputs,
                     },
                 },
             ],
@@ -463,7 +483,11 @@ export function buildFlowDesignerPlan(input: PlannerInput, ensureToolAvailable: 
 }
 
 /** Builds the default customer-support style plan. */
-export function buildCustomerSupportPlan(input: PlannerInput, ensureToolAvailable: EnsureToolAvailable): Plan {
+export async function buildCustomerSupportPlan(
+    input: PlannerInput,
+    ensureToolAvailable: EnsureToolAvailable,
+): Promise<Plan> {
+    const fakePlanCopy = await getFakePlanCopy();
     const text = input.userInput.toLowerCase();
     const requiresApproval = text.includes('refund') || text.includes('ticket') || text.includes('escalate');
 

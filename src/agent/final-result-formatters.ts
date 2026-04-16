@@ -1,7 +1,7 @@
 // Skill-specific final-result formatters used by gateway implementations.
 import { createEmptyFlowDesignDetailsDto, toFlowDesignDetailsDto } from '../flow-design/dto';
 import { createEmptyNodeConfigDesignDetailsDto, toNodeConfigDesignDetailsDto } from '../node-config-design/dto';
-import { fakeFinalCopy } from '../llm/fake-copy';
+import { getFakeFinalCopy } from '../llm/fake-copy';
 import { buildFinalResultDesignDetails } from './design-details';
 import {
     buildFlowDesignerPayload,
@@ -89,7 +89,8 @@ export function formatFlowPreflightValidatorFinalResult(stepResults: StepResult[
 }
 
 /** Formats the final result for a `node-config-designer` run. */
-export function formatNodeConfigDesignerFinalResult(): FinalResult {
+export async function formatNodeConfigDesignerFinalResult(): Promise<FinalResult> {
+    const fakeFinalCopy = await getFakeFinalCopy();
     return {
         summary: fakeFinalCopy.nodeConfigDesigner.summary,
         success: true,
@@ -107,7 +108,8 @@ export function formatNodeConfigDesignerFinalResult(): FinalResult {
 }
 
 /** Formats the final result for a `flow-designer` run. */
-export function formatFlowDesignerFinalResult(stepResults: StepResult[]): FinalResult {
+export async function formatFlowDesignerFinalResult(stepResults: StepResult[]): Promise<FinalResult> {
+    const fakeFinalCopy = await getFakeFinalCopy();
     const feasibilityData = findToolData<PreflightData>(stepResults, 'prevalidateFlowDesignRequest');
     const reflections = findAllToolData<ReflectionData>(stepResults, 'reflectFlowResult');
     const refinedGraphs = stepResults.filter(result => JSON.stringify(result).includes('"toolName":"refineTaskGraph"'));
@@ -244,7 +246,8 @@ export function formatFlowDesignerFinalResult(stepResults: StepResult[]): FinalR
 }
 
 /** Formats a generic fallback final result when no specialized formatter applies. */
-export function formatGenericFinalResult(skillName: string, stepResults: StepResult[]): FinalResult {
+export async function formatGenericFinalResult(skillName: string, stepResults: StepResult[]): Promise<FinalResult> {
+    const fakeFinalCopy = await getFakeFinalCopy();
     return {
         summary: `Handled with skill ${skillName}. Processed ${stepResults.length} step results.`,
         success: true,

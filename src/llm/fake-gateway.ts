@@ -31,25 +31,25 @@ export class FakeLlmGateway implements LlmGateway {
         };
 
         if (input.skillName === 'research-brief-generator') {
-            return buildResearchBriefPlan(input, ensureToolAvailable);
+            return await buildResearchBriefPlan(input, ensureToolAvailable);
         }
 
         if (input.skillName === 'ops-automation-agent') {
-            return buildOpsAutomationPlan(ensureToolAvailable);
+            return await buildOpsAutomationPlan(ensureToolAvailable);
         }
 
         if (input.skillName === 'flow-preflight-validator') {
-            return buildFlowPreflightValidatorPlan(input, ensureToolAvailable);
+            return await buildFlowPreflightValidatorPlan(input, ensureToolAvailable);
         }
 
         if (input.skillName === 'node-config-designer') {
-            return buildNodeConfigDesignerPlan();
+            return await buildNodeConfigDesignerPlan();
         }
 
         if (input.skillName === 'flow-designer') {
-            return buildFlowDesignerPlan(input, ensureToolAvailable);
+            return await buildFlowDesignerPlan(input, ensureToolAvailable);
         }
-        return buildCustomerSupportPlan(input, ensureToolAvailable);
+        return await buildCustomerSupportPlan(input, ensureToolAvailable);
     }
 
     async reflect(input: ReflectorInput) {
@@ -64,13 +64,13 @@ export class FakeLlmGateway implements LlmGateway {
         }
 
         if (input.skillName === 'node-config-designer') {
-            return formatNodeConfigDesignerFinalResult();
+            return await formatNodeConfigDesignerFinalResult();
         }
 
         if (input.skillName === 'flow-designer') {
-            return formatFlowDesignerFinalResult(stepResults);
+            return await formatFlowDesignerFinalResult(stepResults);
         }
 
-        return formatGenericFinalResult(input.skillName, stepResults);
+        return await formatGenericFinalResult(input.skillName, stepResults);
     }
 }

@@ -27,7 +27,7 @@ describe('flow-design knowledge sources', () => {
             'utf-8',
         );
 
-        const intent = analyzeFlowRequest('상품 소개 문구를 JSON 형태로 여러개 만들어줘');
+        const intent = await analyzeFlowRequest('상품 소개 문구를 JSON 형태로 여러개 만들어줘');
         const source = new ManifestFlowDesignKnowledgeSource(manifestPath);
 
         expect(await source.getDraftNotes(intent)).toEqual(
@@ -78,8 +78,8 @@ describe('flow-design knowledge sources', () => {
         );
     });
 
-    it('core still accepts explicit guidance notes for direct callers', () => {
-        const draft = designFlowDraft({
+    it('core still accepts explicit guidance notes for direct callers', async () => {
+        const draft = await designFlowDraft({
             userRequest: '키워드를 줄테니 블로그 타이틀 여러개 만들기',
             sampleInput: '생산성 향상',
             desiredCount: 5,

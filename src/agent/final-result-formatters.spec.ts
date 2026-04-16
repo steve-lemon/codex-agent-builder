@@ -44,8 +44,8 @@ describe('final-result formatters', () => {
         expect(result.designDetails?.flowDesign?.feasible).toBe(false);
     });
 
-    it('formats node-config-designer results without inspecting step outputs', () => {
-        const result = formatNodeConfigDesignerFinalResult();
+    it('formats node-config-designer results without inspecting step outputs', async () => {
+        const result = await formatNodeConfigDesignerFinalResult();
 
         expect(result.success).toBe(true);
         expect(result.payload).toEqual(
@@ -59,8 +59,8 @@ describe('final-result formatters', () => {
         );
     });
 
-    it('formats successful flow-designer results from step outputs', () => {
-        const result = formatFlowDesignerFinalResult([
+    it('formats successful flow-designer results from step outputs', async () => {
+        const result = await formatFlowDesignerFinalResult([
             makeStepResult('s1', 'prevalidateFlowDesignRequest', {
                 feasible: true,
                 missingCapabilities: [],
@@ -96,8 +96,8 @@ describe('final-result formatters', () => {
         expect(result.designDetails?.nodeConfiguration?.appliedStrategies).toEqual(['ai-generation']);
     });
 
-    it('formats generic fallback results', () => {
-        const result = formatGenericFinalResult('customer-support-reviewer', []);
+    it('formats generic fallback results', async () => {
+        const result = await formatGenericFinalResult('customer-support-reviewer', []);
 
         expect(result).toEqual(
             expect.objectContaining({

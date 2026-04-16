@@ -60,26 +60,30 @@ export class NodeConfigDesignService {
         const nodeStrategyAssignments: NodeConfigurationDesignResult['nodeStrategyAssignments'] = [];
         const nextFlow: FlowDocument = {
             ...enrichedInput.flow,
-            nodes: enrichedInput.flow.nodes.map(node => {
-                const strategy = this.resolveStrategy(enrichedInput.flow, node);
-                if (!strategy) {
-                    return node;
-                }
+            nodes: await Promise.all(
+                enrichedInput.flow.nodes.map(async node => {
+                    const strategy = this.resolveStrategy(enrichedInput.flow, node);
+                    if (!strategy) {
+                        return node;
+                    }
 
-                const result = strategy.apply(node, {
-                    flow: enrichedInput.flow,
-                    input: enrichedInput,
-                    probeInsightsApplied,
-                });
-                if (result.suggestion) {
-                    suggestions.push(result.suggestion);
-                    nodeStrategyAssignments.push({
-                        nodeId: node.id,
-                        strategyId: result.suggestion.strategyId,
-                    });
-                }
-                return result.node;
-            }),
+                    const result = await Promise.resolve(
+                        strategy.apply(node, {
+                            flow: enrichedInput.flow,
+                            input: enrichedInput,
+                            probeInsightsApplied,
+                        }),
+                    );
+                    if (result.suggestion) {
+                        suggestions.push(result.suggestion);
+                        nodeStrategyAssignments.push({
+                            nodeId: node.id,
+                            strategyId: result.suggestion.strategyId,
+                        });
+                    }
+                    return result.node;
+                }),
+            ),
         };
         const appliedStrategyIds = [...new Set(nodeStrategyAssignments.map(assignment => assignment.strategyId))];
 

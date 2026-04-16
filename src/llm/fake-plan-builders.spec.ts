@@ -30,8 +30,8 @@ function buildEnsureToolAvailable(...toolNames: string[]) {
 }
 
 describe('fake plan builders', () => {
-    it('builds the research plan', () => {
-        const plan = buildResearchBriefPlan(
+    it('builds the research plan', async () => {
+        const plan = await buildResearchBriefPlan(
             { ...baseInput, skillName: 'research-brief-generator', userInput: 'research topic' },
             buildEnsureToolAvailable('webSearch'),
         );
@@ -45,8 +45,8 @@ describe('fake plan builders', () => {
         );
     });
 
-    it('builds the preflight validator plan with step references', () => {
-        const plan = buildFlowPreflightValidatorPlan(
+    it('builds the preflight validator plan with step references', async () => {
+        const plan = await buildFlowPreflightValidatorPlan(
             { ...baseInput, skillName: 'flow-preflight-validator', userInput: '이메일 검증' },
             buildEnsureToolAvailable(
                 'inferTaskGraph',
@@ -70,8 +70,8 @@ describe('fake plan builders', () => {
         );
     });
 
-    it('builds the node-config designer plan', () => {
-        const plan = buildNodeConfigDesignerPlan();
+    it('builds the node-config designer plan', async () => {
+        const plan = await buildNodeConfigDesignerPlan();
         expect(plan.steps).toHaveLength(2);
         expect(plan.steps[0]).toEqual(
             expect.objectContaining({
@@ -80,8 +80,8 @@ describe('fake plan builders', () => {
         );
     });
 
-    it('builds an infeasible flow-designer plan for missing-capability requests', () => {
-        const plan = buildFlowDesignerPlan(
+    it('builds an infeasible flow-designer plan for missing-capability requests', async () => {
+        const plan = await buildFlowDesignerPlan(
             { ...baseInput, skillName: 'flow-designer', userInput: '이메일을 확인해서 답장 해줘' },
             buildEnsureToolAvailable('analyzeFlowRequest', 'prevalidateFlowDesignRequest'),
         );
@@ -90,8 +90,8 @@ describe('fake plan builders', () => {
         expect(plan.steps[2]).toEqual(expect.objectContaining({ mode: 'reasoning' }));
     });
 
-    it('builds a multi-pass flow-designer plan for richer requests', () => {
-        const plan = buildFlowDesignerPlan(
+    it('builds a multi-pass flow-designer plan for richer requests', async () => {
+        const plan = await buildFlowDesignerPlan(
             { ...baseInput, skillName: 'flow-designer', userInput: '키워드로 블로그 제목 여러개를 json으로 만들어줘' },
             buildEnsureToolAvailable(
                 'analyzeFlowRequest',
@@ -112,8 +112,8 @@ describe('fake plan builders', () => {
         expect(plan.steps[plan.steps.length - 1]).toEqual(expect.objectContaining({ mode: 'finalize' }));
     });
 
-    it('builds the default customer-support plan', () => {
-        const plan = buildCustomerSupportPlan(
+    it('builds the default customer-support plan', async () => {
+        const plan = await buildCustomerSupportPlan(
             { ...baseInput, userInput: 'please refund this order' },
             buildEnsureToolAvailable('getCustomerById', 'getOrdersByCustomer', 'getRefundPolicy', 'refundOrder'),
         );
@@ -122,8 +122,8 @@ describe('fake plan builders', () => {
         expect(plan.steps.some(step => JSON.stringify(step).includes('"refundOrder"'))).toBe(true);
     });
 
-    it('builds the ops automation plan', () => {
-        const plan = buildOpsAutomationPlan(
+    it('builds the ops automation plan', async () => {
+        const plan = await buildOpsAutomationPlan(
             buildEnsureToolAvailable('getRefundPolicy', 'webSearch', 'sendSlackMessage'),
         );
         expect(plan.steps).toHaveLength(3);

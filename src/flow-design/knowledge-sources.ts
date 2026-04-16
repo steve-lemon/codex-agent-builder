@@ -1,21 +1,31 @@
 // Built-in knowledge-source implementations for flow-design.
-import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { z } from 'zod';
+import { CachedJsonFileResource } from '../resources/json-file';
+import { resolveJsonResourcePath } from '../resources/path-resolver';
 import type { FlowDesignIntent, FlowDesignReflection } from './types';
 import type { FlowDesignKnowledgeSource } from './knowledge';
 
-interface FlowDesignKnowledgeManifest {
-    sharedDraftNotes?: string[];
-    conditionalDraftNotes?: Array<{
-        match?: {
-            taskTypes?: string[];
-            wantsJson?: boolean;
-            wantsMultiple?: boolean;
-        };
-        notes?: string[];
-    }>;
-    reflectionNotes?: string[];
-}
+const FlowDesignKnowledgeManifestSchema = z.object({
+    sharedDraftNotes: z.array(z.string()).optional(),
+    conditionalDraftNotes: z
+        .array(
+            z.object({
+                match: z
+                    .object({
+                        taskTypes: z.array(z.string()).optional(),
+                        wantsJson: z.boolean().optional(),
+                        wantsMultiple: z.boolean().optional(),
+                    })
+                    .optional(),
+                notes: z.array(z.string()).optional(),
+            }),
+        )
+        .optional(),
+    reflectionNotes: z.array(z.string()).optional(),
+});
+
+type FlowDesignKnowledgeManifest = z.infer<typeof FlowDesignKnowledgeManifestSchema>;
 
 function unique(values: string[]): string[] {
     return [...new Set(values)];
@@ -23,30 +33,19 @@ function unique(values: string[]): string[] {
 
 /** Reads structured flow-design skill guidance from a manifest file on disk. */
 export class ManifestFlowDesignKnowledgeSource implements FlowDesignKnowledgeSource {
-    private manifest?: FlowDesignKnowledgeManifest;
+    private readonly resource: CachedJsonFileResource<FlowDesignKnowledgeManifest>;
 
     constructor(
-        private readonly manifestPath = join(
-            process.cwd(),
-            'data',
-            'skills',
-            'flow-designer',
-            'FLOW_DESIGN_KNOWLEDGE.json',
-        ),
-    ) {}
-
-    private async loadManifest(): Promise<FlowDesignKnowledgeManifest> {
-        if (this.manifest) {
-            return this.manifest;
-        }
-
-        const raw = await readFile(this.manifestPath, 'utf-8');
-        this.manifest = JSON.parse(raw) as FlowDesignKnowledgeManifest;
-        return this.manifest;
+        manifestPath = resolveJsonResourcePath({
+            fallbackRoot: join(process.cwd(), 'data'),
+            relativePath: join('skills', 'flow-designer', 'FLOW_DESIGN_KNOWLEDGE.json'),
+        }),
+    ) {
+        this.resource = new CachedJsonFileResource(manifestPath, FlowDesignKnowledgeManifestSchema);
     }
 
     async getDraftNotes(intent: FlowDesignIntent): Promise<string[]> {
-        const manifest = await this.loadManifest();
+        const manifest = await this.resource.load();
         const conditionalNotes = (manifest.conditionalDraftNotes ?? [])
             .filter(entry => {
                 const match = entry.match ?? {};
@@ -75,7 +74,7 @@ export class ManifestFlowDesignKnowledgeSource implements FlowDesignKnowledgeSou
         };
         reflection: FlowDesignReflection;
     }): Promise<string[]> {
-        const manifest = await this.loadManifest();
+        const manifest = await this.resource.load();
         const notes = [...(manifest.reflectionNotes ?? [])];
 
         if (args.sampleResult.status !== 'completed') {
