@@ -185,6 +185,9 @@ export class FakeLlmGateway implements LlmGateway {
                 text.includes('titles') ||
                 text.includes('타이틀') ||
                 text.includes('제목');
+            // TODO(flow-agent): Replace this keyword-based retry policy with a
+            // planner-visible policy object so pass limits are explainable and
+            // configurable per skill or request class.
             const maxDesignPasses = shouldUseExtendedRetryPolicy ? 3 : 2;
             const steps: Plan['steps'] = [
                 {
@@ -285,6 +288,9 @@ export class FakeLlmGateway implements LlmGateway {
                     currentPreflightStepId = reassessStepId;
                 }
 
+                // TODO(flow-agent): Allow the planner to short-circuit remaining
+                // passes when a reflection reports satisfaction instead of always
+                // materializing the full deterministic loop upfront.
                 const designStepId = `s${stepNumber++}`;
                 const validateStepId = `s${stepNumber++}`;
                 const runStepId = `s${stepNumber++}`;

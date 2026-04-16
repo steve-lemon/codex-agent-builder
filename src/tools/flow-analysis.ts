@@ -106,6 +106,9 @@ export function inferRequiredCapabilities(userRequest: string): string[] {
 
 /** Builds an inferred task graph from the user's natural-language request. */
 export function inferTaskGraph(userRequest: string): DirectedGraph {
+    // TODO(flow-agent): Replace these deterministic heuristics with a block-aware
+    // task decomposition model once we have enough grounded examples to infer
+    // richer operations without overfitting to a few prompts.
     const lowered = userRequest.toLowerCase();
 
     if (lowered.includes('email') || lowered.includes('mail') || userRequest.includes('이메일')) {
@@ -237,6 +240,8 @@ export function inferTaskGraph(userRequest: string): DirectedGraph {
 
 /** Refines an inferred task graph using reflection output from an earlier design pass. */
 export function refineTaskGraph(graph: DirectedGraph, reflection: TaskGraphRefinementInput): DirectedGraph {
+    // TODO(flow-agent): Track refinement provenance per node so later passes can
+    // explain which reflection note changed which task-graph expectation.
     const exactCountMatch = reflection.improvementNotes.join(' ').match(/exactly\s+(\d+)/i);
     const expectedCountHint = exactCountMatch ? `exactly ${exactCountMatch[1]} items` : undefined;
     const wantsJson = reflection.improvementNotes.some(note => note.toLowerCase().includes('json only'));
@@ -349,6 +354,8 @@ export function assessFlowFeasibility(userRequest: string): FlowFeasibilityAsses
 
 /** Performs a feasibility pass against a caller-provided task graph. */
 export function assessTaskGraphFeasibility(userRequest: string, taskGraph: DirectedGraph): FlowFeasibilityAssessment {
+    // TODO(flow-agent): Introduce a first-class capability taxonomy instead of
+    // string matching so block proposals and feasibility checks share one model.
     const nodeAnalyses = analyzeTaskGraph(taskGraph);
     const requiredCapabilities = inferRequiredCapabilities(userRequest);
     const missingCapabilities = requiredCapabilities.filter(

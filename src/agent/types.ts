@@ -4,6 +4,7 @@ import type { ToolCall, ToolResult, ToolRiskLevel } from '../tools/types';
 import type { Plan, PlanStep } from './schemas';
 import type { TraceEvent } from '../observability/types';
 import type { RunStateContext } from '../state/types';
+import type { FlowDesignConnection } from '../flow/design-monitor';
 
 export type RunStatus = 'idle' | 'running' | 'waiting_for_approval' | 'completed' | 'failed';
 
@@ -86,6 +87,7 @@ export interface ExecuteStepContext {
     stepIndex: number;
     allowParallel: boolean;
     runState: RunStateContext;
+    designConnection?: FlowDesignConnection;
 }
 
 /** Concrete timeout and retry settings resolved for a tool. */

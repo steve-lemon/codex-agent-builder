@@ -1,5 +1,6 @@
 // Contracts for the skill-based flow design agent.
 import type { GraphExecutionPlan, GraphRunResult } from '../graph/types';
+import type { FlowDesignConnection, FlowDesignSession } from '../flow/design-monitor';
 import type { FlowAiGenerateRequest } from '../flow/runtime';
 import type { FlowBlockDefinition, FlowDocument } from '../flow/types';
 
@@ -166,6 +167,9 @@ export interface FlowDesignAiGenerateRequest extends FlowAiGenerateRequest {
 export interface FlowDesignSkillServices {
     /** Optional custom AI generator used for example execution. */
     aiGenerate?: (request: FlowDesignAiGenerateRequest) => Promise<unknown>;
+
+    /** Optional live design session used to emit real-time graph updates. */
+    designSession?: FlowDesignSession;
 }
 
 /** Skill contract used by the flow design agent pipeline. */
@@ -190,4 +194,7 @@ export interface FlowDesignAgentOptions extends FlowDesignSkillServices {
 
     /** Optional custom skill order. */
     skills?: FlowDesignSkill[];
+
+    /** Optional connection used to stream real-time design updates to a client. */
+    designConnection?: FlowDesignConnection;
 }

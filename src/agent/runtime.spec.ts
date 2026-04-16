@@ -8,6 +8,7 @@ import { ToolRegistry } from '../tools/registry';
 import { buildDefaultToolRegistry } from '../tools';
 import type { LlmGateway } from '../llm/types';
 import { now } from '../time/now';
+import { CallbackFlowDesignConnection, type FlowDesignEvent } from '../flow/design-monitor';
 
 function buildDefaultRuntime() {
     return new AgentRuntime({
@@ -69,6 +70,32 @@ describe('runtime flow', () => {
                 nextActions: expect.arrayContaining([expect.stringContaining('email-read')]),
             }),
         );
+    });
+
+    it('streams live design graph events through the runtime when flow-designer tools execute', async () => {
+        const events: FlowDesignEvent[] = [];
+        const runtime = new AgentRuntime({
+            llm: new FakeLlmGateway(),
+            store: new InMemoryRunStateStore(),
+            toolRegistry: buildDefaultToolRegistry(),
+            flowDesignConnectionFactory: ({ skillName }) =>
+                skillName === 'flow-designer'
+                    ? new CallbackFlowDesignConnection(event => {
+                          events.push(event);
+                      })
+                    : undefined,
+        });
+
+        const result = await runtime.run('키워드를 줄테니 블로그 타이틀 여러개 만들기');
+
+        expect(result.status).toBe('completed');
+        expect(events.some(event => event.type === 'graph_started')).toBe(true);
+        expect(events.some(event => event.type === 'node_created')).toBe(true);
+        expect(events.some(event => event.type === 'edge_created')).toBe(true);
+        expect(events.some(event => event.type === 'graph_completed')).toBe(true);
+        expect(
+            events.filter(event => event.type === 'graph_started' && event.data?.toolName === 'designFlowDraft').length,
+        ).toBeGreaterThanOrEqual(1);
     });
 
     it('completes a preflight validation run and returns task-graph feasibility feedback', async () => {

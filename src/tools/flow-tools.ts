@@ -2,6 +2,7 @@
 import { z } from 'zod';
 import { AgentError } from '../errors/agent-error';
 import { AiGenerateBlock, BufferBlock, InputBlock, TextInputBlock, ViewBlock } from '../flow/blocks';
+import { FlowDesignSession } from '../flow/design-monitor';
 import {
     connectFlowPorts,
     createFlowDocument,
@@ -872,14 +873,10 @@ export function createFlowDesignTools(): ToolDefinition[] {
             allowedSkills: ['flow-designer'],
             requiresConfirmation: false,
             parallelSafe: false,
-            execute: async ({
-                userRequest,
-                sampleInput,
-                desiredCount,
-                wantsJson,
-                improvementNotes = [],
-                preflight,
-            }) => {
+            execute: async (
+                { userRequest, sampleInput, desiredCount, wantsJson, improvementNotes = [], preflight },
+                context,
+            ) => {
                 const feasibility = preflight ?? assessFlowFeasibility(userRequest);
                 if (!feasibility.feasible) {
                     throw new AgentError(
@@ -893,50 +890,149 @@ export function createFlowDesignTools(): ToolDefinition[] {
                 const taskEdges = feasibility.taskGraph.edges as TaskGraphEdge[];
                 const mapping = buildTaskGraphMapping(taskNodes);
                 let flow = createFlowDocument(availableBlocks);
-                flow = createFlowNode(flow, InputBlock.id, {
+                const monitor = context.designConnection
+                    ? new FlowDesignSession(`${context.runId}:designFlowDraft`, availableBlocks, context.designConnection)
+                    : undefined;
+
+                monitor?.start({
+                    toolName: 'designFlowDraft',
+                    userRequest,
+                });
+                monitor?.stageNode('system-input', {
+                    label: 'System Input',
+                    blockId: InputBlock.id,
+                    state: 'building-system-prompt',
+                });
+                monitor?.createNode(InputBlock.id, {
                     nodeId: 'system-input',
                     label: 'System Input',
                     config: {
                         input: buildSystemPrompt(userRequest, improvementNotes),
                     },
-                }).flow;
-                flow = createFlowNode(flow, InputBlock.id, {
+                });
+                monitor?.setNodePhase('system-input', 'ready', 'system-prompt-ready');
+
+                monitor?.stageNode('prompt-input', {
+                    label: mapping.promptInput?.label ?? 'Prompt Input',
+                    blockId: InputBlock.id,
+                    state: 'building-user-prompt',
+                });
+                monitor?.createNode(InputBlock.id, {
                     nodeId: 'prompt-input',
                     label: mapping.promptInput?.label ?? 'Prompt Input',
                     config: {
                         input: buildUserPrompt(userRequest, sampleInput, desiredCount, wantsJson, improvementNotes),
                     },
-                }).flow;
-                flow = createFlowNode(flow, AiGenerateBlock.id, {
+                });
+                monitor?.setNodePhase('prompt-input', 'ready', 'user-prompt-ready');
+
+                monitor?.stageNode('ai-node', {
+                    label: mapping.generate?.label ?? 'AI Generate',
+                    blockId: AiGenerateBlock.id,
+                    state: 'configuring-generation',
+                });
+                monitor?.createNode(AiGenerateBlock.id, {
                     nodeId: 'ai-node',
                     label: mapping.generate?.label ?? 'AI Generate',
                     config: {
                         model: 'mock-flow-model',
                         jsonOutput: String(wantsJson),
                     },
-                }).flow;
-                flow = createFlowNode(flow, ViewBlock.id, {
+                });
+                monitor?.setNodePhase('ai-node', 'created', 'awaiting-connections');
+
+                monitor?.stageNode('view-output', {
+                    label: mapping.review?.label ?? 'View Output',
+                    blockId: ViewBlock.id,
+                    state: 'creating-output-review',
+                });
+                monitor?.createNode(ViewBlock.id, {
                     nodeId: 'view-output',
                     label: mapping.review?.label ?? 'View Output',
-                }).flow;
-                flow = connectFlowPorts(flow, {
-                    sourceNodeId: 'system-input',
-                    sourcePort: 'output',
-                    targetNodeId: 'ai-node',
-                    targetPort: 'system',
-                }).flow;
-                flow = connectFlowPorts(flow, {
-                    sourceNodeId: 'prompt-input',
-                    sourcePort: 'output',
-                    targetNodeId: 'ai-node',
-                    targetPort: 'prompt',
-                }).flow;
-                flow = connectFlowPorts(flow, {
-                    sourceNodeId: 'ai-node',
-                    sourcePort: 'output',
-                    targetNodeId: 'view-output',
-                    targetPort: 'input',
-                }).flow;
+                });
+                monitor?.setNodePhase('view-output', 'created', 'awaiting-connections');
+
+                if (monitor) {
+                    monitor.connectPorts(
+                        {
+                            sourceNodeId: 'system-input',
+                            sourcePort: 'output',
+                            targetNodeId: 'ai-node',
+                            targetPort: 'system',
+                        },
+                        { flowHint: 'horizontal' },
+                    );
+                    monitor.connectPorts(
+                        {
+                            sourceNodeId: 'prompt-input',
+                            sourcePort: 'output',
+                            targetNodeId: 'ai-node',
+                            targetPort: 'prompt',
+                        },
+                        { flowHint: 'horizontal' },
+                    );
+                    monitor.connectPorts(
+                        {
+                            sourceNodeId: 'ai-node',
+                            sourcePort: 'output',
+                            targetNodeId: 'view-output',
+                            targetPort: 'input',
+                        },
+                        { flowHint: 'horizontal' },
+                    );
+                    monitor.setNodePhase('ai-node', 'connected', 'generation-graph-wired');
+                    monitor.setNodePhase('view-output', 'connected', 'review-graph-wired');
+                    monitor.complete({
+                        toolName: 'designFlowDraft',
+                        status: 'completed',
+                    });
+                    flow = monitor.getFlow();
+                } else {
+                    flow = createFlowNode(flow, InputBlock.id, {
+                        nodeId: 'system-input',
+                        label: 'System Input',
+                        config: {
+                            input: buildSystemPrompt(userRequest, improvementNotes),
+                        },
+                    }).flow;
+                    flow = createFlowNode(flow, InputBlock.id, {
+                        nodeId: 'prompt-input',
+                        label: mapping.promptInput?.label ?? 'Prompt Input',
+                        config: {
+                            input: buildUserPrompt(userRequest, sampleInput, desiredCount, wantsJson, improvementNotes),
+                        },
+                    }).flow;
+                    flow = createFlowNode(flow, AiGenerateBlock.id, {
+                        nodeId: 'ai-node',
+                        label: mapping.generate?.label ?? 'AI Generate',
+                        config: {
+                            model: 'mock-flow-model',
+                            jsonOutput: String(wantsJson),
+                        },
+                    }).flow;
+                    flow = createFlowNode(flow, ViewBlock.id, {
+                        nodeId: 'view-output',
+                        label: mapping.review?.label ?? 'View Output',
+                    }).flow;
+                    flow = connectFlowPorts(flow, {
+                        sourceNodeId: 'system-input',
+                        sourcePort: 'output',
+                        targetNodeId: 'ai-node',
+                        targetPort: 'system',
+                    }).flow;
+                    flow = connectFlowPorts(flow, {
+                        sourceNodeId: 'prompt-input',
+                        sourcePort: 'output',
+                        targetNodeId: 'ai-node',
+                        targetPort: 'prompt',
+                    }).flow;
+                    flow = connectFlowPorts(flow, {
+                        sourceNodeId: 'ai-node',
+                        sourcePort: 'output',
+                        targetNodeId: 'view-output',
+                        targetPort: 'input',
+                    }).flow;
+                }
 
                 return {
                     flow,

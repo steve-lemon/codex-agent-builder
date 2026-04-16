@@ -1,6 +1,7 @@
 // Skill-based agent that designs, validates, executes, and improves flows.
 import { AgentError } from '../errors/agent-error';
 import { AiGenerateBlock, BufferBlock, InputBlock, TextInputBlock, ViewBlock } from '../flow/blocks';
+import { FlowDesignSession } from '../flow/design-monitor';
 import type { FlowBlockDefinition } from '../flow/types';
 import { buildDefaultFlowDesignSkills } from './skills';
 import type {
@@ -55,78 +56,115 @@ export class FlowDesignAgent {
         const iterations: FlowDesignAttemptResult[] = [];
         const allUsedSkills = new Set<string>();
         let sharedImprovementNotes: string[] = [];
+        const designSession = this.options.designConnection
+            ? new FlowDesignSession(`flow-design:${Date.now()}`, this.availableBlocks, this.options.designConnection)
+            : undefined;
 
-        for (let iteration = 1; iteration <= this.maxIterations; iteration += 1) {
-            const state: FlowDesignAttemptState = {
-                iteration,
-                userRequest,
-                availableBlocks: this.availableBlocks,
-                improvementNotes: [...sharedImprovementNotes],
-                usedSkills: [],
-            };
+        designSession?.start({
+            userRequest,
+            iterationBudget: this.maxIterations,
+        });
 
-            try {
-                for (const skill of this.skills) {
-                    if (!skill.applies(state)) {
-                        continue;
-                    }
-
-                    state.usedSkills.push(skill.name);
-                    allUsedSkills.add(skill.name);
-                    await skill.run(state, {
-                        aiGenerate: this.options.aiGenerate,
+        try {
+            for (let iteration = 1; iteration <= this.maxIterations; iteration += 1) {
+                if (iteration > 1) {
+                    designSession?.clear({
+                        iteration,
+                        reason: 'retry',
                     });
                 }
-            } catch (error) {
-                const agentError = AgentError.from(error, 'Flow design agent failed');
-                return {
-                    status: 'failed',
+
+                const state: FlowDesignAttemptState = {
+                    iteration,
                     userRequest,
-                    intent: state.intent,
-                    finalFlow: state.flow,
-                    validation: state.validation,
-                    execution: state.execution,
-                    reflection: state.reflection,
-                    iterations:
-                        state.intent && state.flow && state.validation
-                            ? [...iterations, snapshotAttempt(state)]
-                            : iterations,
-                    usedSkills: [...allUsedSkills],
-                    error: agentError.message,
+                    availableBlocks: this.availableBlocks,
+                    improvementNotes: [...sharedImprovementNotes],
+                    usedSkills: [],
                 };
+
+                try {
+                    for (const skill of this.skills) {
+                        if (!skill.applies(state)) {
+                            continue;
+                        }
+
+                        state.usedSkills.push(skill.name);
+                        allUsedSkills.add(skill.name);
+                        await skill.run(state, {
+                            aiGenerate: this.options.aiGenerate,
+                            designSession,
+                        });
+                    }
+                } catch (error) {
+                    const agentError = AgentError.from(error, 'Flow design agent failed');
+                    designSession?.complete({
+                        status: 'failed',
+                        error: agentError.message,
+                        iteration,
+                    });
+                    return {
+                        status: 'failed',
+                        userRequest,
+                        intent: state.intent,
+                        finalFlow: state.flow,
+                        validation: state.validation,
+                        execution: state.execution,
+                        reflection: state.reflection,
+                        iterations:
+                            state.intent && state.flow && state.validation
+                                ? [...iterations, snapshotAttempt(state)]
+                                : iterations,
+                        usedSkills: [...allUsedSkills],
+                        error: agentError.message,
+                    };
+                }
+
+                const attempt = snapshotAttempt(state);
+                iterations.push(attempt);
+                sharedImprovementNotes = [...attempt.improvementNotes];
+
+                if (attempt.validation.isValid && attempt.reflection?.satisfied) {
+                    designSession?.complete({
+                        status: 'completed',
+                        iteration,
+                        usedSkills: [...allUsedSkills],
+                    });
+                    return {
+                        status: 'completed',
+                        userRequest,
+                        intent: attempt.intent,
+                        finalFlow: attempt.flow,
+                        validation: attempt.validation,
+                        execution: attempt.execution,
+                        reflection: attempt.reflection,
+                        iterations,
+                        usedSkills: [...allUsedSkills],
+                    };
+                }
             }
 
-            const attempt = snapshotAttempt(state);
-            iterations.push(attempt);
-            sharedImprovementNotes = [...attempt.improvementNotes];
-
-            if (attempt.validation.isValid && attempt.reflection?.satisfied) {
-                return {
-                    status: 'completed',
-                    userRequest,
-                    intent: attempt.intent,
-                    finalFlow: attempt.flow,
-                    validation: attempt.validation,
-                    execution: attempt.execution,
-                    reflection: attempt.reflection,
-                    iterations,
-                    usedSkills: [...allUsedSkills],
-                };
-            }
+            const lastAttempt = iterations.length > 0 ? iterations[iterations.length - 1] : undefined;
+            designSession?.complete({
+                status: 'failed',
+                reason: 'retry-budget-exhausted',
+                usedSkills: [...allUsedSkills],
+            });
+            return {
+                status: 'failed',
+                userRequest,
+                intent: lastAttempt?.intent,
+                finalFlow: lastAttempt?.flow,
+                validation: lastAttempt?.validation,
+                execution: lastAttempt?.execution,
+                reflection: lastAttempt?.reflection,
+                iterations,
+                usedSkills: [...allUsedSkills],
+                error: lastAttempt?.reflection?.issues.join(' ') || 'Flow design agent exhausted its retry budget.',
+            };
+        } finally {
+            // The session may already be completed above. This ensures observers
+            // are always closed when the agent scope ends.
+            void this.options.designConnection?.close?.();
         }
-
-        const lastAttempt = iterations.length > 0 ? iterations[iterations.length - 1] : undefined;
-        return {
-            status: 'failed',
-            userRequest,
-            intent: lastAttempt?.intent,
-            finalFlow: lastAttempt?.flow,
-            validation: lastAttempt?.validation,
-            execution: lastAttempt?.execution,
-            reflection: lastAttempt?.reflection,
-            iterations,
-            usedSkills: [...allUsedSkills],
-            error: lastAttempt?.reflection?.issues.join(' ') || 'Flow design agent exhausted its retry budget.',
-        };
     }
 }

@@ -19,6 +19,7 @@ import { AgentError } from '../errors/agent-error';
 import { createLazyRunStateContext } from '../state/lazy-run-state';
 import { buildToolManifest } from '../tools/types';
 import { TraceStore } from '../observability/types';
+import type { FlowDesignConnection } from '../flow/design-monitor';
 
 /** Constructor dependencies required by the runtime coordinator. */
 export interface AgentRuntimeOptions {
@@ -27,6 +28,11 @@ export interface AgentRuntimeOptions {
     toolRegistry: ToolRegistry;
     tracer?: AgentTracer;
     traceStore?: TraceStore;
+    flowDesignConnectionFactory?: (params: {
+        runId: string;
+        skillName: SkillName;
+        userInput: string;
+    }) => FlowDesignConnection | undefined;
 }
 
 /** Orchestrates selection, planning, execution, persistence, approvals, and tracing. */
@@ -62,6 +68,11 @@ export class AgentRuntime {
         const allowedToolDefinitions = this.router.toolsForSkill(skillName);
         const allowedTools = allowedToolDefinitions.map(tool => tool.name);
         const toolManifests = allowedToolDefinitions.map(buildToolManifest);
+        const designConnection = this.options.flowDesignConnectionFactory?.({
+            runId,
+            skillName,
+            userInput,
+        });
 
         this.tracer.log(runId, 'skill_selected', { skillName, allowedTools });
         this.tracer.log(runId, 'planner_call', {});
@@ -93,11 +104,12 @@ export class AgentRuntime {
         };
 
         await this.options.store.save(initialState);
-        const result = await this.executeUntilPauseOrComplete(runId);
+        const result = await this.executeUntilPauseOrComplete(runId, designConnection);
         this.tracer.log(runId, 'run_end', { status: result.status });
         if (result.status !== 'waiting_for_approval') {
             await this.tracer.flush(runId);
         }
+        void designConnection?.close?.();
         return { ...result, trace: this.tracer.getEvents(runId) };
     }
 
@@ -147,15 +159,24 @@ export class AgentRuntime {
             }));
         }
 
-        const result = await this.executeUntilPauseOrComplete(runId);
+        const designConnection = this.options.flowDesignConnectionFactory?.({
+            runId,
+            skillName: run.skillName as SkillName,
+            userInput: run.userInput,
+        });
+        const result = await this.executeUntilPauseOrComplete(runId, designConnection);
         this.tracer.log(runId, 'run_end', { status: result.status });
         if (result.status !== 'waiting_for_approval') {
             await this.tracer.flush(runId);
         }
+        void designConnection?.close?.();
         return { ...result, trace: this.tracer.getEvents(runId) };
     }
 
-    private async executeUntilPauseOrComplete(runId: string): Promise<RuntimeRunResult> {
+    private async executeUntilPauseOrComplete(
+        runId: string,
+        designConnection?: FlowDesignConnection,
+    ): Promise<RuntimeRunResult> {
         let run = await this.options.store.get(runId);
         if (!run) {
             throw new AgentError(`Run not found: ${runId}`);
@@ -175,6 +196,7 @@ export class AgentRuntime {
                         stepIndex,
                         allowParallel: true,
                         runState: this.createRunStateContext(runId),
+                        designConnection,
                     },
                 });
 

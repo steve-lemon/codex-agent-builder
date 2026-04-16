@@ -95,6 +95,7 @@ export class StepExecutor {
                             runId,
                             now: now(),
                             runState: context.runState,
+                            designConnection: context.designConnection,
                         },
                     );
                     if (!execution.ok) {

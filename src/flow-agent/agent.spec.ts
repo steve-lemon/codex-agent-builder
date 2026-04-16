@@ -1,6 +1,7 @@
 // Vitest specs for the skill-based flow design agent.
 import { describe, expect, it } from 'vitest';
 import { AiGenerateBlock, InputBlock, ViewBlock } from '../flow/blocks';
+import { CallbackFlowDesignConnection, type FlowDesignEvent } from '../flow/design-monitor';
 import { FlowDesignAgent } from './agent';
 
 describe('flow design agent', () => {
@@ -85,5 +86,42 @@ describe('flow design agent', () => {
         expect(result.error).toMatch(/Required flow block is not available/);
         expect(result.usedSkills).toContain('flow-composition');
         expect(result.finalFlow).toBeUndefined();
+    });
+
+    it('streams live graph design events while composing and retrying a flow', async () => {
+        const events: FlowDesignEvent[] = [];
+        const agent = new FlowDesignAgent({
+            maxIterations: 2,
+            designConnection: new CallbackFlowDesignConnection(event => {
+                events.push(event);
+            }),
+            aiGenerate: async request => {
+                if (request.iteration === 1) {
+                    return '짧음';
+                }
+                return Array.from({ length: 5 }, (_, index) => `개선된 블로그 타이틀 ${index + 1}`).join('\n');
+            },
+        });
+
+        const result = await agent.design('블로그 타이틀 여러개 만들어줘');
+
+        expect(result.status).toBe('completed');
+        expect(events[0]?.type).toBe('graph_started');
+        expect(events.some(event => event.type === 'graph_cleared')).toBe(true);
+        expect(events.some(event => event.type === 'node_staged')).toBe(true);
+        expect(events.some(event => event.type === 'node_phase_changed')).toBe(true);
+        expect(events.some(event => event.type === 'edge_created')).toBe(true);
+        expect(events[events.length - 1]).toEqual(
+            expect.objectContaining({
+                type: 'graph_completed',
+                data: expect.objectContaining({
+                    status: 'completed',
+                }),
+            }),
+        );
+        expect(
+            events.filter(event => event.type === 'node_created' && event.data?.node && (event.data.node as { id?: string }).id === 'ai-node')
+                .length,
+        ).toBeGreaterThanOrEqual(2);
     });
 });

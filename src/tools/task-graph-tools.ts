@@ -128,6 +128,8 @@ export function createTaskGraphTools(): ToolDefinition[] {
             requiresConfirmation: false,
             parallelSafe: true,
             execute: async ({ taskGraph, reflection }) => {
+                // TODO(flow-agent): Emit structured diff data here so UI layers
+                // can visualize exactly how the inferred graph changed per pass.
                 const refinedTaskGraph = refineTaskGraph(taskGraph, reflection);
                 return {
                     taskGraph: refinedTaskGraph,
@@ -166,6 +168,8 @@ export function createTaskGraphTools(): ToolDefinition[] {
             requiresConfirmation: false,
             parallelSafe: true,
             execute: async ({ userRequest, taskGraph }) => {
+                // TODO(flow-agent): Cache repeated preflight results per request
+                // and task-graph hash once real providers make this path costlier.
                 return taskGraph
                     ? assessTaskGraphFeasibility(userRequest, taskGraph)
                     : assessFlowFeasibility(userRequest);

@@ -224,7 +224,7 @@ export class IntentAnalysisSkill implements FlowDesignSkill {
         return true;
     }
 
-    async run(state: FlowDesignAttemptState): Promise<void> {
+    async run(state: FlowDesignAttemptState, _services: FlowDesignSkillServices): Promise<void> {
         const lowered = state.userRequest.toLowerCase();
         const wantsJson =
             lowered.includes('json') ||
@@ -251,54 +251,148 @@ export class FlowCompositionSkill implements FlowDesignSkill {
         return state.intent !== undefined;
     }
 
-    async run(state: FlowDesignAttemptState): Promise<void> {
+    async run(state: FlowDesignAttemptState, services: FlowDesignSkillServices): Promise<void> {
         ensureRequiredBlocks(state, [InputBlock.id, AiGenerateBlock.id, ViewBlock.id]);
 
+        const session = services.designSession;
         let flow = createFlowDocument(state.availableBlocks);
-        flow = createFlowNode(flow, InputBlock.id, {
-            nodeId: 'system-input',
-            label: 'System Input',
-            config: {
-                input: buildSystemPrompt(state),
-            },
-        }).flow;
-        flow = createFlowNode(flow, InputBlock.id, {
-            nodeId: 'prompt-input',
-            label: 'Prompt Input',
-            config: {
-                input: buildUserPrompt(state),
-            },
-        }).flow;
-        flow = createFlowNode(flow, AiGenerateBlock.id, {
-            nodeId: 'ai-node',
-            label: 'AI Generate',
-            config: {
-                model: 'mock-flow-model',
-                jsonOutput: String(state.intent?.wantsJson ?? false),
-            },
-        }).flow;
-        flow = createFlowNode(flow, ViewBlock.id, {
-            nodeId: 'view-output',
-            label: 'View Output',
-        }).flow;
-        flow = connectFlowPorts(flow, {
-            sourceNodeId: 'system-input',
-            sourcePort: 'output',
-            targetNodeId: 'ai-node',
-            targetPort: 'system',
-        }).flow;
-        flow = connectFlowPorts(flow, {
-            sourceNodeId: 'prompt-input',
-            sourcePort: 'output',
-            targetNodeId: 'ai-node',
-            targetPort: 'prompt',
-        }).flow;
-        flow = connectFlowPorts(flow, {
-            sourceNodeId: 'ai-node',
-            sourcePort: 'output',
-            targetNodeId: 'view-output',
-            targetPort: 'input',
-        }).flow;
+        if (session) {
+            session.stageNode('system-input', {
+                label: 'System Input',
+                blockId: InputBlock.id,
+                state: 'building-system-prompt',
+            });
+            session.createNode(InputBlock.id, {
+                nodeId: 'system-input',
+                label: 'System Input',
+                config: {
+                    input: buildSystemPrompt(state),
+                },
+            });
+            session.setNodePhase('system-input', 'ready', 'system-prompt-ready');
+
+            session.stageNode('prompt-input', {
+                label: 'Prompt Input',
+                blockId: InputBlock.id,
+                state: 'building-user-prompt',
+            });
+            session.createNode(InputBlock.id, {
+                nodeId: 'prompt-input',
+                label: 'Prompt Input',
+                config: {
+                    input: buildUserPrompt(state),
+                },
+            });
+            session.setNodePhase('prompt-input', 'ready', 'user-prompt-ready');
+
+            session.stageNode('ai-node', {
+                label: 'AI Generate',
+                blockId: AiGenerateBlock.id,
+                state: 'configuring-generation',
+            });
+            session.createNode(AiGenerateBlock.id, {
+                nodeId: 'ai-node',
+                label: 'AI Generate',
+                config: {
+                    model: 'mock-flow-model',
+                    jsonOutput: String(state.intent?.wantsJson ?? false),
+                },
+            });
+            session.setNodePhase('ai-node', 'created', 'awaiting-connections');
+
+            session.stageNode('view-output', {
+                label: 'View Output',
+                blockId: ViewBlock.id,
+                state: 'creating-output-review',
+            });
+            session.createNode(ViewBlock.id, {
+                nodeId: 'view-output',
+                label: 'View Output',
+            });
+            session.setNodePhase('view-output', 'created', 'awaiting-connections');
+
+            session.connectPorts(
+                {
+                    sourceNodeId: 'system-input',
+                    sourcePort: 'output',
+                    targetNodeId: 'ai-node',
+                    targetPort: 'system',
+                },
+                {
+                    flowHint: 'horizontal',
+                },
+            );
+            session.connectPorts(
+                {
+                    sourceNodeId: 'prompt-input',
+                    sourcePort: 'output',
+                    targetNodeId: 'ai-node',
+                    targetPort: 'prompt',
+                },
+                {
+                    flowHint: 'horizontal',
+                },
+            );
+            session.connectPorts(
+                {
+                    sourceNodeId: 'ai-node',
+                    sourcePort: 'output',
+                    targetNodeId: 'view-output',
+                    targetPort: 'input',
+                },
+                {
+                    flowHint: 'horizontal',
+                },
+            );
+            session.setNodePhase('ai-node', 'connected', 'generation-graph-wired');
+            session.setNodePhase('view-output', 'connected', 'review-graph-wired');
+            flow = session.getFlow();
+        } else {
+            flow = createFlowNode(flow, InputBlock.id, {
+                nodeId: 'system-input',
+                label: 'System Input',
+                config: {
+                    input: buildSystemPrompt(state),
+                },
+            }).flow;
+            flow = createFlowNode(flow, InputBlock.id, {
+                nodeId: 'prompt-input',
+                label: 'Prompt Input',
+                config: {
+                    input: buildUserPrompt(state),
+                },
+            }).flow;
+            flow = createFlowNode(flow, AiGenerateBlock.id, {
+                nodeId: 'ai-node',
+                label: 'AI Generate',
+                config: {
+                    model: 'mock-flow-model',
+                    jsonOutput: String(state.intent?.wantsJson ?? false),
+                },
+            }).flow;
+            flow = createFlowNode(flow, ViewBlock.id, {
+                nodeId: 'view-output',
+                label: 'View Output',
+            }).flow;
+            flow = connectFlowPorts(flow, {
+                sourceNodeId: 'system-input',
+                sourcePort: 'output',
+                targetNodeId: 'ai-node',
+                targetPort: 'system',
+            }).flow;
+            flow = connectFlowPorts(flow, {
+                sourceNodeId: 'prompt-input',
+                sourcePort: 'output',
+                targetNodeId: 'ai-node',
+                targetPort: 'prompt',
+            }).flow;
+            flow = connectFlowPorts(flow, {
+                sourceNodeId: 'ai-node',
+                sourcePort: 'output',
+                targetNodeId: 'view-output',
+                targetPort: 'input',
+            }).flow;
+        }
 
         state.flow = flow;
     }
@@ -312,7 +406,7 @@ export class FlowValidationSkill implements FlowDesignSkill {
         return state.flow !== undefined;
     }
 
-    async run(state: FlowDesignAttemptState): Promise<void> {
+    async run(state: FlowDesignAttemptState, _services: FlowDesignSkillServices): Promise<void> {
         const issues: string[] = [];
         for (const node of state.flow!.nodes) {
             const validation = validateFlowNode(state.flow!, node.id);
@@ -393,7 +487,7 @@ export class FlowReflectionSkill implements FlowDesignSkill {
         return state.execution !== undefined;
     }
 
-    async run(state: FlowDesignAttemptState): Promise<void> {
+    async run(state: FlowDesignAttemptState, _services: FlowDesignSkillServices): Promise<void> {
         state.reflection = createReflection(state);
     }
 }
@@ -406,7 +500,7 @@ export class FlowImprovementSkill implements FlowDesignSkill {
         return state.reflection !== undefined;
     }
 
-    async run(state: FlowDesignAttemptState): Promise<void> {
+    async run(state: FlowDesignAttemptState, _services: FlowDesignSkillServices): Promise<void> {
         if (state.reflection?.satisfied) {
             return;
         }
