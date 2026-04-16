@@ -199,6 +199,7 @@ export function designFlowDraft(args: {
     desiredCount: number;
     wantsJson: boolean;
     improvementNotes?: string[];
+    guidanceNotes?: string[];
     preflight?: FlowFeasibilityAssessment;
     availableBlocks?: FlowBlockDefinition[];
     designSession?: FlowDesignSession;
@@ -207,7 +208,7 @@ export function designFlowDraft(args: {
     toolName?: string;
 }): FlowDesignDraftResult {
     const availableBlocks = args.availableBlocks ?? availableFlowBlocks;
-    const improvementNotes = args.improvementNotes ?? [];
+    const improvementNotes = [...(args.guidanceNotes ?? []), ...(args.improvementNotes ?? [])];
     ensureRequiredFlowBlocks(availableBlocks, [InputBlock.id, AiGenerateBlock.id, ViewBlock.id]);
 
     const feasibility = args.preflight ?? assessFlowFeasibility(args.userRequest);
@@ -484,6 +485,7 @@ export function reflectFlowExecution(args: {
     userRequest: string;
     desiredCount: number;
     wantsJson: boolean;
+    reflectionNotes?: string[];
     sampleResult: {
         status: FlowDesignExecution['status'];
         output?: unknown;
@@ -523,6 +525,12 @@ export function reflectFlowExecution(args: {
     ) {
         issues.push('The output did not look like usable blog titles.');
         suggestedImprovements.push('Make each result read like a publishable blog title.');
+    }
+
+    for (const note of args.reflectionNotes ?? []) {
+        if (!suggestedImprovements.includes(note)) {
+            suggestedImprovements.push(note);
+        }
     }
 
     return {

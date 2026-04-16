@@ -1,0 +1,36 @@
+{
+    "sharedDraftNotes": [
+        "Use only the blocks already available in the repository.",
+        "Ground the design in graph-based preflight validation before building the flow."
+    ],
+    "conditionalDraftNotes": [
+        {
+            "match": {
+                "taskTypes": ["blog-title-generation"]
+            },
+            "notes": [
+                "Prefer publishable title quality over generic keyword stuffing."
+            ]
+        },
+        {
+            "match": {
+                "wantsJson": true
+            },
+            "notes": [
+                "Keep downstream output JSON-shaped and machine-readable."
+            ]
+        },
+        {
+            "match": {
+                "wantsMultiple": true
+            },
+            "notes": [
+                "Make repeated outputs explicit in the prompt wording and keep the requested count stable."
+            ]
+        }
+    ],
+    "reflectionNotes": [
+        "Prefer deterministic sample execution before accepting the design.",
+        "If the request needs capabilities that available blocks do not provide, stop early instead of forcing an invalid flow."
+    ]
+}

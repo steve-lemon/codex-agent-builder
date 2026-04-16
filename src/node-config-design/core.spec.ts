@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { AiGenerateBlock, InputBlock, ViewBlock } from '../flow/blocks';
 import { createFlowDocument, createFlowNode, connectFlowPorts } from '../flow/document';
 import { NodeConfigDesignService } from './core';
+import { createDefaultNodeConfigKnowledgeSource } from './knowledge-sources';
 
 describe('node-config design core', () => {
     it('applies block-specific strategies and tracks assignments without tool wrappers', async () => {
@@ -85,5 +86,27 @@ describe('node-config design core', () => {
 
         const aiSuggestion = result.suggestions.find(suggestion => suggestion.nodeId === 'ai-node');
         expect(aiSuggestion?.config.model).toBe('mock-structured-gpt');
+    });
+
+    it('uses default knowledge sources to consume block metadata and skill guidance', async () => {
+        let flow = createFlowDocument([InputBlock, AiGenerateBlock, ViewBlock]);
+        flow = createFlowNode(flow, InputBlock.id, { nodeId: 'system-input', label: 'System Input' }).flow;
+        flow = createFlowNode(flow, InputBlock.id, { nodeId: 'prompt-input', label: 'Prompt Input' }).flow;
+        flow = createFlowNode(flow, AiGenerateBlock.id, { nodeId: 'ai-node', label: 'AI Node' }).flow;
+        flow = createFlowNode(flow, ViewBlock.id, { nodeId: 'view-output', label: 'View Output' }).flow;
+
+        const service = new NodeConfigDesignService(undefined, createDefaultNodeConfigKnowledgeSource());
+        const result = await service.design({
+            userRequest: '상품 소개 문구를 JSON 형태로 여러개 만들어줘',
+            flow,
+            desiredCount: 3,
+            wantsJson: true,
+        });
+
+        const systemSuggestion = result.suggestions.find(suggestion => suggestion.nodeId === 'system-input');
+        const aiSuggestion = result.suggestions.find(suggestion => suggestion.nodeId === 'ai-node');
+
+        expect(systemSuggestion?.rationale.join(' ')).toContain('Apply strategy guidance');
+        expect(aiSuggestion?.rationale.join(' ')).toContain('Apply AI configuration strategy notes');
     });
 });

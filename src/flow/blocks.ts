@@ -57,6 +57,9 @@ export const TextInputBlock = defineFlowBlock({
     label: 'Text Input',
     description: 'Accepts user text and emits it through a single output port.',
     nodeConfigStrategyId: 'generic-text-input',
+    nodeConfigGuidance: {
+        sharedNotes: ['Keep text-input labels descriptive so upstream intent is obvious in the editor.'],
+    },
     configs: [
         {
             id: 'label',
@@ -89,6 +92,19 @@ export const InputBlock = defineFlowBlock({
     label: 'Input',
     description: 'Emits the configured input string as a packet on the output port.',
     nodeConfigStrategyId: 'prompt-input-family',
+    nodeConfigGuidance: {
+        sharedNotes: ['Input blocks should carry explicit user-facing wording instead of placeholder text.'],
+        strategyDirectives: [
+            {
+                strategyId: 'system-input',
+                note: 'Use this block to encode stable global instructions for downstream AI behavior.',
+            },
+            {
+                strategyId: 'prompt-input',
+                note: 'Use this block to encode request-specific wording, count, and output format expectations.',
+            },
+        ],
+    },
     configs: [
         {
             id: 'input',
@@ -114,6 +130,15 @@ export const BufferBlock = defineFlowBlock({
     label: 'Buffer',
     description: 'Waits for the configured duration, then forwards the input packet.',
     nodeConfigStrategyId: 'buffer-timing',
+    nodeConfigGuidance: {
+        sharedNotes: ['Buffer blocks should make timing explicit so retries stay deterministic.'],
+        strategyDirectives: [
+            {
+                strategyId: 'buffer-timing',
+                note: 'Prefer small explicit wait values over implicit timing assumptions.',
+            },
+        ],
+    },
     configs: [
         {
             id: 'wait',
@@ -147,6 +172,15 @@ export const ViewBlock = defineFlowBlock({
     label: 'View',
     description: 'Logs the current input packet value.',
     nodeConfigStrategyId: 'view-observer',
+    nodeConfigGuidance: {
+        sharedNotes: ['View blocks are for observability, so keep them placed where final output remains visible.'],
+        strategyDirectives: [
+            {
+                strategyId: 'view-observer',
+                note: 'Use this block to preserve operator visibility into final or intermediate outputs.',
+            },
+        ],
+    },
     inputs: [
         {
             localId: 'input',
@@ -169,6 +203,19 @@ export const AiGenerateBlock = defineFlowBlock({
     label: 'AI Generate',
     description: 'Consumes system and prompt text, then emits a mocked model response.',
     nodeConfigStrategyId: 'ai-generation',
+    nodeConfigGuidance: {
+        sharedNotes: ['AI blocks should align model profile, prompt wording, and output mode with the request intent.'],
+        strategyDirectives: [
+            {
+                strategyId: 'ai-generation',
+                note: 'Prefer structured-output capable models when the flow expects JSON-shaped downstream handling.',
+            },
+            {
+                strategyId: 'ai-generation',
+                note: 'Keep system and prompt wording consistent with the chosen model profile.',
+            },
+        ],
+    },
     configs: [
         {
             id: 'model',

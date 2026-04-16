@@ -1,0 +1,43 @@
+{
+    "sharedNotes": [
+        "Use separate configuration strategies per block family instead of one generic prompt/config pass.",
+        "Do not redesign the overall flow structure unless the caller explicitly asks for structural changes."
+    ],
+    "conditionalSharedNotes": [
+        {
+            "blockIds": ["ai-generate"],
+            "notes": [
+                "Focus on block-specific configuration such as model choice, prompt text, output mode, and required config fields."
+            ]
+        },
+        {
+            "blockIds": ["buffer"],
+            "notes": [
+                "When reflection shows timing problems, feed those notes back into the matching block strategy on the next pass."
+            ]
+        },
+        {
+            "blockIds": ["view"],
+            "notes": [
+                "When reflection shows observability problems, feed those notes back into the matching block strategy on the next pass."
+            ]
+        }
+    ],
+    "strategyDirectives": [
+        {
+            "blockIds": ["ai-generate"],
+            "strategyId": "ai-generation",
+            "note": "Model choice, prompt text, and output mode should stay aligned with the user request."
+        },
+        {
+            "blockIds": ["buffer"],
+            "strategyId": "buffer-timing",
+            "note": "Feed reflection notes about timing back into this strategy on the next pass."
+        },
+        {
+            "blockIds": ["view"],
+            "strategyId": "view-observer",
+            "note": "Feed reflection notes about observability and review visibility back into this strategy on the next pass."
+        }
+    ]
+}

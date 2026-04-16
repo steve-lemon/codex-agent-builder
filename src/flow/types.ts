@@ -62,6 +62,24 @@ export interface FlowConfigOption {
     label: string;
 }
 
+/** Block-authored note or directive used by node-config knowledge sources. */
+export interface FlowNodeConfigDirective {
+    /** Strategy id the note should target. */
+    strategyId: string;
+
+    /** Guidance text that should influence node configuration. */
+    note: string;
+}
+
+/** Optional node-config guidance embedded directly in a block definition. */
+export interface FlowBlockNodeConfigGuidance {
+    /** Shared notes that apply whenever the block participates in node config design. */
+    sharedNotes?: string[];
+
+    /** Strategy-targeted notes that should be routed to specific configuration strategies. */
+    strategyDirectives?: FlowNodeConfigDirective[];
+}
+
 /** Config field definition declared by a block. */
 export interface FlowBlockConfigDefinition {
     /** Stable config id unique within the block definition. */
@@ -127,6 +145,9 @@ export interface FlowBlockDefinition {
 
     /** Optional preferred node-configuration strategy id for sub-agent orchestration. */
     nodeConfigStrategyId?: string;
+
+    /** Optional block-authored guidance consumed by node-config knowledge sources. */
+    nodeConfigGuidance?: FlowBlockNodeConfigGuidance;
 
     // TODO(flow): Let blocks optionally advertise multiple compatible strategy
     // ids or capability tags once node configuration needs layered behavior

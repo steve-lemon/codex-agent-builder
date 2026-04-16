@@ -3,6 +3,8 @@ import type { FlowDesignConnection, FlowDesignSession } from '../flow/design-mon
 import type { FlowBlockDefinition } from '../flow/types';
 import type { FlowFeasibilityAssessment } from './analysis';
 import { analyzeFlowRequest, designFlowDraft, reflectFlowExecution } from './core';
+import { defaultFlowDesignKnowledgeSource, type FlowDesignKnowledgeSource } from './knowledge';
+import { createDefaultFlowDesignKnowledgeSource } from './knowledge-sources';
 import type { FlowDesignDraftResult, FlowDesignIntent, FlowDesignReflection } from './types';
 
 /** Provider contract for higher-level flow-design reasoning steps. */
@@ -35,18 +37,39 @@ export interface FlowDesignProvider {
 
 /** Deterministic provider used by tests, demos, and the current default runtime. */
 export class DeterministicFlowDesignProvider implements FlowDesignProvider {
+    constructor(
+        private readonly knowledgeSource: FlowDesignKnowledgeSource = createDefaultFlowDesignKnowledgeSource(),
+    ) {}
+
     analyzeRequest(userRequest: string): FlowDesignIntent {
         return analyzeFlowRequest(userRequest);
     }
 
-    composeDraft(args: Parameters<FlowDesignProvider['composeDraft']>[0]): FlowDesignDraftResult {
-        return designFlowDraft(args);
+    async composeDraft(args: Parameters<FlowDesignProvider['composeDraft']>[0]): Promise<FlowDesignDraftResult> {
+        const intent = analyzeFlowRequest(args.userRequest);
+        const guidanceNotes = await Promise.resolve(this.knowledgeSource.getDraftNotes(intent));
+        return designFlowDraft({
+            ...args,
+            guidanceNotes,
+        });
     }
 
-    reflectExecution(args: Parameters<FlowDesignProvider['reflectExecution']>[0]): FlowDesignReflection {
-        return reflectFlowExecution(args);
+    async reflectExecution(args: Parameters<FlowDesignProvider['reflectExecution']>[0]): Promise<FlowDesignReflection> {
+        const intent = analyzeFlowRequest(args.userRequest);
+        const baseReflection = reflectFlowExecution(args);
+        const reflectionNotes = await Promise.resolve(
+            this.knowledgeSource.getReflectionNotes({
+                intent,
+                sampleResult: args.sampleResult,
+                reflection: baseReflection,
+            }),
+        );
+        return reflectFlowExecution({
+            ...args,
+            reflectionNotes,
+        });
     }
 }
 
 /** Shared default provider instance used when callers do not inject a custom implementation. */
-export const defaultFlowDesignProvider = new DeterministicFlowDesignProvider();
+export const defaultFlowDesignProvider = new DeterministicFlowDesignProvider(defaultFlowDesignKnowledgeSource);

@@ -2,7 +2,8 @@
 import { validateFlowNode } from '../flow/document';
 import type { FlowDocument, FlowNode } from '../flow/types';
 import { createDefaultNodeBlockConfigStrategies, type NodeBlockConfigStrategy } from '../node-config-agent/strategies';
-import { defaultNodeConfigKnowledgeSource, type NodeConfigKnowledgeSource } from './knowledge';
+import type { NodeConfigKnowledgeSource } from './knowledge';
+import { createDefaultNodeConfigKnowledgeSource } from './knowledge-sources';
 import type {
     NodeConfigurationDesignInput,
     NodeConfigurationDesignResult,
@@ -13,7 +14,7 @@ import type {
 export class NodeConfigDesignService {
     constructor(
         private readonly strategies: NodeBlockConfigStrategy[] = createDefaultNodeBlockConfigStrategies(),
-        private readonly knowledgeSource: NodeConfigKnowledgeSource = defaultNodeConfigKnowledgeSource,
+        private readonly knowledgeSource: NodeConfigKnowledgeSource = createDefaultNodeConfigKnowledgeSource(),
     ) {}
 
     resolveStrategy(flow: FlowDocument, node: FlowNode): NodeBlockConfigStrategy | undefined {
