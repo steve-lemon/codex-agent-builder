@@ -365,6 +365,10 @@ export class FakeLlmGateway implements LlmGateway {
                                 probeResult: { $fromStep: 's3', path: 'toolResults.0.data' },
                                 ...(previousReflectionStepId
                                     ? {
+                                          strategyNotes: {
+                                              $fromStep: previousReflectionStepId,
+                                              path: 'toolResults.0.data.nodeConfigSkillImprovements',
+                                          },
                                           improvementNotes: {
                                               $fromStep: previousReflectionStepId,
                                               path: 'toolResults.0.data.improvementNotes',
@@ -591,6 +595,7 @@ export class FakeLlmGateway implements LlmGateway {
                         satisfied?: boolean;
                         issues?: string[];
                         improvementNotes?: string[];
+                        nodeConfigSkillImprovements?: string[];
                     };
                 }>;
             }>;
@@ -630,6 +635,7 @@ export class FakeLlmGateway implements LlmGateway {
 
             if (latestReflection?.satisfied === false) {
                 const latestConfiguration = nodeConfigurations[nodeConfigurations.length - 1]?.toolResults?.[0]?.data;
+                const latestNodeConfigImprovements = latestReflection.nodeConfigSkillImprovements ?? [];
                 return {
                     summary: `Handled with skill flow-designer. The flow still needs improvement after ${designPasses} design pass(es) while configuring ${latestConfiguration?.suggestions?.length ?? 0} node(s).`,
                     success: false,
@@ -640,6 +646,9 @@ export class FakeLlmGateway implements LlmGateway {
                         ...(latestReflection.improvementNotes ?? [])
                             .slice(0, 2)
                             .map((note: string) => `Retry with improvement: ${note}`),
+                        ...latestNodeConfigImprovements
+                            .slice(0, 2)
+                            .map((note: string) => `Update node-config strategy: ${note}`),
                     ],
                 };
             }

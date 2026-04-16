@@ -92,19 +92,29 @@ export function createNodeConfigTools(): ToolDefinition[] {
                 desiredCount: z.number().int().positive(),
                 wantsJson: z.boolean(),
                 improvementNotes: z.array(z.string()).optional(),
+                strategyNotes: z.array(z.string()).optional(),
                 probeResult: ProbeResultSchema.optional(),
             }),
             riskLevel: 'read-only',
             allowedSkills: ['flow-designer', 'node-config-designer'],
             requiresConfirmation: false,
             parallelSafe: false,
-            execute: async ({ userRequest, flow, desiredCount, wantsJson, improvementNotes = [], probeResult }) => {
+            execute: async ({
+                userRequest,
+                flow,
+                desiredCount,
+                wantsJson,
+                improvementNotes = [],
+                strategyNotes = [],
+                probeResult,
+            }) => {
                 return agent.design({
                     userRequest,
                     flow,
                     desiredCount,
                     wantsJson,
                     improvementNotes,
+                    strategyNotes,
                     probeResult,
                 });
             },

@@ -603,6 +603,10 @@ describe('tools modules', () => {
             data: expect.objectContaining({
                 satisfied: true,
                 issues: [],
+                nodeConfigSkillImprovements: expect.arrayContaining([
+                    expect.stringContaining('prompt-input node'),
+                    expect.stringContaining('headline quality'),
+                ]),
             }),
         });
 

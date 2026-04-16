@@ -2,8 +2,21 @@
 import { describe, expect, it } from 'vitest';
 import { buildDefaultToolRegistry } from '../tools';
 import { NodeConfigDesignAgent } from './agent';
+import { createDefaultNodeBlockConfigStrategies } from './strategies';
 
 describe('node-config design agent', () => {
+    it('uses block-specific strategy objects for the default configuration pass', () => {
+        const strategyNames = createDefaultNodeBlockConfigStrategies().map(strategy => strategy.constructor.name);
+
+        expect(strategyNames).toEqual([
+            'SystemInputNodeStrategy',
+            'PromptInputNodeStrategy',
+            'AiGenerateNodeStrategy',
+            'BufferNodeStrategy',
+            'ViewNodeStrategy',
+        ]);
+    });
+
     it('applies blog-title prompts and a blog-focused model to a generated flow draft', async () => {
         const registry = buildDefaultToolRegistry();
         const design = await registry.execute(
@@ -33,6 +46,9 @@ describe('node-config design agent', () => {
             flow: (design.data as { flow: Parameters<NodeConfigDesignAgent['design']>[0]['flow'] }).flow,
             desiredCount: 5,
             wantsJson: false,
+            strategyNotes: [
+                'Strengthen the system-input node to emphasize publishable headline quality and distinct title phrasing.',
+            ],
             probeResult: {
                 blockId: 'ai-generate',
                 behaviorNotes: ['Reads system/prompt text and writes the mock generation result into the output port.'],
@@ -52,12 +68,15 @@ describe('node-config design agent', () => {
                     config: expect.objectContaining({
                         input: expect.stringContaining('You generate clear and catchy blog titles'),
                     }),
-                    rationale: expect.arrayContaining([expect.stringContaining('observed block behavior')]),
+                    rationale: expect.arrayContaining([
+                        expect.stringContaining('observed block behavior'),
+                        expect.stringContaining('Apply strategy guidance'),
+                    ]),
                 }),
                 expect.objectContaining({
                     nodeId: 'prompt-input',
                     config: expect.objectContaining({
-                        input: expect.stringContaining('Return exactly 5 results.'),
+                        input: expect.stringMatching(/Return exactly 5 results\..*Strategy notes:/),
                     }),
                 }),
                 expect.objectContaining({

@@ -1235,6 +1235,33 @@ export function createFlowDesignTools(): ToolDefinition[] {
                     suggestedImprovements.push('Make each result read like a publishable blog title.');
                 }
 
+                const nodeConfigSkillImprovements: string[] = [];
+                if (wantsJson) {
+                    nodeConfigSkillImprovements.push(
+                        'Prefer a structured-output model profile and stricter system instructions for JSON mode.',
+                    );
+                }
+                if (desiredCount > 1) {
+                    nodeConfigSkillImprovements.push(
+                        `Tune the prompt-input node so the AI block is explicitly asked for exactly ${desiredCount} outputs.`,
+                    );
+                }
+                if (
+                    lowered.includes('blog') ||
+                    lowered.includes('title') ||
+                    lowered.includes('타이틀') ||
+                    lowered.includes('제목')
+                ) {
+                    nodeConfigSkillImprovements.push(
+                        'Strengthen the system-input node to emphasize publishable headline quality and distinct title phrasing.',
+                    );
+                }
+                if (issues.some(issue => issue.toLowerCase().includes('status'))) {
+                    nodeConfigSkillImprovements.push(
+                        'Review buffer/view node settings so execution remains observable and deterministic during retries.',
+                    );
+                }
+
                 return {
                     satisfied: issues.length === 0,
                     summary:
@@ -1243,6 +1270,7 @@ export function createFlowDesignTools(): ToolDefinition[] {
                             : 'The sample flow output needs another design pass.',
                     issues,
                     improvementNotes: suggestedImprovements,
+                    nodeConfigSkillImprovements,
                 };
             },
         }),

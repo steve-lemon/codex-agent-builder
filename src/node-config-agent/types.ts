@@ -39,5 +39,6 @@ export interface NodeConfigurationDesignInput {
     desiredCount: number;
     wantsJson: boolean;
     improvementNotes?: string[];
+    strategyNotes?: string[];
     probeResult?: NodeConfigurationProbeResult;
 }
