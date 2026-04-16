@@ -165,7 +165,8 @@ export class FakeLlmGateway implements LlmGateway {
                             id: 's3',
                             mode: 'reasoning',
                             description: 'Stop before design because required capabilities are missing',
-                            reasoning: 'Do not force a flow design when critical capabilities such as email access are unavailable.',
+                            reasoning:
+                                'Do not force a flow design when critical capabilities such as email access are unavailable.',
                         },
                         {
                             id: 's4',
@@ -176,179 +177,221 @@ export class FakeLlmGateway implements LlmGateway {
                 };
             }
 
-            return {
-                steps: [
-                    {
-                        id: 's1',
+            const shouldUseExtendedRetryPolicy =
+                text.includes('json') ||
+                text.includes('여러') ||
+                text.includes('multiple') ||
+                text.includes('several') ||
+                text.includes('titles') ||
+                text.includes('타이틀') ||
+                text.includes('제목');
+            const maxDesignPasses = shouldUseExtendedRetryPolicy ? 3 : 2;
+            const steps: Plan['steps'] = [
+                {
+                    id: 's1',
+                    mode: 'single-tool',
+                    description: 'Analyze request intent for flow design',
+                    toolCalls: [
+                        {
+                            toolName: ensureToolAvailable('analyzeFlowRequest'),
+                            args: { userRequest: input.userInput },
+                        },
+                    ],
+                },
+                {
+                    id: 's2',
+                    mode: 'single-tool',
+                    description: 'Run graph-based preflight validation before flow design',
+                    toolCalls: [
+                        {
+                            toolName: ensureToolAvailable('prevalidateFlowDesignRequest'),
+                            args: { userRequest: input.userInput },
+                        },
+                    ],
+                },
+                {
+                    id: 's3',
+                    mode: 'single-tool',
+                    description: 'Probe the AI block behavior before using it',
+                    toolCalls: [
+                        {
+                            toolName: ensureToolAvailable('probeFlowBlock'),
+                            args: {
+                                blockId: 'ai-generate',
+                                sampleConfig: {
+                                    model: 'mock-flow-model',
+                                    jsonOutput: String(input.userInput.toLowerCase().includes('json')),
+                                },
+                                sampleInputs: {
+                                    system: 'You generate clear and catchy blog titles based on one keyword.',
+                                    prompt: 'User request: sample. Sample input: 샘플 입력. Return one result. Return plain text.',
+                                },
+                            },
+                        },
+                    ],
+                },
+            ];
+
+            let previousReflectionStepId: string | undefined;
+            let currentPreflightStepId = 's2';
+            let stepNumber = 4;
+
+            for (let pass = 1; pass <= maxDesignPasses; pass += 1) {
+                if (previousReflectionStepId) {
+                    const refineStepId = `s${stepNumber++}`;
+                    steps.push({
+                        id: refineStepId,
                         mode: 'single-tool',
-                        description: 'Analyze request intent for flow design',
+                        description: `Refine the task graph using reflection feedback (revision ${pass - 1})`,
                         toolCalls: [
                             {
-                                toolName: ensureToolAvailable('analyzeFlowRequest'),
-                                args: { userRequest: input.userInput },
+                                toolName: ensureToolAvailable('refineTaskGraph'),
+                                args: {
+                                    taskGraph: {
+                                        $fromStep: currentPreflightStepId,
+                                        path: 'toolResults.0.data.taskGraph',
+                                    },
+                                    reflection: {
+                                        issues: {
+                                            $fromStep: previousReflectionStepId,
+                                            path: 'toolResults.0.data.issues',
+                                        },
+                                        improvementNotes: {
+                                            $fromStep: previousReflectionStepId,
+                                            path: 'toolResults.0.data.improvementNotes',
+                                        },
+                                    },
+                                },
                             },
                         ],
-                    },
-                    {
-                        id: 's2',
+                    });
+
+                    const reassessStepId = `s${stepNumber++}`;
+                    steps.push({
+                        id: reassessStepId,
                         mode: 'single-tool',
-                        description: 'Run graph-based preflight validation before flow design',
+                        description: `Revalidate the refined task graph before redesign (revision ${pass - 1})`,
                         toolCalls: [
                             {
                                 toolName: ensureToolAvailable('prevalidateFlowDesignRequest'),
-                                args: { userRequest: input.userInput },
-                            },
-                        ],
-                    },
-                    {
-                        id: 's3',
-                        mode: 'single-tool',
-                        description: 'Probe the AI block behavior before using it',
-                        toolCalls: [
-                            {
-                                toolName: ensureToolAvailable('probeFlowBlock'),
-                                args: {
-                                    blockId: 'ai-generate',
-                                    sampleConfig: {
-                                        model: 'mock-flow-model',
-                                        jsonOutput: String(input.userInput.toLowerCase().includes('json')),
-                                    },
-                                    sampleInputs: {
-                                        system: 'You generate clear and catchy blog titles based on one keyword.',
-                                        prompt: 'User request: sample. Sample input: 샘플 입력. Return one result. Return plain text.',
-                                    },
-                                },
-                            },
-                        ],
-                    },
-                    {
-                        id: 's4',
-                        mode: 'single-tool',
-                        description: 'Design a flow draft',
-                        toolCalls: [
-                            {
-                                toolName: ensureToolAvailable('designFlowDraft'),
                                 args: {
                                     userRequest: input.userInput,
-                                    sampleInput: { $fromStep: 's1', path: 'toolResults.0.data.sampleInput' },
-                                    desiredCount: { $fromStep: 's1', path: 'toolResults.0.data.desiredCount' },
-                                    wantsJson: { $fromStep: 's1', path: 'toolResults.0.data.wantsJson' },
-                                    preflight: { $fromStep: 's2', path: 'toolResults.0.data' },
+                                    taskGraph: { $fromStep: refineStepId, path: 'toolResults.0.data.taskGraph' },
                                 },
                             },
                         ],
-                    },
-                    {
-                        id: 's5',
-                        mode: 'single-tool',
-                        description: 'Validate the flow draft',
-                        toolCalls: [
-                            {
-                                toolName: ensureToolAvailable('validateFlowDraft'),
-                                args: {
-                                    flow: { $fromStep: 's4', path: 'toolResults.0.data.flow' },
-                                },
+                    });
+
+                    currentPreflightStepId = reassessStepId;
+                }
+
+                const designStepId = `s${stepNumber++}`;
+                const validateStepId = `s${stepNumber++}`;
+                const runStepId = `s${stepNumber++}`;
+                const reflectStepId = `s${stepNumber++}`;
+                const passLabel = pass === 1 ? 'initial' : `revision ${pass - 1}`;
+
+                steps.push({
+                    id: designStepId,
+                    mode: 'single-tool',
+                    description:
+                        pass === 1
+                            ? 'Design the initial flow draft'
+                            : `Revise the flow draft using reflection feedback (${passLabel})`,
+                    toolCalls: [
+                        {
+                            toolName: ensureToolAvailable('designFlowDraft'),
+                            args: {
+                                userRequest: input.userInput,
+                                sampleInput: { $fromStep: 's1', path: 'toolResults.0.data.sampleInput' },
+                                desiredCount: { $fromStep: 's1', path: 'toolResults.0.data.desiredCount' },
+                                wantsJson: { $fromStep: 's1', path: 'toolResults.0.data.wantsJson' },
+                                preflight: { $fromStep: currentPreflightStepId, path: 'toolResults.0.data' },
+                                ...(previousReflectionStepId
+                                    ? {
+                                          improvementNotes: {
+                                              $fromStep: previousReflectionStepId,
+                                              path: 'toolResults.0.data.improvementNotes',
+                                          },
+                                      }
+                                    : {}),
                             },
-                        ],
-                    },
-                    {
-                        id: 's6',
-                        mode: 'single-tool',
-                        description: 'Run the flow sample',
-                        toolCalls: [
-                            {
-                                toolName: ensureToolAvailable('runFlowSample'),
-                                args: {
-                                    userRequest: input.userInput,
-                                    flow: { $fromStep: 's4', path: 'toolResults.0.data.flow' },
-                                },
+                        },
+                    ],
+                });
+
+                steps.push({
+                    id: validateStepId,
+                    mode: 'single-tool',
+                    description:
+                        pass === 1
+                            ? 'Validate the initial flow draft'
+                            : `Validate the revised flow draft (${passLabel})`,
+                    toolCalls: [
+                        {
+                            toolName: ensureToolAvailable('validateFlowDraft'),
+                            args: {
+                                flow: { $fromStep: designStepId, path: 'toolResults.0.data.flow' },
                             },
-                        ],
-                    },
-                    {
-                        id: 's7',
-                        mode: 'single-tool',
-                        description: 'Reflect on the sample result',
-                        toolCalls: [
-                            {
-                                toolName: ensureToolAvailable('reflectFlowResult'),
-                                args: {
-                                    userRequest: input.userInput,
-                                    desiredCount: { $fromStep: 's1', path: 'toolResults.0.data.desiredCount' },
-                                    wantsJson: { $fromStep: 's1', path: 'toolResults.0.data.wantsJson' },
-                                    sampleResult: { $fromStep: 's6', path: 'toolResults.0.data' },
-                                },
+                        },
+                    ],
+                });
+
+                steps.push({
+                    id: runStepId,
+                    mode: 'single-tool',
+                    description:
+                        pass === 1 ? 'Run the initial flow sample' : `Run the revised flow sample (${passLabel})`,
+                    toolCalls: [
+                        {
+                            toolName: ensureToolAvailable('runFlowSample'),
+                            args: {
+                                userRequest: input.userInput,
+                                flow: { $fromStep: designStepId, path: 'toolResults.0.data.flow' },
+                                ...(previousReflectionStepId
+                                    ? {
+                                          improvementNotes: {
+                                              $fromStep: previousReflectionStepId,
+                                              path: 'toolResults.0.data.improvementNotes',
+                                          },
+                                      }
+                                    : {}),
                             },
-                        ],
-                    },
-                    {
-                        id: 's8',
-                        mode: 'single-tool',
-                        description: 'Revise the flow draft with reflection-driven improvement notes',
-                        toolCalls: [
-                            {
-                                toolName: ensureToolAvailable('designFlowDraft'),
-                                args: {
-                                    userRequest: input.userInput,
-                                    sampleInput: { $fromStep: 's1', path: 'toolResults.0.data.sampleInput' },
-                                    desiredCount: { $fromStep: 's1', path: 'toolResults.0.data.desiredCount' },
-                                    wantsJson: { $fromStep: 's1', path: 'toolResults.0.data.wantsJson' },
-                                    preflight: { $fromStep: 's2', path: 'toolResults.0.data' },
-                                    improvementNotes: { $fromStep: 's7', path: 'toolResults.0.data.improvementNotes' },
-                                },
+                        },
+                    ],
+                });
+
+                steps.push({
+                    id: reflectStepId,
+                    mode: 'single-tool',
+                    description:
+                        pass === 1
+                            ? 'Reflect on the initial sample result'
+                            : `Reflect on the revised sample result (${passLabel})`,
+                    toolCalls: [
+                        {
+                            toolName: ensureToolAvailable('reflectFlowResult'),
+                            args: {
+                                userRequest: input.userInput,
+                                desiredCount: { $fromStep: 's1', path: 'toolResults.0.data.desiredCount' },
+                                wantsJson: { $fromStep: 's1', path: 'toolResults.0.data.wantsJson' },
+                                sampleResult: { $fromStep: runStepId, path: 'toolResults.0.data' },
                             },
-                        ],
-                    },
-                    {
-                        id: 's9',
-                        mode: 'single-tool',
-                        description: 'Validate the revised flow draft',
-                        toolCalls: [
-                            {
-                                toolName: ensureToolAvailable('validateFlowDraft'),
-                                args: {
-                                    flow: { $fromStep: 's8', path: 'toolResults.0.data.flow' },
-                                },
-                            },
-                        ],
-                    },
-                    {
-                        id: 's10',
-                        mode: 'single-tool',
-                        description: 'Run the revised flow sample',
-                        toolCalls: [
-                            {
-                                toolName: ensureToolAvailable('runFlowSample'),
-                                args: {
-                                    userRequest: input.userInput,
-                                    flow: { $fromStep: 's8', path: 'toolResults.0.data.flow' },
-                                    improvementNotes: { $fromStep: 's7', path: 'toolResults.0.data.improvementNotes' },
-                                },
-                            },
-                        ],
-                    },
-                    {
-                        id: 's11',
-                        mode: 'single-tool',
-                        description: 'Reflect on the revised sample result',
-                        toolCalls: [
-                            {
-                                toolName: ensureToolAvailable('reflectFlowResult'),
-                                args: {
-                                    userRequest: input.userInput,
-                                    desiredCount: { $fromStep: 's1', path: 'toolResults.0.data.desiredCount' },
-                                    wantsJson: { $fromStep: 's1', path: 'toolResults.0.data.wantsJson' },
-                                    sampleResult: { $fromStep: 's10', path: 'toolResults.0.data' },
-                                },
-                            },
-                        ],
-                    },
-                    {
-                        id: 's12',
-                        mode: 'finalize',
-                        description: 'Finalize flow design response',
-                    },
-                ],
+                        },
+                    ],
+                });
+
+                previousReflectionStepId = reflectStepId;
+            }
+
+            steps.push({
+                id: `s${stepNumber}`,
+                mode: 'finalize',
+                description: 'Finalize flow design response',
+            });
+
+            return {
+                steps,
             };
         }
 
@@ -423,13 +466,17 @@ export class FakeLlmGateway implements LlmGateway {
             return {
                 summary:
                     preflightData?.feasible === false
-                        ? `Handled with skill flow-preflight-validator. The inferred task graph is not feasible with current blocks. Missing capabilities: ${(preflightData?.missingCapabilities ?? []).join(', ')}.`
+                        ? `Handled with skill flow-preflight-validator. The inferred task graph is not feasible with current blocks. Missing capabilities: ${(
+                              preflightData?.missingCapabilities ?? []
+                          ).join(', ')}.`
                         : 'Handled with skill flow-preflight-validator. The inferred task graph is feasible with the current blocks.',
                 success: preflightData?.feasible !== false,
                 nextActions:
                     preflightData?.feasible === false
                         ? [
-                              `Review proposed blocks: ${(preflightData?.proposedBlocks ?? []).map(block => block.blockId).join(', ')}`,
+                              `Review proposed blocks: ${(preflightData?.proposedBlocks ?? [])
+                                  .map(block => block.blockId)
+                                  .join(', ')}`,
                               `Add capabilities: ${(preflightData?.missingCapabilities ?? []).join(', ')}`,
                           ]
                         : ['Proceed to flow design'],
@@ -462,14 +509,21 @@ export class FakeLlmGateway implements LlmGateway {
                     };
                 }>;
             }>;
+            const refinedGraphs = input.stepResults.filter(step =>
+                JSON.stringify(step).includes('"toolName":"refineTaskGraph"'),
+            );
 
             if (feasibilityData?.feasible === false) {
                 const missingCapabilities = feasibilityData.missingCapabilities ?? [];
                 return {
-                    summary: `Handled with skill flow-designer. The request is not feasible with current blocks because these capabilities are missing: ${missingCapabilities.join(', ')}.`,
+                    summary: `Handled with skill flow-designer. The request is not feasible with current blocks because these capabilities are missing: ${missingCapabilities.join(
+                        ', ',
+                    )}.`,
                     success: false,
                     nextActions: [
-                        `Review proposed blocks: ${(feasibilityData.proposedBlocks ?? []).map(block => block.blockId).join(', ')}`,
+                        `Review proposed blocks: ${(feasibilityData.proposedBlocks ?? [])
+                            .map(block => block.blockId)
+                            .join(', ')}`,
                         `Add blocks or tools for: ${missingCapabilities.join(', ')}`,
                         'Retry flow design after the missing capabilities are available',
                     ],
@@ -484,19 +538,19 @@ export class FakeLlmGateway implements LlmGateway {
                     summary: `Handled with skill flow-designer. The flow still needs improvement after ${designPasses} design pass(es).`,
                     success: false,
                     nextActions: [
-                        ...((latestReflection.issues ?? [])
+                        ...(latestReflection.issues ?? [])
                             .slice(0, 2)
-                            .map((issue: string) => `Address issue: ${issue}`)),
-                        ...((latestReflection.improvementNotes ?? [])
+                            .map((issue: string) => `Address issue: ${issue}`),
+                        ...(latestReflection.improvementNotes ?? [])
                             .slice(0, 2)
-                            .map((note: string) => `Retry with improvement: ${note}`)),
+                            .map((note: string) => `Retry with improvement: ${note}`),
                     ],
                 };
             }
 
             if (latestReflection?.satisfied === true) {
                 return {
-                    summary: `Handled with skill flow-designer. The flow satisfied the request after ${designPasses} design pass(es).`,
+                    summary: `Handled with skill flow-designer. The flow satisfied the request after ${designPasses} design pass(es) and ${refinedGraphs.length} task-graph refinement step(s).`,
                     success: true,
                     nextActions:
                         designPasses > 1

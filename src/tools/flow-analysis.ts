@@ -58,6 +58,12 @@ export interface FlowFeasibilityAssessment {
     recommendedAction: string;
 }
 
+/** Reflection signal used to refine an inferred task graph between design passes. */
+export interface TaskGraphRefinementInput {
+    issues: string[];
+    improvementNotes: string[];
+}
+
 /** Parses a user request into required capabilities at a coarse level. */
 export function inferRequiredCapabilities(userRequest: string): string[] {
     const lowered = userRequest.toLowerCase();
@@ -229,6 +235,56 @@ export function inferTaskGraph(userRequest: string): DirectedGraph {
     };
 }
 
+/** Refines an inferred task graph using reflection output from an earlier design pass. */
+export function refineTaskGraph(graph: DirectedGraph, reflection: TaskGraphRefinementInput): DirectedGraph {
+    const exactCountMatch = reflection.improvementNotes.join(' ').match(/exactly\s+(\d+)/i);
+    const expectedCountHint = exactCountMatch ? `exactly ${exactCountMatch[1]} items` : undefined;
+    const wantsJson = reflection.improvementNotes.some(note => note.toLowerCase().includes('json only'));
+    const wantsBlogQuality = reflection.improvementNotes.some(note =>
+        note.toLowerCase().includes('publishable blog title'),
+    );
+    const wantsStability = reflection.improvementNotes.some(note => note.toLowerCase().includes('stabilize'));
+
+    return {
+        nodes: graph.nodes.map(node => {
+            const data = { ...(node.data ?? {}) };
+            const requiredCapabilities = new Set(((data.requiredCapabilities as string[] | undefined) ?? []).slice());
+            const expectedOutputs = new Set(((data.expectedOutputs as string[] | undefined) ?? []).slice());
+            const qualityHints = new Set(((data.qualityHints as string[] | undefined) ?? []).slice());
+
+            if (String(data.operation ?? '').startsWith('generate')) {
+                if (expectedCountHint) {
+                    expectedOutputs.add(expectedCountHint);
+                }
+                if (wantsJson) {
+                    requiredCapabilities.add('structured-output');
+                    expectedOutputs.add('json object output');
+                    qualityHints.add('Return machine-parseable JSON only.');
+                }
+                if (wantsBlogQuality) {
+                    expectedOutputs.add('publishable blog titles');
+                    qualityHints.add('Prefer polished, publication-ready title wording.');
+                }
+            }
+
+            if (String(data.operation ?? '').startsWith('log') && wantsStability) {
+                qualityHints.add('Highlight runtime failures and unstable output shapes during review.');
+            }
+
+            return {
+                ...node,
+                data: {
+                    ...data,
+                    requiredCapabilities: [...requiredCapabilities],
+                    expectedOutputs: [...expectedOutputs],
+                    qualityHints: [...qualityHints],
+                },
+            };
+        }),
+        edges: graph.edges.map(edge => ({ ...edge })),
+    };
+}
+
 /** Matches inferred task-graph nodes to the currently available blocks. */
 export function analyzeTaskGraph(graph: DirectedGraph): TaskNodeAnalysis[] {
     return graph.nodes.map(node => {
@@ -288,10 +344,16 @@ export function buildProposedBlocks(nodeAnalyses: TaskNodeAnalysis[]): ProposedB
 
 /** Performs a full graph-based feasibility pass over the user request. */
 export function assessFlowFeasibility(userRequest: string): FlowFeasibilityAssessment {
-    const taskGraph = inferTaskGraph(userRequest);
+    return assessTaskGraphFeasibility(userRequest, inferTaskGraph(userRequest));
+}
+
+/** Performs a feasibility pass against a caller-provided task graph. */
+export function assessTaskGraphFeasibility(userRequest: string, taskGraph: DirectedGraph): FlowFeasibilityAssessment {
     const nodeAnalyses = analyzeTaskGraph(taskGraph);
     const requiredCapabilities = inferRequiredCapabilities(userRequest);
-    const missingCapabilities = requiredCapabilities.filter(capability => !availableFlowCapabilities.includes(capability));
+    const missingCapabilities = requiredCapabilities.filter(
+        capability => !availableFlowCapabilities.includes(capability),
+    );
     const graphLevelMissingCapabilities = nodeAnalyses
         .filter(node => !node.feasible)
         .flatMap(node => node.requiredCapabilities)
@@ -312,6 +374,8 @@ export function assessFlowFeasibility(userRequest: string): FlowFeasibilityAsses
             : 'The inferred task graph contains nodes whose required capabilities are not covered by the available blocks.',
         recommendedAction: feasible
             ? 'Proceed with flow design and sample execution.'
-            : `Add blocks or tools for: ${[...new Set([...missingCapabilities, ...graphLevelMissingCapabilities])].join(', ')}`,
+            : `Add blocks or tools for: ${[...new Set([...missingCapabilities, ...graphLevelMissingCapabilities])].join(
+                  ', ',
+              )}`,
     };
 }

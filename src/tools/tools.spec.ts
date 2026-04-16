@@ -63,6 +63,7 @@ describe('tools modules', () => {
             'inferTaskGraph',
             'analyzeTaskGraphCompatibility',
             'proposeMissingBlocks',
+            'refineTaskGraph',
             'prevalidateFlowDesignRequest',
         ]);
     });
@@ -241,6 +242,78 @@ describe('tools modules', () => {
                 taskGraph: expect.any(Object),
                 nodeAnalyses: expect.any(Array),
                 proposedBlocks: expect.any(Array),
+            }),
+        });
+    });
+
+    it('refineTaskGraph updates generation expectations from reflection feedback and revalidates the graph', async () => {
+        const registry = buildDefaultToolRegistry();
+
+        const inferred = await registry.execute(
+            {
+                toolName: 'inferTaskGraph',
+                args: { userRequest: '키워드를 줄테니 블로그 타이틀 여러개 만들기' },
+            },
+            makeToolContext('task-graph-refine'),
+        );
+
+        const refined = await registry.execute(
+            {
+                toolName: 'refineTaskGraph',
+                args: {
+                    taskGraph: (inferred.data as { taskGraph: Record<string, unknown> }).taskGraph,
+                    reflection: {
+                        issues: ['The output only produced 2 item(s) but 5 were requested.'],
+                        improvementNotes: ['Ask for exactly 5 distinct results.', 'Make each result read like a publishable blog title.'],
+                    },
+                },
+            },
+            makeToolContext('task-graph-refine'),
+        );
+
+        expect(refined).toEqual({
+            toolName: 'refineTaskGraph',
+            ok: true,
+            data: expect.objectContaining({
+                taskGraph: expect.objectContaining({
+                    nodes: expect.arrayContaining([
+                        expect.objectContaining({
+                            id: 'generate-titles',
+                            data: expect.objectContaining({
+                                expectedOutputs: expect.arrayContaining(['exactly 5 items', 'publishable blog titles']),
+                            }),
+                        }),
+                    ]),
+                }),
+            }),
+        });
+
+        const reassessed = await registry.execute(
+            {
+                toolName: 'prevalidateFlowDesignRequest',
+                args: {
+                    userRequest: '키워드를 줄테니 블로그 타이틀 여러개 만들기',
+                    taskGraph: (refined.data as { taskGraph: Record<string, unknown> }).taskGraph,
+                },
+            },
+            makeToolContext('task-graph-refine'),
+        );
+
+        expect(reassessed).toEqual({
+            toolName: 'prevalidateFlowDesignRequest',
+            ok: true,
+            data: expect.objectContaining({
+                feasible: true,
+                taskGraph: expect.objectContaining({
+                    nodes: expect.arrayContaining([
+                        expect.objectContaining({
+                            id: 'generate-titles',
+                            data: expect.objectContaining({
+                                expectedOutputs: expect.arrayContaining(['exactly 5 items']),
+                            }),
+                        }),
+                    ]),
+                }),
             }),
         });
     });

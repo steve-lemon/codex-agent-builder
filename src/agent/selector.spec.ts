@@ -62,6 +62,7 @@ describe('skill selector and router', () => {
             'proposeBlockSpecUpdate',
             'runFlowSample',
             'reflectFlowResult',
+            'refineTaskGraph',
             'prevalidateFlowDesignRequest',
         ]);
     });
@@ -73,6 +74,7 @@ describe('skill selector and router', () => {
             'inferTaskGraph',
             'analyzeTaskGraphCompatibility',
             'proposeMissingBlocks',
+            'refineTaskGraph',
             'prevalidateFlowDesignRequest',
         ]);
     });

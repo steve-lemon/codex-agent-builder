@@ -3,10 +3,12 @@ import { z } from 'zod';
 import { defineTool, type ToolDefinition } from './types';
 import {
     analyzeTaskGraph,
+    assessTaskGraphFeasibility,
     assessFlowFeasibility,
     availableFlowBlocks,
     buildProposedBlocks,
     inferTaskGraph,
+    refineTaskGraph,
 } from './flow-analysis';
 
 /** Returns deterministic tools used by the flow-preflight-validator skill. */
@@ -95,18 +97,78 @@ export function createTaskGraphTools(): ToolDefinition[] {
             },
         }),
         defineTool({
-            name: 'prevalidateFlowDesignRequest',
+            name: 'refineTaskGraph',
             description:
-                'Run full graph-based preflight validation for a flow design request and summarize feasibility, graph reasoning, and missing blocks.',
+                'Refine an inferred task graph using reflection issues and improvement notes from an earlier design pass.',
             parameters: z.object({
-                userRequest: z.string(),
+                taskGraph: z.object({
+                    nodes: z.array(
+                        z.object({
+                            id: z.string(),
+                            label: z.string().optional(),
+                            data: z.record(z.unknown()).optional(),
+                        }),
+                    ),
+                    edges: z.array(
+                        z.object({
+                            source: z.string(),
+                            target: z.string(),
+                            label: z.string().optional(),
+                            data: z.record(z.unknown()).optional(),
+                        }),
+                    ),
+                }),
+                reflection: z.object({
+                    issues: z.array(z.string()).default([]),
+                    improvementNotes: z.array(z.string()).default([]),
+                }),
             }),
             riskLevel: 'read-only',
             allowedSkills: ['flow-preflight-validator', 'flow-designer'],
             requiresConfirmation: false,
             parallelSafe: true,
-            execute: async ({ userRequest }) => {
-                return assessFlowFeasibility(userRequest);
+            execute: async ({ taskGraph, reflection }) => {
+                const refinedTaskGraph = refineTaskGraph(taskGraph, reflection);
+                return {
+                    taskGraph: refinedTaskGraph,
+                    changeSummary: reflection.improvementNotes,
+                };
+            },
+        }),
+        defineTool({
+            name: 'prevalidateFlowDesignRequest',
+            description:
+                'Run full graph-based preflight validation for a flow design request and summarize feasibility, graph reasoning, and missing blocks.',
+            parameters: z.object({
+                userRequest: z.string(),
+                taskGraph: z
+                    .object({
+                        nodes: z.array(
+                            z.object({
+                                id: z.string(),
+                                label: z.string().optional(),
+                                data: z.record(z.unknown()).optional(),
+                            }),
+                        ),
+                        edges: z.array(
+                            z.object({
+                                source: z.string(),
+                                target: z.string(),
+                                label: z.string().optional(),
+                                data: z.record(z.unknown()).optional(),
+                            }),
+                        ),
+                    })
+                    .optional(),
+            }),
+            riskLevel: 'read-only',
+            allowedSkills: ['flow-preflight-validator', 'flow-designer'],
+            requiresConfirmation: false,
+            parallelSafe: true,
+            execute: async ({ userRequest, taskGraph }) => {
+                return taskGraph
+                    ? assessTaskGraphFeasibility(userRequest, taskGraph)
+                    : assessFlowFeasibility(userRequest);
             },
         }),
     ];
