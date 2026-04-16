@@ -67,12 +67,24 @@ export class AgentRuntime {
         return this.tracer;
     }
 
+    getOptions(): AgentRuntimeOptions {
+        return this.options;
+    }
+
     async run(userInput: string): Promise<RuntimeRunResult> {
+        return this.startRun(userInput);
+    }
+
+    async runWithSkill(skillName: SkillName, userInput: string): Promise<RuntimeRunResult> {
+        return this.startRun(userInput, skillName);
+    }
+
+    private async startRun(userInput: string, skillOverride?: SkillName): Promise<RuntimeRunResult> {
         const runId = randomUUID();
         const traceId = this.tracer.startTrace(runId);
         this.tracer.log(runId, 'run_start', { userInput });
 
-        const skillName = await this.selector.select(userInput);
+        const skillName = skillOverride ?? (await this.selector.select(userInput));
         const skillInstructions = this.loadSkillInstructions(skillName);
         const allowedToolDefinitions = this.router.toolsForSkill(skillName);
         const allowedTools = allowedToolDefinitions.map(tool => tool.name);

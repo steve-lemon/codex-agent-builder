@@ -72,6 +72,7 @@ Use the root barrel for most application code:
 import {
     AgentRuntime,
     FakeLlmGateway,
+    FlowDesignProduct,
     buildDefaultToolRegistry,
     InMemoryRunStateStore,
     createRuntime,
@@ -92,6 +93,25 @@ That split mirrors the current architecture:
 
 - root barrel: convenient app-facing API
 - layer barrels: clearer internal boundaries and lower accidental coupling
+
+Product-facing usage:
+
+```ts
+import { FlowDesignProduct } from '/Users/dujung/Documents/Codex/src';
+
+const product = new FlowDesignProduct();
+
+const preflight = await product.preflight('이메일을 확인해서 답장 해줘');
+const design = await product.design('키워드를 줄테니 블로그 타이틀 여러개 만들기');
+```
+
+Use `FlowDesignProduct` when the application wants explicit product operations such as:
+
+- preflight validation
+- full flow design
+- node-configuration design
+
+Use `AgentRuntime` directly when the application wants lower-level skill/runtime control.
 
 ## File Structure
 

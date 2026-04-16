@@ -38,5 +38,7 @@ export * from './llm';
 // Node-configuration design core and wrapper agent.
 export * from './node-config-design';
 export * from './node-config-agent';
+// Product-facing facade APIs.
+export * from './product';
 // Observability and live runtime monitoring.
 export * from './observability';
