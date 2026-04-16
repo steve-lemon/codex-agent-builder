@@ -362,6 +362,7 @@ export class FakeLlmGateway implements LlmGateway {
                                 flow: { $fromStep: designStepId, path: 'toolResults.0.data.flow' },
                                 desiredCount: { $fromStep: 's1', path: 'toolResults.0.data.desiredCount' },
                                 wantsJson: { $fromStep: 's1', path: 'toolResults.0.data.wantsJson' },
+                                probeResult: { $fromStep: 's3', path: 'toolResults.0.data' },
                                 ...(previousReflectionStepId
                                     ? {
                                           improvementNotes: {
@@ -596,6 +597,16 @@ export class FakeLlmGateway implements LlmGateway {
             const refinedGraphs = input.stepResults.filter(step =>
                 JSON.stringify(step).includes('"toolName":"refineTaskGraph"'),
             );
+            const nodeConfigurations = input.stepResults.filter(step =>
+                JSON.stringify(step).includes('"toolName":"designFlowNodeConfigurations"'),
+            ) as Array<{
+                toolResults?: Array<{
+                    data?: {
+                        suggestions?: Array<{ nodeId: string }>;
+                        probeInsightsApplied?: string[];
+                    };
+                }>;
+            }>;
 
             if (feasibilityData?.feasible === false) {
                 const missingCapabilities = feasibilityData.missingCapabilities ?? [];
@@ -618,8 +629,9 @@ export class FakeLlmGateway implements LlmGateway {
             const designPasses = Math.max(reflections.length, 1);
 
             if (latestReflection?.satisfied === false) {
+                const latestConfiguration = nodeConfigurations[nodeConfigurations.length - 1]?.toolResults?.[0]?.data;
                 return {
-                    summary: `Handled with skill flow-designer. The flow still needs improvement after ${designPasses} design pass(es).`,
+                    summary: `Handled with skill flow-designer. The flow still needs improvement after ${designPasses} design pass(es) while configuring ${latestConfiguration?.suggestions?.length ?? 0} node(s).`,
                     success: false,
                     nextActions: [
                         ...(latestReflection.issues ?? [])
@@ -633,8 +645,11 @@ export class FakeLlmGateway implements LlmGateway {
             }
 
             if (latestReflection?.satisfied === true) {
+                const latestConfiguration = nodeConfigurations[nodeConfigurations.length - 1]?.toolResults?.[0]?.data;
+                const configuredNodeCount = latestConfiguration?.suggestions?.length ?? 0;
+                const probeInsightCount = latestConfiguration?.probeInsightsApplied?.length ?? 0;
                 return {
-                    summary: `Handled with skill flow-designer. The flow satisfied the request after ${designPasses} design pass(es) and ${refinedGraphs.length} task-graph refinement step(s).`,
+                    summary: `Handled with skill flow-designer. The flow satisfied the request after ${designPasses} design pass(es), ${refinedGraphs.length} task-graph refinement step(s), and ${configuredNodeCount} configured node(s)${probeInsightCount > 0 ? ` informed by ${probeInsightCount} probe insight(s)` : ''}.`,
                     success: true,
                     nextActions:
                         designPasses > 1

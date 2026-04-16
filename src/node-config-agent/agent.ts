@@ -4,6 +4,7 @@ import type { FlowDocument, FlowNode } from '../flow/types';
 import type {
     NodeConfigurationDesignInput,
     NodeConfigurationDesignResult,
+    NodeConfigurationProbeResult,
     NodeConfigurationSuggestion,
     NodeConfigurationValidationResult,
 } from './types';
@@ -36,9 +37,13 @@ function buildSystemPrompt(input: NodeConfigurationDesignInput): string {
             ? 'You return concise structured output that can be safely parsed as JSON.'
             : 'You transform text requests into concise useful outputs.';
 
-    return input.improvementNotes && input.improvementNotes.length > 0
-        ? `${basePrompt} Improvements to apply: ${input.improvementNotes.join(' | ')}`
-        : basePrompt;
+    const probeHint = buildProbePromptHint(input.probeResult);
+    const improvementHint =
+        input.improvementNotes && input.improvementNotes.length > 0
+            ? ` Improvements to apply: ${input.improvementNotes.join(' | ')}`
+            : '';
+
+    return `${basePrompt}${probeHint}${improvementHint}`;
 }
 
 function buildUserPrompt(input: NodeConfigurationDesignInput): string {
@@ -53,8 +58,9 @@ function buildUserPrompt(input: NodeConfigurationDesignInput): string {
         input.improvementNotes && input.improvementNotes.length > 0
             ? ` Improvement notes: ${input.improvementNotes.join(' | ')}`
             : '';
+    const probeHint = buildProbeOutputHint(input.probeResult);
 
-    return `User request: ${input.userRequest}. ${desiredCountInstruction} ${formatInstruction}${improvementText}`;
+    return `User request: ${input.userRequest}. ${desiredCountInstruction} ${formatInstruction}${probeHint}${improvementText}`;
 }
 
 function selectModel(input: NodeConfigurationDesignInput): string {
@@ -68,6 +74,32 @@ function selectModel(input: NodeConfigurationDesignInput): string {
     return 'mock-flow-model';
 }
 
+function buildProbePromptHint(probeResult?: NodeConfigurationProbeResult): string {
+    const firstBehaviorNote = probeResult?.behaviorNotes?.[0]?.trim();
+    if (!firstBehaviorNote) {
+        return '';
+    }
+
+    return ` Observed block behavior: ${firstBehaviorNote}`;
+}
+
+function buildProbeOutputHint(probeResult?: NodeConfigurationProbeResult): string {
+    const firstMismatch = probeResult?.mismatchesFromSpec?.[0]?.trim();
+    if (!firstMismatch) {
+        return '';
+    }
+
+    return ` Keep in mind this observed behavior detail: ${firstMismatch}`;
+}
+
+function collectProbeInsights(probeResult?: NodeConfigurationProbeResult): string[] {
+    if (!probeResult) {
+        return [];
+    }
+
+    return [...(probeResult.behaviorNotes ?? []), ...(probeResult.mismatchesFromSpec ?? [])];
+}
+
 function applyNodeConfig(node: FlowNode, config: Record<string, string>): FlowNode {
     return {
         ...node,
@@ -79,6 +111,7 @@ function applyNodeConfig(node: FlowNode, config: Record<string, string>): FlowNo
 export class NodeConfigDesignAgent {
     design(input: NodeConfigurationDesignInput): NodeConfigurationDesignResult {
         const suggestions: NodeConfigurationSuggestion[] = [];
+        const probeInsightsApplied = collectProbeInsights(input.probeResult);
         const nextFlow: FlowDocument = {
             ...input.flow,
             nodes: input.flow.nodes.map(node => {
@@ -95,6 +128,9 @@ export class NodeConfigDesignAgent {
                         config,
                         rationale: [
                             'Populate the system prompt so downstream AI behavior is constrained consistently.',
+                            ...(probeInsightsApplied.length > 0
+                                ? [`Incorporate observed block behavior: ${probeInsightsApplied[0]}`]
+                                : []),
                         ],
                     });
                     return applyNodeConfig(node, config);
@@ -111,6 +147,9 @@ export class NodeConfigDesignAgent {
                         config,
                         rationale: [
                             'Populate the user-facing prompt with output count, format, and improvement hints.',
+                            ...(probeInsightsApplied.length > 1
+                                ? [`Reflect observed output caveats: ${probeInsightsApplied[1]}`]
+                                : []),
                         ],
                     });
                     return applyNodeConfig(node, config);
@@ -129,6 +168,11 @@ export class NodeConfigDesignAgent {
                         rationale: [
                             'Choose an AI model profile that matches the requested output style.',
                             'Keep jsonOutput aligned with the request so downstream parsing expectations stay stable.',
+                            ...(probeInsightsApplied.length > 0
+                                ? [
+                                      'Use the probe result to keep model and prompt assumptions aligned with observed behavior.',
+                                  ]
+                                : []),
                         ],
                     });
                     return applyNodeConfig(node, config);
@@ -157,7 +201,11 @@ export class NodeConfigDesignAgent {
         return {
             flow: nextFlow,
             suggestions,
-            summary: `Configured ${suggestions.length} node(s) with block-specific settings.`,
+            probeInsightsApplied,
+            summary:
+                probeInsightsApplied.length > 0
+                    ? `Configured ${suggestions.length} node(s) with block-specific settings using ${probeInsightsApplied.length} probe insight(s).`
+                    : `Configured ${suggestions.length} node(s) with block-specific settings.`,
         };
     }
 

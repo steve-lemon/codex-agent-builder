@@ -71,6 +71,14 @@ const FlowDocumentSchema = z.object({
     edges: z.array(FlowEdgeSchema),
 });
 
+const ProbeResultSchema = z.object({
+    blockId: z.string(),
+    observedOutputs: z.record(z.unknown()).optional(),
+    observedLogs: z.array(z.string()).optional(),
+    behaviorNotes: z.array(z.string()).optional(),
+    mismatchesFromSpec: z.array(z.string()).optional(),
+});
+
 /** Returns tools that design and validate concrete node configurations for a flow draft. */
 export function createNodeConfigTools(): ToolDefinition[] {
     return [
@@ -84,18 +92,20 @@ export function createNodeConfigTools(): ToolDefinition[] {
                 desiredCount: z.number().int().positive(),
                 wantsJson: z.boolean(),
                 improvementNotes: z.array(z.string()).optional(),
+                probeResult: ProbeResultSchema.optional(),
             }),
             riskLevel: 'read-only',
             allowedSkills: ['flow-designer', 'node-config-designer'],
             requiresConfirmation: false,
             parallelSafe: false,
-            execute: async ({ userRequest, flow, desiredCount, wantsJson, improvementNotes = [] }) => {
+            execute: async ({ userRequest, flow, desiredCount, wantsJson, improvementNotes = [], probeResult }) => {
                 return agent.design({
                     userRequest,
                     flow,
                     desiredCount,
                     wantsJson,
                     improvementNotes,
+                    probeResult,
                 });
             },
         }),

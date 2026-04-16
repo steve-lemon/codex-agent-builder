@@ -43,6 +43,8 @@ describe('runtime flow', () => {
         expect(result.status).toBe('completed');
         expect(result.finalResult?.summary).toContain('flow-designer');
         expect(result.finalResult?.summary).toContain('design pass');
+        expect(result.finalResult?.summary).toContain('configured node');
+        expect(result.finalResult?.summary).toContain('probe insight');
         expect(
             run?.stepResults.some(step => JSON.stringify(step).includes('"toolName":"prevalidateFlowDesignRequest"')),
         ).toBe(true);

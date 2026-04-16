@@ -9,10 +9,20 @@ export interface NodeConfigurationSuggestion {
     rationale: string[];
 }
 
+/** Observed runtime behavior for a probed block that can inform node configuration design. */
+export interface NodeConfigurationProbeResult {
+    blockId: string;
+    observedOutputs?: Record<string, unknown>;
+    observedLogs?: string[];
+    behaviorNotes?: string[];
+    mismatchesFromSpec?: string[];
+}
+
 /** Result returned after applying node-level configuration design. */
 export interface NodeConfigurationDesignResult {
     flow: FlowDocument;
     suggestions: NodeConfigurationSuggestion[];
+    probeInsightsApplied: string[];
     summary: string;
 }
 
@@ -29,4 +39,5 @@ export interface NodeConfigurationDesignInput {
     desiredCount: number;
     wantsJson: boolean;
     improvementNotes?: string[];
+    probeResult?: NodeConfigurationProbeResult;
 }

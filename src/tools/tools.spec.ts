@@ -668,6 +668,21 @@ describe('tools modules', () => {
                     flow: (design.data as { flow: Record<string, unknown> }).flow,
                     desiredCount: 5,
                     wantsJson: false,
+                    probeResult: {
+                        blockId: 'ai-generate',
+                        behaviorNotes: [
+                            'Reads system/prompt text and writes the mock generation result into the output port.',
+                        ],
+                        mismatchesFromSpec: [
+                            'The output port can emit structured object payloads when jsonOutput=true, but the description does not explain that.',
+                        ],
+                        observedOutputs: {
+                            output: {
+                                model: 'mock-flow-model',
+                                format: 'json',
+                            },
+                        },
+                    },
                 },
             },
             makeToolContext('node-config-tools-1'),
@@ -677,13 +692,18 @@ describe('tools modules', () => {
             toolName: 'designFlowNodeConfigurations',
             ok: true,
             data: expect.objectContaining({
-                summary: expect.stringContaining('Configured'),
+                summary: expect.stringContaining('probe insight'),
+                probeInsightsApplied: expect.arrayContaining([
+                    expect.stringContaining('Reads system/prompt text'),
+                    expect.stringContaining('structured object payloads'),
+                ]),
                 suggestions: expect.arrayContaining([
                     expect.objectContaining({
                         nodeId: 'system-input',
                         config: expect.objectContaining({
                             input: expect.stringContaining('You generate clear and catchy blog titles'),
                         }),
+                        rationale: expect.arrayContaining([expect.stringContaining('observed block behavior')]),
                     }),
                     expect.objectContaining({
                         nodeId: 'prompt-input',
@@ -697,6 +717,7 @@ describe('tools modules', () => {
                             model: 'mock-blog-gpt',
                             jsonOutput: 'false',
                         }),
+                        rationale: expect.arrayContaining([expect.stringContaining('Use the probe result')]),
                     }),
                 ]),
             }),

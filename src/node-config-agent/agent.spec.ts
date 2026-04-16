@@ -33,9 +33,18 @@ describe('node-config design agent', () => {
             flow: (design.data as { flow: Parameters<NodeConfigDesignAgent['design']>[0]['flow'] }).flow,
             desiredCount: 5,
             wantsJson: false,
+            probeResult: {
+                blockId: 'ai-generate',
+                behaviorNotes: ['Reads system/prompt text and writes the mock generation result into the output port.'],
+                mismatchesFromSpec: [
+                    'The output port can emit structured object payloads when jsonOutput=true, but the description does not explain that.',
+                ],
+            },
         });
 
         expect(result.summary).toContain('Configured');
+        expect(result.summary).toContain('probe insight');
+        expect(result.probeInsightsApplied).toHaveLength(2);
         expect(result.suggestions).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({
@@ -43,6 +52,7 @@ describe('node-config design agent', () => {
                     config: expect.objectContaining({
                         input: expect.stringContaining('You generate clear and catchy blog titles'),
                     }),
+                    rationale: expect.arrayContaining([expect.stringContaining('observed block behavior')]),
                 }),
                 expect.objectContaining({
                     nodeId: 'prompt-input',
