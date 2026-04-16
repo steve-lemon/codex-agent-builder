@@ -53,6 +53,7 @@ describe('tools modules', () => {
             'refundOrder',
             'analyzeFlowRequest',
             'listAvailableFlowBlocks',
+            'assessFlowFeasibility',
             'probeFlowBlock',
             'designFlowDraft',
             'validateFlowDraft',
@@ -89,10 +90,11 @@ describe('tools modules', () => {
     it('createFlowDesignTools returns planner-safe read-only tools for the flow-designer skill', () => {
         const tools = createFlowDesignTools();
 
-        expect(tools).toHaveLength(8);
+        expect(tools).toHaveLength(9);
         expect(tools.map(tool => tool.name)).toEqual([
             'analyzeFlowRequest',
             'listAvailableFlowBlocks',
+            'assessFlowFeasibility',
             'probeFlowBlock',
             'designFlowDraft',
             'validateFlowDraft',
@@ -103,6 +105,28 @@ describe('tools modules', () => {
         expect(tools.every(tool => tool.allowedSkills.includes('flow-designer'))).toBe(true);
         expect(tools.every(tool => tool.riskLevel === 'read-only')).toBe(true);
         expect(tools.every(tool => tool.requiresConfirmation === false)).toBe(true);
+    });
+
+    it('assessFlowFeasibility reports missing capabilities for impossible requests', async () => {
+        const registry = buildDefaultToolRegistry();
+
+        const result = await registry.execute(
+            {
+                toolName: 'assessFlowFeasibility',
+                args: { userRequest: '이메일을 확인해서 답장 해줘' },
+            },
+            makeToolContext('flow-tools-gap'),
+        );
+
+        expect(result).toEqual({
+            toolName: 'assessFlowFeasibility',
+            ok: true,
+            data: expect.objectContaining({
+                feasible: false,
+                missingCapabilities: ['email-read', 'email-reply'],
+                recommendedAction: expect.stringContaining('email-read'),
+            }),
+        });
     });
 
     it('mock tools return deterministic customer and order data', async () => {

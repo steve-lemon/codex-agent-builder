@@ -33,7 +33,12 @@ export class SkillSelector {
             text.includes('블로그') ||
             text.includes('타이틀') ||
             text.includes('제목') ||
-            text.includes('키워드')
+            text.includes('키워드') ||
+            text.includes('email') ||
+            text.includes('mail') ||
+            text.includes('reply') ||
+            text.includes('답장') ||
+            text.includes('이메일')
         ) {
             return 'flow-designer';
         }

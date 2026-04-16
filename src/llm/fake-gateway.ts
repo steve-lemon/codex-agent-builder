@@ -69,6 +69,64 @@ export class FakeLlmGateway implements LlmGateway {
         }
 
         if (input.skillName === 'flow-designer') {
+            const isClearlyInfeasible =
+                text.includes('email') ||
+                text.includes('mail') ||
+                text.includes('reply') ||
+                text.includes('이메일') ||
+                text.includes('답장');
+
+            if (isClearlyInfeasible) {
+                return {
+                    steps: [
+                        {
+                            id: 's1',
+                            mode: 'single-tool',
+                            description: 'Analyze request intent for flow design',
+                            toolCalls: [
+                                {
+                                    toolName: ensureToolAvailable('analyzeFlowRequest'),
+                                    args: { userRequest: input.userInput },
+                                },
+                            ],
+                        },
+                        {
+                            id: 's2',
+                            mode: 'single-tool',
+                            description: 'List available flow blocks',
+                            toolCalls: [
+                                {
+                                    toolName: ensureToolAvailable('listAvailableFlowBlocks'),
+                                    args: {},
+                                },
+                            ],
+                        },
+                        {
+                            id: 's3',
+                            mode: 'single-tool',
+                            description: 'Assess whether the request is feasible with current blocks',
+                            toolCalls: [
+                                {
+                                    toolName: ensureToolAvailable('assessFlowFeasibility'),
+                                    args: { userRequest: input.userInput },
+                                },
+                            ],
+                        },
+                        {
+                            id: 's4',
+                            mode: 'reasoning',
+                            description: 'Stop before design because required capabilities are missing',
+                            reasoning: 'Do not force a flow design when critical capabilities such as email access are unavailable.',
+                        },
+                        {
+                            id: 's5',
+                            mode: 'finalize',
+                            description: 'Finalize capability-gap response',
+                        },
+                    ],
+                };
+            }
+
             return {
                 steps: [
                     {
@@ -96,6 +154,17 @@ export class FakeLlmGateway implements LlmGateway {
                     {
                         id: 's3',
                         mode: 'single-tool',
+                        description: 'Assess whether the request is feasible with current blocks',
+                        toolCalls: [
+                            {
+                                toolName: ensureToolAvailable('assessFlowFeasibility'),
+                                args: { userRequest: input.userInput },
+                            },
+                        ],
+                    },
+                    {
+                        id: 's4',
+                        mode: 'single-tool',
                         description: 'Probe the AI block behavior before using it',
                         toolCalls: [
                             {
@@ -115,7 +184,7 @@ export class FakeLlmGateway implements LlmGateway {
                         ],
                     },
                     {
-                        id: 's4',
+                        id: 's5',
                         mode: 'single-tool',
                         description: 'Design a flow draft',
                         toolCalls: [
@@ -131,20 +200,20 @@ export class FakeLlmGateway implements LlmGateway {
                         ],
                     },
                     {
-                        id: 's5',
+                        id: 's6',
                         mode: 'single-tool',
                         description: 'Validate the flow draft',
                         toolCalls: [
                             {
                                 toolName: ensureToolAvailable('validateFlowDraft'),
                                 args: {
-                                    flow: { $fromStep: 's4', path: 'toolResults.0.data.flow' },
+                                    flow: { $fromStep: 's5', path: 'toolResults.0.data.flow' },
                                 },
                             },
                         ],
                     },
                     {
-                        id: 's6',
+                        id: 's7',
                         mode: 'single-tool',
                         description: 'Run the flow sample',
                         toolCalls: [
@@ -152,13 +221,13 @@ export class FakeLlmGateway implements LlmGateway {
                                 toolName: ensureToolAvailable('runFlowSample'),
                                 args: {
                                     userRequest: input.userInput,
-                                    flow: { $fromStep: 's4', path: 'toolResults.0.data.flow' },
+                                    flow: { $fromStep: 's5', path: 'toolResults.0.data.flow' },
                                 },
                             },
                         ],
                     },
                     {
-                        id: 's7',
+                        id: 's8',
                         mode: 'single-tool',
                         description: 'Reflect on the sample result',
                         toolCalls: [
@@ -168,13 +237,13 @@ export class FakeLlmGateway implements LlmGateway {
                                     userRequest: input.userInput,
                                     desiredCount: { $fromStep: 's1', path: 'toolResults.0.data.desiredCount' },
                                     wantsJson: { $fromStep: 's1', path: 'toolResults.0.data.wantsJson' },
-                                    sampleResult: { $fromStep: 's6', path: 'toolResults.0.data' },
+                                    sampleResult: { $fromStep: 's7', path: 'toolResults.0.data' },
                                 },
                             },
                         ],
                     },
                     {
-                        id: 's8',
+                        id: 's9',
                         mode: 'finalize',
                         description: 'Finalize flow design response',
                     },
@@ -234,6 +303,34 @@ export class FakeLlmGateway implements LlmGateway {
     }
 
     async finalize(input: FinalizerInput): Promise<FinalResult> {
+        if (input.skillName === 'flow-designer') {
+            const feasibility = input.stepResults.find(step =>
+                JSON.stringify(step).includes('"toolName":"assessFlowFeasibility"'),
+            ) as
+                | {
+                      toolResults?: Array<{
+                          data?: {
+                              feasible?: boolean;
+                              missingCapabilities?: string[];
+                          };
+                      }>;
+                  }
+                | undefined;
+            const feasibilityData = feasibility?.toolResults?.[0]?.data;
+
+            if (feasibilityData?.feasible === false) {
+                const missingCapabilities = feasibilityData.missingCapabilities ?? [];
+                return {
+                    summary: `Handled with skill flow-designer. The request is not feasible with current blocks because these capabilities are missing: ${missingCapabilities.join(', ')}.`,
+                    success: false,
+                    nextActions: [
+                        `Add blocks or tools for: ${missingCapabilities.join(', ')}`,
+                        'Retry flow design after the missing capabilities are available',
+                    ],
+                };
+            }
+        }
+
         return {
             summary: `Handled with skill ${input.skillName}. Processed ${input.stepResults.length} step results.`,
             success: true,

@@ -18,6 +18,14 @@ import { GraphExecutionEngine } from '../graph/executor';
 import { defineTool, type ToolDefinition } from './types';
 
 const availableBlocks = [TextInputBlock, InputBlock, BufferBlock, ViewBlock, AiGenerateBlock];
+const availableCapabilities = [
+    'text-input',
+    'text-output',
+    'delay',
+    'view-log',
+    'mock-ai-generation',
+    'structured-output',
+];
 
 const FlowPortSchema = z.object({
     id: z.string(),
@@ -185,6 +193,64 @@ function buildUserPrompt(
         : 'Return plain text.';
     const improvementText = improvementNotes.length > 0 ? ` Improvement notes: ${improvementNotes.join(' | ')}` : '';
     return `User request: ${userRequest}. Sample input: ${sampleInput}. ${desiredCountInstruction} ${formatInstruction}${improvementText}`;
+}
+
+function inferRequiredCapabilities(userRequest: string): string[] {
+    const lowered = userRequest.toLowerCase();
+    const required = new Set<string>();
+
+    if (lowered.includes('email') || lowered.includes('mail') || userRequest.includes('이메일')) {
+        required.add('email-read');
+    }
+    if (
+        lowered.includes('reply') ||
+        lowered.includes('respond') ||
+        lowered.includes('send email') ||
+        userRequest.includes('답장') ||
+        userRequest.includes('회신')
+    ) {
+        required.add('email-reply');
+    }
+    if (lowered.includes('slack')) {
+        required.add('slack-send');
+    }
+    if (lowered.includes('calendar') || userRequest.includes('캘린더')) {
+        required.add('calendar-read');
+    }
+    if (
+        lowered.includes('blog') ||
+        lowered.includes('title') ||
+        userRequest.includes('타이틀') ||
+        userRequest.includes('제목')
+    ) {
+        required.add('mock-ai-generation');
+        required.add('text-input');
+        required.add('text-output');
+    }
+    if (lowered.includes('json') || userRequest.includes('구조화')) {
+        required.add('structured-output');
+    }
+
+    return [...required];
+}
+
+function assessFlowFeasibility(userRequest: string) {
+    const requiredCapabilities = inferRequiredCapabilities(userRequest);
+    const missingCapabilities = requiredCapabilities.filter(capability => !availableCapabilities.includes(capability));
+    const feasible = missingCapabilities.length === 0;
+
+    return {
+        feasible,
+        requiredCapabilities,
+        availableCapabilities,
+        missingCapabilities,
+        reason: feasible
+            ? 'The request can be covered by the currently available blocks.'
+            : 'The request depends on capabilities that no available block provides.',
+        recommendedAction: feasible
+            ? 'Proceed with flow design and sample execution.'
+            : `Add blocks or tools for: ${missingCapabilities.join(', ')}`,
+    };
 }
 
 function extractItems(output: unknown): string[] {
@@ -425,6 +491,21 @@ export function createFlowDesignTools(): ToolDefinition[] {
             },
         }),
         defineTool({
+            name: 'assessFlowFeasibility',
+            description:
+                'Check whether the current block set can satisfy the request, and report missing capabilities early.',
+            parameters: z.object({
+                userRequest: z.string(),
+            }),
+            riskLevel: 'read-only',
+            allowedSkills: ['flow-designer'],
+            requiresConfirmation: false,
+            parallelSafe: true,
+            execute: async ({ userRequest }) => {
+                return assessFlowFeasibility(userRequest);
+            },
+        }),
+        defineTool({
             name: 'probeFlowBlock',
             description:
                 'Run a deterministic probe against one executable block to observe its actual runtime behavior.',
@@ -460,6 +541,15 @@ export function createFlowDesignTools(): ToolDefinition[] {
             requiresConfirmation: false,
             parallelSafe: false,
             execute: async ({ userRequest, sampleInput, desiredCount, wantsJson, improvementNotes = [] }) => {
+                const feasibility = assessFlowFeasibility(userRequest);
+                if (!feasibility.feasible) {
+                    throw new AgentError(
+                        `Flow design is not feasible with current blocks. Missing capabilities: ${feasibility.missingCapabilities.join(
+                            ', ',
+                        )}`,
+                    );
+                }
+
                 let flow = createFlowDocument(availableBlocks);
                 flow = createFlowNode(flow, InputBlock.id, {
                     nodeId: 'system-input',

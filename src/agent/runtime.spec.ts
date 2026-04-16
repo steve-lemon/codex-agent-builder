@@ -36,6 +36,20 @@ describe('runtime flow', () => {
         expect(result.finalResult?.summary).toContain('flow-designer');
     });
 
+    it('stops early and reports missing capabilities when the request cannot be satisfied by available blocks', async () => {
+        const runtime = buildDefaultRuntime();
+        const result = await runtime.run('이메일을 확인해서 답장 해줘');
+
+        expect(result.status).toBe('completed');
+        expect(result.finalResult).toEqual(
+            expect.objectContaining({
+                success: false,
+                summary: expect.stringContaining('missing: email-read, email-reply'),
+                nextActions: expect.arrayContaining([expect.stringContaining('email-read')]),
+            }),
+        );
+    });
+
     it('runs parallel-safe tools concurrently in parallel step', async () => {
         const registry = new ToolRegistry();
         const timeline: Array<{ name: string; ts: number }> = [];

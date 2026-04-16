@@ -23,6 +23,12 @@ describe('skill selector and router', () => {
         expect(skill).toBe('flow-designer');
     });
 
+    it('selects flow designer skill for capability-gap requests such as email handling', async () => {
+        const selector = new SkillSelector();
+        const skill = await selector.select('이메일을 확인해서 답장 해줘');
+        expect(skill).toBe('flow-designer');
+    });
+
     it('defaults to customer support reviewer otherwise', async () => {
         const selector = new SkillSelector();
         const skill = await selector.select('Help me review this customer complaint');
@@ -43,6 +49,7 @@ describe('skill selector and router', () => {
         expect(tools).toEqual([
             'analyzeFlowRequest',
             'listAvailableFlowBlocks',
+            'assessFlowFeasibility',
             'probeFlowBlock',
             'designFlowDraft',
             'validateFlowDraft',
