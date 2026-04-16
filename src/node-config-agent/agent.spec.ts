@@ -50,7 +50,7 @@ describe('node-config design agent', () => {
         );
 
         const agent = new NodeConfigDesignAgent();
-        const result = agent.design({
+        const result = await agent.design({
             userRequest: '키워드를 줄테니 블로그 타이틀 여러개 만들기',
             flow: (design.data as { flow: Parameters<NodeConfigDesignAgent['design']>[0]['flow'] }).flow,
             desiredCount: 5,
@@ -136,7 +136,7 @@ describe('node-config design agent', () => {
         );
 
         const agent = new NodeConfigDesignAgent();
-        const result = agent.design({
+        const result = await agent.design({
             userRequest: '상품 소개 문구를 JSON 형태로 여러개 만들어줘',
             flow: (design.data as { flow: Parameters<NodeConfigDesignAgent['design']>[0]['flow'] }).flow,
             desiredCount: 3,
@@ -195,6 +195,52 @@ describe('node-config design agent', () => {
                 expect.stringContaining('AI node is missing a model configuration'),
                 expect.stringContaining('AI node is missing a jsonOutput configuration'),
             ]),
+        );
+    });
+
+    it('accepts an external knowledge source through the wrapper', async () => {
+        const registry = buildDefaultToolRegistry();
+        const design = await registry.execute(
+            {
+                toolName: 'designFlowDraft',
+                args: {
+                    userRequest: '상품 소개 문구를 JSON 형태로 여러개 만들어줘',
+                    sampleInput: '생산성 향상',
+                    desiredCount: 3,
+                    wantsJson: true,
+                },
+            },
+            {
+                runId: 'node-config-agent-4',
+                now: 1234567890,
+                runState: {
+                    async get() {
+                        throw new Error('runState.get() should not be called in this test');
+                    },
+                },
+            },
+        );
+
+        const agent = new NodeConfigDesignAgent(undefined, {
+            getSharedNotes() {
+                return ['Prefer strongly structured outputs for downstream parsing.'];
+            },
+            getStrategyDirectives() {
+                return [{ strategyId: 'ai-generation', note: 'Use a JSON-friendly profile.' }];
+            },
+        });
+        const result = await agent.design({
+            userRequest: '상품 소개 문구를 JSON 형태로 여러개 만들어줘',
+            flow: (design.data as { flow: Parameters<NodeConfigDesignAgent['design']>[0]['flow'] }).flow,
+            desiredCount: 3,
+            wantsJson: true,
+        });
+
+        expect(result.suggestions.find(suggestion => suggestion.nodeId === 'ai-node')?.config).toEqual(
+            expect.objectContaining({
+                model: 'mock-structured-gpt',
+                jsonOutput: 'true',
+            }),
         );
     });
 });

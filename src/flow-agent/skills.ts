@@ -21,8 +21,10 @@ export class IntentAnalysisSkill implements FlowDesignSkill {
         return true;
     }
 
-    async run(state: FlowDesignAttemptState): Promise<void> {
-        state.intent = analyzeFlowRequest(state.userRequest);
+    async run(state: FlowDesignAttemptState, services: FlowDesignSkillServices): Promise<void> {
+        state.intent = await Promise.resolve(
+            services.provider?.analyzeRequest(state.userRequest) ?? analyzeFlowRequest(state.userRequest),
+        );
     }
 }
 
@@ -36,16 +38,28 @@ export class FlowCompositionSkill implements FlowDesignSkill {
 
     async run(state: FlowDesignAttemptState, services: FlowDesignSkillServices): Promise<void> {
         const intent = state.intent!;
-        const result = designFlowDraft({
-            userRequest: state.userRequest,
-            sampleInput: intent.sampleInput,
-            desiredCount: intent.desiredCount,
-            wantsJson: intent.wantsJson,
-            improvementNotes: state.improvementNotes,
-            availableBlocks: state.availableBlocks,
-            designSession: services.designSession,
-            toolName: 'flow-composition',
-        });
+        const result = await Promise.resolve(
+            services.provider?.composeDraft({
+                userRequest: state.userRequest,
+                sampleInput: intent.sampleInput,
+                desiredCount: intent.desiredCount,
+                wantsJson: intent.wantsJson,
+                improvementNotes: state.improvementNotes,
+                availableBlocks: state.availableBlocks,
+                designSession: services.designSession,
+                toolName: 'flow-composition',
+            }) ??
+                designFlowDraft({
+                    userRequest: state.userRequest,
+                    sampleInput: intent.sampleInput,
+                    desiredCount: intent.desiredCount,
+                    wantsJson: intent.wantsJson,
+                    improvementNotes: state.improvementNotes,
+                    availableBlocks: state.availableBlocks,
+                    designSession: services.designSession,
+                    toolName: 'flow-composition',
+                }),
+        );
 
         state.flow = result.flow;
     }
@@ -97,18 +111,30 @@ export class FlowReflectionSkill implements FlowDesignSkill {
         return state.execution !== undefined && state.intent !== undefined;
     }
 
-    async run(state: FlowDesignAttemptState): Promise<void> {
+    async run(state: FlowDesignAttemptState, services: FlowDesignSkillServices): Promise<void> {
         const intent = state.intent!;
-        state.reflection = reflectFlowExecution({
-            userRequest: state.userRequest,
-            desiredCount: intent.desiredCount,
-            wantsJson: intent.wantsJson,
-            sampleResult: {
-                status: state.execution!.status,
-                output: state.execution!.output,
-                logs: state.execution!.logs,
-            },
-        });
+        state.reflection = await Promise.resolve(
+            services.provider?.reflectExecution({
+                userRequest: state.userRequest,
+                desiredCount: intent.desiredCount,
+                wantsJson: intent.wantsJson,
+                sampleResult: {
+                    status: state.execution!.status,
+                    output: state.execution!.output,
+                    logs: state.execution!.logs,
+                },
+            }) ??
+                reflectFlowExecution({
+                    userRequest: state.userRequest,
+                    desiredCount: intent.desiredCount,
+                    wantsJson: intent.wantsJson,
+                    sampleResult: {
+                        status: state.execution!.status,
+                        output: state.execution!.output,
+                        logs: state.execution!.logs,
+                    },
+                }),
+        );
     }
 }
 

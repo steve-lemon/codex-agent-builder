@@ -88,6 +88,118 @@ describe('flow design agent', () => {
         expect(result.finalFlow).toBeUndefined();
     });
 
+    it('accepts a custom provider for intent, draft, and reflection decisions', async () => {
+        const agent = new FlowDesignAgent({
+            provider: {
+                analyzeRequest(userRequest) {
+                    return {
+                        userRequest,
+                        taskType: 'text-generation',
+                        wantsJson: false,
+                        wantsMultiple: false,
+                        desiredCount: 1,
+                        sampleInput: 'custom-sample',
+                    };
+                },
+                composeDraft(args) {
+                    return {
+                        flow: {
+                            blocks: [InputBlock, AiGenerateBlock, ViewBlock],
+                            nodes: [],
+                            edges: [],
+                        },
+                        designRationale: ['custom provider'],
+                        preflightSummary: {
+                            taskGraphNodeCount: 0,
+                            feasible: true,
+                            missingCapabilities: [],
+                        },
+                        taskGraphMapping: {
+                            flowNodes: [],
+                            taskEdges: [],
+                        },
+                    };
+                },
+                reflectExecution() {
+                    return {
+                        satisfied: true,
+                        summary: 'provider reflection',
+                        issues: [],
+                        suggestedImprovements: [],
+                    };
+                },
+            },
+            skills: [
+                {
+                    name: 'intent-analysis',
+                    applies: () => true,
+                    async run(state, services) {
+                        state.intent = await services.provider!.analyzeRequest(state.userRequest);
+                    },
+                },
+                {
+                    name: 'flow-composition',
+                    applies: state => state.intent !== undefined,
+                    async run(state, services) {
+                        const draft = await services.provider!.composeDraft({
+                            userRequest: state.userRequest,
+                            sampleInput: state.intent!.sampleInput,
+                            desiredCount: state.intent!.desiredCount,
+                            wantsJson: state.intent!.wantsJson,
+                            availableBlocks: state.availableBlocks,
+                        });
+                        state.flow = draft.flow;
+                        state.validation = { isValid: true, issues: [] };
+                        state.execution = {
+                            status: 'completed',
+                            flow: draft.flow,
+                            logs: [],
+                            graphRun: {
+                                runId: 'provider-run',
+                                graph: { nodes: [], edges: [] },
+                                sourceGraph: { nodes: [], edges: [] },
+                                plan: {
+                                    nodes: [],
+                                    batches: [],
+                                    components: [],
+                                    hasCycles: false,
+                                },
+                                startNodeIds: [],
+                                status: 'completed',
+                                executionOrder: [],
+                                executions: [],
+                                results: {},
+                                startedAt: 1,
+                                completedAt: 1,
+                            },
+                        };
+                    },
+                },
+                {
+                    name: 'flow-reflection',
+                    applies: state => state.execution !== undefined,
+                    async run(state, services) {
+                        state.reflection = await services.provider!.reflectExecution({
+                            userRequest: state.userRequest,
+                            desiredCount: 1,
+                            wantsJson: false,
+                            sampleResult: {
+                                status: 'completed',
+                                logs: [],
+                            },
+                        });
+                    },
+                },
+            ],
+        });
+
+        const result = await agent.design('provider test');
+
+        expect(result.status).toBe('completed');
+        expect(result.intent?.sampleInput).toBe('custom-sample');
+        expect(result.reflection?.summary).toBe('provider reflection');
+    });
+
     it('streams live graph design events while composing and retrying a flow', async () => {
         const events: FlowDesignEvent[] = [];
         const agent = new FlowDesignAgent({

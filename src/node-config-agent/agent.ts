@@ -1,6 +1,6 @@
-// Sub-agent that specializes in configuring flow nodes after the graph structure exists.
-import { validateFlowNode } from '../flow/document';
-import type { FlowDocument, FlowNode } from '../flow/types';
+// Wrapper sub-agent that delegates node configuration design to the shared core service.
+import { NodeConfigDesignService } from '../node-config-design/core';
+import type { NodeConfigKnowledgeSource } from '../node-config-design/knowledge';
 import { createDefaultNodeBlockConfigStrategies, type NodeBlockConfigStrategy } from './strategies';
 import type {
     NodeConfigurationDesignInput,
@@ -10,92 +10,20 @@ import type {
 
 /** Designs concrete per-node configuration values for an already-structured flow draft. */
 export class NodeConfigDesignAgent {
-    constructor(private readonly strategies: NodeBlockConfigStrategy[] = createDefaultNodeBlockConfigStrategies()) {}
+    private readonly service: NodeConfigDesignService;
 
-    private resolveStrategy(flow: FlowDocument, node: FlowNode): NodeBlockConfigStrategy | undefined {
-        const block = flow.blocks.find(candidate => candidate.id === node.blockId);
-        const preferredStrategyId = block?.nodeConfigStrategyId;
-        const hasExplicitPreferredStrategy = preferredStrategyId
-            ? this.strategies.some(
-                  candidate => candidate.blockId === node.blockId && candidate.strategyId === preferredStrategyId,
-              )
-            : false;
-
-        // TODO(node-config): Allow multiple strategies to cooperate on one node
-        // when blocks eventually need layered configuration passes such as
-        // provider selection + prompt shaping + output schema enforcement.
-        return this.strategies.find(candidate => {
-            if (candidate.blockId !== node.blockId) {
-                return false;
-            }
-            if (hasExplicitPreferredStrategy && candidate.strategyId !== preferredStrategyId) {
-                return false;
-            }
-            return candidate.supports ? candidate.supports(node) : true;
-        });
+    constructor(
+        strategies: NodeBlockConfigStrategy[] = createDefaultNodeBlockConfigStrategies(),
+        knowledgeSource?: NodeConfigKnowledgeSource,
+    ) {
+        this.service = new NodeConfigDesignService(strategies, knowledgeSource);
     }
 
-    design(input: NodeConfigurationDesignInput): NodeConfigurationDesignResult {
-        const probeInsightsApplied = [
-            ...(input.probeResult?.behaviorNotes ?? []),
-            ...(input.probeResult?.mismatchesFromSpec ?? []),
-        ];
-        const suggestions: NodeConfigurationDesignResult['suggestions'] = [];
-        const nodeStrategyAssignments: NodeConfigurationDesignResult['nodeStrategyAssignments'] = [];
-        const nextFlow: FlowDocument = {
-            ...input.flow,
-            nodes: input.flow.nodes.map(node => {
-                const strategy = this.resolveStrategy(input.flow, node);
-                if (!strategy) {
-                    return node;
-                }
-
-                const result = strategy.apply(node, {
-                    flow: input.flow,
-                    input,
-                    probeInsightsApplied,
-                });
-                if (result.suggestion) {
-                    suggestions.push(result.suggestion);
-                    nodeStrategyAssignments.push({
-                        nodeId: node.id,
-                        strategyId: result.suggestion.strategyId,
-                    });
-                }
-                return result.node;
-            }),
-        };
-        const appliedStrategyIds = [...new Set(nodeStrategyAssignments.map(assignment => assignment.strategyId))];
-
-        return {
-            flow: nextFlow,
-            suggestions,
-            probeInsightsApplied,
-            appliedStrategyIds,
-            nodeStrategyAssignments,
-            summary:
-                probeInsightsApplied.length > 0
-                    ? `Configured ${suggestions.length} node(s) with block-specific settings using ${probeInsightsApplied.length} probe insight(s).`
-                    : `Configured ${suggestions.length} node(s) with block-specific settings.`,
-        };
+    async design(input: NodeConfigurationDesignInput): Promise<NodeConfigurationDesignResult> {
+        return await this.service.design(input);
     }
 
-    validate(flow: FlowDocument): NodeConfigurationValidationResult {
-        const issues: string[] = [];
-
-        for (const node of flow.nodes) {
-            const validation = validateFlowNode(flow, node.id);
-            issues.push(...validation.issues.map(issue => issue.message));
-
-            const strategy = this.resolveStrategy(flow, node);
-            if (strategy?.validate) {
-                issues.push(...strategy.validate(node, flow));
-            }
-        }
-
-        return {
-            isValid: issues.length === 0,
-            issues,
-        };
+    validate(flow: import('../flow/types').FlowDocument): NodeConfigurationValidationResult {
+        return this.service.validate(flow);
     }
 }

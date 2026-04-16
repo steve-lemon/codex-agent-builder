@@ -1,9 +1,9 @@
 // Tools that expose the node-configuration design sub-agent to the runtime.
 import { z } from 'zod';
-import { NodeConfigDesignAgent } from '../node-config-agent/agent';
+import { NodeConfigDesignService } from '../node-config-design/core';
 import { defineTool, type ToolDefinition } from './types';
 
-const agent = new NodeConfigDesignAgent();
+const service = new NodeConfigDesignService();
 
 const FlowPortSchema = z.object({
     id: z.string(),
@@ -115,7 +115,7 @@ export function createNodeConfigTools(): ToolDefinition[] {
                 strategyDirectives = [],
                 probeResult,
             }) => {
-                return agent.design({
+                return service.design({
                     userRequest,
                     flow,
                     desiredCount,
@@ -138,7 +138,7 @@ export function createNodeConfigTools(): ToolDefinition[] {
             requiresConfirmation: false,
             parallelSafe: true,
             execute: async ({ flow }) => {
-                return agent.validate(flow);
+                return service.validate(flow);
             },
         }),
     ];

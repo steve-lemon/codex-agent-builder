@@ -2,5 +2,7 @@
 export * from './analysis';
 export * from './catalog';
 export * from './core';
+export * from './dto';
 export * from './mocks';
+export * from './provider';
 export * from './types';

@@ -10,6 +10,7 @@ import {
     validateDesignedFlow,
 } from '../flow-design/core';
 import { availableFlowBlocks } from '../flow-design/catalog';
+import { defaultFlowDesignProvider, type FlowDesignProvider } from '../flow-design/provider';
 import type { FlowDocument } from '../flow/types';
 import { defineTool, type ToolDefinition } from './types';
 import type { FlowFeasibilityAssessment } from '../flow-design/analysis';
@@ -236,7 +237,8 @@ function buildNodeConfigSkillImprovements(args: {
 }
 
 /** Returns deterministic tools used by the flow-designer skill. */
-export function createFlowDesignTools(): ToolDefinition[] {
+export function createFlowDesignTools(options: { provider?: FlowDesignProvider } = {}): ToolDefinition[] {
+    const provider = options.provider ?? defaultFlowDesignProvider;
     return [
         defineTool({
             name: 'analyzeFlowRequest',
@@ -249,7 +251,7 @@ export function createFlowDesignTools(): ToolDefinition[] {
             requiresConfirmation: false,
             parallelSafe: true,
             execute: async ({ userRequest }) => {
-                const intent = analyzeFlowRequest(userRequest);
+                const intent = await Promise.resolve(provider.analyzeRequest(userRequest));
                 return {
                     taskType: intent.taskType,
                     wantsJson: intent.wantsJson,
@@ -347,18 +349,20 @@ export function createFlowDesignTools(): ToolDefinition[] {
             ) => {
                 const feasibility =
                     (preflight as FlowFeasibilityAssessment | undefined) ?? assessFlowFeasibility(userRequest);
-                return designFlowDraft({
-                    userRequest,
-                    sampleInput,
-                    desiredCount,
-                    wantsJson,
-                    improvementNotes,
-                    preflight: feasibility,
-                    availableBlocks: availableFlowBlocks,
-                    designConnection: context.designConnection,
-                    designSessionId: `${context.runId}:designFlowDraft`,
-                    toolName: 'designFlowDraft',
-                });
+                return await Promise.resolve(
+                    provider.composeDraft({
+                        userRequest,
+                        sampleInput,
+                        desiredCount,
+                        wantsJson,
+                        improvementNotes,
+                        preflight: feasibility,
+                        availableBlocks: availableFlowBlocks,
+                        designConnection: context.designConnection,
+                        designSessionId: `${context.runId}:designFlowDraft`,
+                        toolName: 'designFlowDraft',
+                    }),
+                );
             },
         }),
         defineTool({
@@ -456,12 +460,14 @@ export function createFlowDesignTools(): ToolDefinition[] {
             requiresConfirmation: false,
             parallelSafe: true,
             execute: async ({ userRequest, desiredCount, wantsJson, sampleResult }) => {
-                const reflection = reflectFlowExecution({
-                    userRequest,
-                    desiredCount,
-                    wantsJson,
-                    sampleResult,
-                });
+                const reflection = await Promise.resolve(
+                    provider.reflectExecution({
+                        userRequest,
+                        desiredCount,
+                        wantsJson,
+                        sampleResult,
+                    }),
+                );
 
                 return {
                     satisfied: reflection.satisfied,

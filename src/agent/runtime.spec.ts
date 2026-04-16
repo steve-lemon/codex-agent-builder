@@ -49,11 +49,20 @@ describe('runtime flow', () => {
             expect.objectContaining({
                 flowDesignImprovements: expect.any(Array),
                 nodeConfigStrategyImprovements: expect.any(Array),
-                appliedNodeConfigStrategies: expect.arrayContaining([
-                    'system-input',
-                    'prompt-input',
-                    'ai-generation',
-                ]),
+                flowDesign: expect.objectContaining({
+                    improvements: expect.any(Array),
+                    feasible: true,
+                    designPassCount: expect.any(Number),
+                    taskGraphRefinementCount: expect.any(Number),
+                }),
+                nodeConfiguration: expect.objectContaining({
+                    improvements: expect.any(Array),
+                    appliedStrategies: expect.arrayContaining(['system-input', 'prompt-input', 'ai-generation']),
+                    nodeStrategyAssignments: expect.arrayContaining([
+                        expect.objectContaining({ nodeId: 'system-input', strategyId: 'system-input' }),
+                    ]),
+                }),
+                appliedNodeConfigStrategies: expect.arrayContaining(['system-input', 'prompt-input', 'ai-generation']),
                 nodeStrategyAssignments: expect.arrayContaining([
                     expect.objectContaining({ nodeId: 'system-input', strategyId: 'system-input' }),
                     expect.objectContaining({ nodeId: 'prompt-input', strategyId: 'prompt-input' }),
@@ -116,6 +125,10 @@ describe('runtime flow', () => {
                 nextActions: expect.arrayContaining([expect.stringContaining('email-read')]),
                 designDetails: expect.objectContaining({
                     flowDesignImprovements: expect.arrayContaining([expect.stringContaining('email-read')]),
+                    flowDesign: expect.objectContaining({
+                        feasible: false,
+                        missingCapabilities: expect.arrayContaining(['email-read', 'email-reply']),
+                    }),
                 }),
             }),
         );

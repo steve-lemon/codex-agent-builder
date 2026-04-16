@@ -36,5 +36,6 @@ export * from './flow-agent';
 export * from './graph';
 export * from './llm/gemini-gateway';
 export * from './llm/structured-schema';
+export * from './node-config-design';
 export * from './node-config-agent';
 export * from './observability/unified-timeline';

@@ -1,5 +1,7 @@
 // Agent runtime flow and data contracts.
 import { z } from 'zod';
+import type { FlowDesignDetailsDto } from '../flow-design/dto';
+import type { NodeConfigDesignDetailsDto } from '../node-config-design/dto';
 import type { ToolCall, ToolResult, ToolRiskLevel } from '../tools/types';
 import type { Plan, PlanStep } from './schemas';
 import type { TraceEvent } from '../observability/types';
@@ -62,6 +64,8 @@ export interface RunState {
 export interface FinalResultDesignDetails {
     flowDesignImprovements: string[];
     nodeConfigStrategyImprovements: string[];
+    flowDesign?: FlowDesignDetailsDto;
+    nodeConfiguration?: NodeConfigDesignDetailsDto;
     appliedNodeConfigStrategies?: string[];
     nodeStrategyAssignments?: Array<{
         nodeId: string;
@@ -97,6 +101,29 @@ export const FinalResultSchema = z.object({
         .object({
             flowDesignImprovements: z.array(z.string()),
             nodeConfigStrategyImprovements: z.array(z.string()),
+            flowDesign: z
+                .object({
+                    improvements: z.array(z.string()),
+                    feasible: z.boolean(),
+                    missingCapabilities: z.array(z.string()),
+                    designPassCount: z.number().int().nonnegative(),
+                    taskGraphRefinementCount: z.number().int().nonnegative(),
+                })
+                .optional(),
+            nodeConfiguration: z
+                .object({
+                    improvements: z.array(z.string()),
+                    appliedStrategies: z.array(z.string()),
+                    nodeStrategyAssignments: z.array(
+                        z.object({
+                            nodeId: z.string(),
+                            strategyId: z.string(),
+                        }),
+                    ),
+                    configuredNodeCount: z.number().int().nonnegative(),
+                    probeInsightCount: z.number().int().nonnegative(),
+                })
+                .optional(),
             appliedNodeConfigStrategies: z.array(z.string()).optional(),
             nodeStrategyAssignments: z
                 .array(

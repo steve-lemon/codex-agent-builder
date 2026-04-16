@@ -87,6 +87,7 @@ export class FlowDesignAgent {
                         await skill.run(state, {
                             aiGenerate: this.options.aiGenerate,
                             designSession,
+                            provider: this.options.provider,
                         });
                     }
                 } catch (error) {

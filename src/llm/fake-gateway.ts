@@ -2,6 +2,8 @@
 import type { LlmGateway, PlannerInput, ReflectorInput, FinalizerInput } from './types';
 import type { Plan } from '../agent/schemas';
 import type { FinalResult } from '../agent/types';
+import { toFlowDesignDetailsDto } from '../flow-design/dto';
+import { toNodeConfigDesignDetailsDto } from '../node-config-design/dto';
 
 /** Deterministic gateway that returns stable plans and summaries for tests and demos. */
 export class FakeLlmGateway implements LlmGateway {
@@ -567,6 +569,14 @@ export class FakeLlmGateway implements LlmGateway {
                             ? [`Add capabilities: ${(preflightData?.missingCapabilities ?? []).join(', ')}`]
                             : [],
                     nodeConfigStrategyImprovements: [],
+                    flowDesign: toFlowDesignDetailsDto({
+                        improvements:
+                            preflightData?.feasible === false
+                                ? [`Add capabilities: ${(preflightData?.missingCapabilities ?? []).join(', ')}`]
+                                : [],
+                        feasible: preflightData?.feasible !== false,
+                        missingCapabilities: preflightData?.missingCapabilities ?? [],
+                    }),
                 },
             };
         }
@@ -586,6 +596,16 @@ export class FakeLlmGateway implements LlmGateway {
                         'Apply this sub-agent after the graph structure is stable.',
                         'Review block-specific strategies before executing the draft.',
                     ],
+                    nodeConfiguration: {
+                        improvements: [
+                            'Apply this sub-agent after the graph structure is stable.',
+                            'Review block-specific strategies before executing the draft.',
+                        ],
+                        appliedStrategies: [],
+                        nodeStrategyAssignments: [],
+                        configuredNodeCount: 0,
+                        probeInsightCount: 0,
+                    },
                 },
             };
         }
@@ -662,6 +682,15 @@ export class FakeLlmGateway implements LlmGateway {
                             )}`,
                         ],
                         nodeConfigStrategyImprovements: [],
+                        flowDesign: toFlowDesignDetailsDto({
+                            improvements: [
+                                `Add missing capabilities before attempting another flow design pass: ${missingCapabilities.join(
+                                    ', ',
+                                )}`,
+                            ],
+                            feasible: false,
+                            missingCapabilities,
+                        }),
                     },
                 };
             }
@@ -691,6 +720,22 @@ export class FakeLlmGateway implements LlmGateway {
                     designDetails: {
                         flowDesignImprovements: latestReflection.issues ?? [],
                         nodeConfigStrategyImprovements: latestNodeConfigImprovements,
+                        flowDesign: toFlowDesignDetailsDto({
+                            improvements: latestReflection.issues ?? [],
+                            feasible: true,
+                            missingCapabilities: [],
+                            designPassCount: designPasses,
+                            taskGraphRefinementCount: refinedGraphs.length,
+                        }),
+                        nodeConfiguration: latestConfiguration
+                            ? toNodeConfigDesignDetailsDto(latestConfiguration, latestNodeConfigImprovements)
+                            : {
+                                  improvements: latestNodeConfigImprovements,
+                                  appliedStrategies: [],
+                                  nodeStrategyAssignments: [],
+                                  configuredNodeCount: 0,
+                                  probeInsightCount: 0,
+                              },
                         appliedNodeConfigStrategies: latestConfiguration?.appliedStrategyIds ?? [],
                         nodeStrategyAssignments: latestConfiguration?.nodeStrategyAssignments ?? [],
                         configuredNodeCount: latestConfiguration?.suggestions?.length ?? 0,
@@ -718,6 +763,22 @@ export class FakeLlmGateway implements LlmGateway {
                     designDetails: {
                         flowDesignImprovements: latestReflection.improvementNotes ?? [],
                         nodeConfigStrategyImprovements: latestNodeConfigImprovements,
+                        flowDesign: toFlowDesignDetailsDto({
+                            improvements: latestReflection.improvementNotes ?? [],
+                            feasible: true,
+                            missingCapabilities: [],
+                            designPassCount: designPasses,
+                            taskGraphRefinementCount: refinedGraphs.length,
+                        }),
+                        nodeConfiguration: latestConfiguration
+                            ? toNodeConfigDesignDetailsDto(latestConfiguration, latestNodeConfigImprovements)
+                            : {
+                                  improvements: latestNodeConfigImprovements,
+                                  appliedStrategies: [],
+                                  nodeStrategyAssignments: [],
+                                  configuredNodeCount: 0,
+                                  probeInsightCount: 0,
+                              },
                         appliedNodeConfigStrategies: latestConfiguration?.appliedStrategyIds ?? [],
                         nodeStrategyAssignments: latestConfiguration?.nodeStrategyAssignments ?? [],
                         configuredNodeCount,
@@ -734,6 +795,18 @@ export class FakeLlmGateway implements LlmGateway {
             designDetails: {
                 flowDesignImprovements: [],
                 nodeConfigStrategyImprovements: [],
+                flowDesign: toFlowDesignDetailsDto({
+                    improvements: [],
+                    feasible: true,
+                    missingCapabilities: [],
+                }),
+                nodeConfiguration: {
+                    improvements: [],
+                    appliedStrategies: [],
+                    nodeStrategyAssignments: [],
+                    configuredNodeCount: 0,
+                    probeInsightCount: 0,
+                },
             },
         };
     }

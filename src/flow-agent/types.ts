@@ -1,5 +1,6 @@
 // Wrapper-specific contracts for the flow design agent built on the shared core.
 import type { FlowDesignConnection, FlowDesignSession } from '../flow/design-monitor';
+import type { FlowDesignProvider } from '../flow-design/provider';
 import type { FlowBlockDefinition } from '../flow/types';
 import type {
     FlowDesignAiGenerateRequest,
@@ -55,6 +56,7 @@ export interface FlowDesignAgentResult {
 export interface FlowDesignSkillServices {
     aiGenerate?: (request: FlowDesignAiGenerateRequest) => Promise<unknown>;
     designSession?: FlowDesignSession;
+    provider?: FlowDesignProvider;
 }
 
 /** Skill contract used by the flow design agent pipeline. */
