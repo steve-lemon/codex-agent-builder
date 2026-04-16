@@ -1,4 +1,5 @@
 // Graph rendering helpers for Mermaid, execution-plan visualization, and Reagraph JSON output.
+import type { FlowDesignAnchor, FlowDesignGraphSnapshot } from '../flow/design-monitor';
 import type { DirectedGraph, GraphExecutionPlan, GraphExecutionRecord } from './types';
 
 /** Reagraph-compatible node shape. */
@@ -15,6 +16,25 @@ export interface ReagraphEdge {
     target: string;
     id?: string;
     label?: string;
+}
+
+/** Reagraph node shape specialized for live flow-design snapshots. */
+export interface FlowDesignReagraphNode extends ReagraphNode {
+    blockId?: string;
+    phase?: string;
+}
+
+/** Reagraph edge shape specialized for live flow-design snapshots. */
+export interface FlowDesignReagraphEdge extends ReagraphEdge {
+    sourceAnchor?: FlowDesignAnchor;
+    targetAnchor?: FlowDesignAnchor;
+    flowHint?: 'horizontal' | 'vertical' | 'custom';
+}
+
+/** Reagraph payload specialized for live flow-design snapshots. */
+export interface FlowDesignReagraphGraph {
+    nodes: FlowDesignReagraphNode[];
+    edges: FlowDesignReagraphEdge[];
 }
 
 /** Reagraph-compatible graph payload. */
@@ -151,6 +171,38 @@ export function renderGraphAsReagraph(graph: DirectedGraph, options: ReagraphRen
     return {
         nodes,
         edges,
+    };
+}
+
+/**
+ * Converts a live flow-design snapshot into a Reagraph-compatible payload.
+ *
+ * This keeps the base `nodes` / `edges` structure used elsewhere in the codebase
+ * while preserving design-specific details such as anchors, node phase, and block ids.
+ *
+ * @example
+ * ```ts
+ * const payload = renderFlowDesignSnapshotAsReagraph(event.snapshot);
+ * ```
+ */
+export function renderFlowDesignSnapshotAsReagraph(snapshot: FlowDesignGraphSnapshot): FlowDesignReagraphGraph {
+    return {
+        nodes: snapshot.nodes.map(node => ({
+            id: node.id,
+            label: node.label,
+            state: node.state,
+            blockId: node.blockId,
+            phase: node.phase,
+        })),
+        edges: snapshot.edges.map(edge => ({
+            id: edge.id,
+            source: edge.source,
+            target: edge.target,
+            label: edge.label,
+            sourceAnchor: edge.sourceAnchor,
+            targetAnchor: edge.targetAnchor,
+            flowHint: edge.flowHint,
+        })),
     };
 }
 

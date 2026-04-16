@@ -91,6 +91,19 @@ describe('flow design monitor', () => {
                         }),
                     ]),
                 }),
+                reagraph: expect.objectContaining({
+                    nodes: expect.arrayContaining([
+                        expect.objectContaining({ id: 'input-1', phase: 'ready', state: 'prompt-ready' }),
+                        expect.objectContaining({ id: 'view-1', phase: 'created' }),
+                    ]),
+                    edges: expect.arrayContaining([
+                        expect.objectContaining({
+                            id: 'input-1:output->view-1:input',
+                            source: 'input-1',
+                            target: 'view-1',
+                        }),
+                    ]),
+                }),
             }),
         );
     });
@@ -136,6 +149,10 @@ describe('flow design monitor', () => {
                     nodes: [],
                     edges: [],
                 },
+                reagraph: {
+                    nodes: [],
+                    edges: [],
+                },
             }),
         );
     });
@@ -158,6 +175,10 @@ describe('flow design monitor', () => {
                 sessionId: 'design-session-3',
                 type: 'node_staged',
                 snapshot: expect.objectContaining({
+                    nodes: [],
+                    edges: [],
+                }),
+                reagraph: expect.objectContaining({
                     nodes: [],
                     edges: [],
                 }),

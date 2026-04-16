@@ -1,5 +1,6 @@
 // Real-time monitoring primitives for flow design sessions.
 import { AgentError } from '../errors/agent-error';
+import { renderFlowDesignSnapshotAsReagraph, type FlowDesignReagraphGraph } from '../graph/renderer';
 import { now } from '../time/now';
 import { DefaultFlowDocumentController } from './document';
 import type {
@@ -68,6 +69,7 @@ export interface FlowDesignEvent {
         | 'edge_deleted';
     message: string;
     snapshot: FlowDesignGraphSnapshot;
+    reagraph: FlowDesignReagraphGraph;
     data?: Record<string, unknown>;
 }
 
@@ -360,6 +362,10 @@ export class FlowDesignSession {
                 nodes: this.flow.nodes.map(node => this.snapshotNode(node)),
                 edges: this.flow.edges.map(edge => this.snapshotEdge(edge)),
             },
+            reagraph: renderFlowDesignSnapshotAsReagraph({
+                nodes: this.flow.nodes.map(node => this.snapshotNode(node)),
+                edges: this.flow.edges.map(edge => this.snapshotEdge(edge)),
+            }),
             data,
         });
     }
