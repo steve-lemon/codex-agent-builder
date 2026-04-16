@@ -55,6 +55,19 @@ interface ProposedBlockDraft {
     suggestedConfigs: Array<{ id: string; hint: string; required: boolean; description: string }>;
 }
 
+interface TaskGraphNode {
+    id: string;
+    label?: string;
+    data?: Record<string, unknown>;
+}
+
+interface TaskGraphEdge {
+    source: string;
+    target: string;
+    label?: string;
+    data?: Record<string, unknown>;
+}
+
 const FlowPortSchema = z.object({
     id: z.string(),
     nodeId: z.string().default(''),
@@ -203,6 +216,31 @@ function hydrateFlowDocument(flow: FlowDocument): FlowDocument {
                 nodeId: port.nodeId || node.id,
             })),
         })),
+    };
+}
+
+function findTaskNodeByCapability(taskNodes: TaskGraphNode[], capability: string): TaskGraphNode | undefined {
+    return taskNodes.find(node => {
+        const requiredCapabilities = (node.data?.requiredCapabilities as string[] | undefined) ?? [];
+        return requiredCapabilities.includes(capability);
+    });
+}
+
+function findTaskNodeByOperation(taskNodes: TaskGraphNode[], operationPrefix: string): TaskGraphNode | undefined {
+    return taskNodes.find(node => String(node.data?.operation ?? '').startsWith(operationPrefix));
+}
+
+function buildTaskGraphMapping(taskNodes: TaskGraphNode[]) {
+    const captureNode =
+        findTaskNodeByCapability(taskNodes, 'text-input') ?? findTaskNodeByOperation(taskNodes, 'capture');
+    const generateNode =
+        findTaskNodeByCapability(taskNodes, 'mock-ai-generation') ?? findTaskNodeByOperation(taskNodes, 'generate');
+    const reviewNode = findTaskNodeByCapability(taskNodes, 'view-log') ?? findTaskNodeByOperation(taskNodes, 'log');
+
+    return {
+        promptInput: captureNode,
+        generate: generateNode,
+        review: reviewNode,
     };
 }
 
@@ -834,7 +872,14 @@ export function createFlowDesignTools(): ToolDefinition[] {
             allowedSkills: ['flow-designer'],
             requiresConfirmation: false,
             parallelSafe: false,
-            execute: async ({ userRequest, sampleInput, desiredCount, wantsJson, improvementNotes = [], preflight }) => {
+            execute: async ({
+                userRequest,
+                sampleInput,
+                desiredCount,
+                wantsJson,
+                improvementNotes = [],
+                preflight,
+            }) => {
                 const feasibility = preflight ?? assessFlowFeasibility(userRequest);
                 if (!feasibility.feasible) {
                     throw new AgentError(
@@ -844,6 +889,9 @@ export function createFlowDesignTools(): ToolDefinition[] {
                     );
                 }
 
+                const taskNodes = feasibility.taskGraph.nodes as TaskGraphNode[];
+                const taskEdges = feasibility.taskGraph.edges as TaskGraphEdge[];
+                const mapping = buildTaskGraphMapping(taskNodes);
                 let flow = createFlowDocument(availableBlocks);
                 flow = createFlowNode(flow, InputBlock.id, {
                     nodeId: 'system-input',
@@ -854,14 +902,14 @@ export function createFlowDesignTools(): ToolDefinition[] {
                 }).flow;
                 flow = createFlowNode(flow, InputBlock.id, {
                     nodeId: 'prompt-input',
-                    label: 'Prompt Input',
+                    label: mapping.promptInput?.label ?? 'Prompt Input',
                     config: {
                         input: buildUserPrompt(userRequest, sampleInput, desiredCount, wantsJson, improvementNotes),
                     },
                 }).flow;
                 flow = createFlowNode(flow, AiGenerateBlock.id, {
                     nodeId: 'ai-node',
-                    label: 'AI Generate',
+                    label: mapping.generate?.label ?? 'AI Generate',
                     config: {
                         model: 'mock-flow-model',
                         jsonOutput: String(wantsJson),
@@ -869,7 +917,7 @@ export function createFlowDesignTools(): ToolDefinition[] {
                 }).flow;
                 flow = createFlowNode(flow, ViewBlock.id, {
                     nodeId: 'view-output',
-                    label: 'View Output',
+                    label: mapping.review?.label ?? 'View Output',
                 }).flow;
                 flow = connectFlowPorts(flow, {
                     sourceNodeId: 'system-input',
@@ -893,15 +941,49 @@ export function createFlowDesignTools(): ToolDefinition[] {
                 return {
                     flow,
                     designRationale: [
-                        `Use preflight validation to confirm required capabilities are available: ${feasibility.requiredCapabilities.join(', ') || 'none'}.`,
-                        'Use input nodes to materialize deterministic system and prompt text.',
-                        'Use one AI node to generate the requested output.',
-                        'Use a view node to inspect the final sample output.',
+                        `Use preflight validation to confirm required capabilities are available: ${
+                            feasibility.requiredCapabilities.join(', ') || 'none'
+                        }.`,
+                        `Map inferred task node '${
+                            mapping.promptInput?.id ?? 'capture-request'
+                        }' to the prompt input node.`,
+                        `Map inferred task node '${
+                            mapping.generate?.id ?? 'generate-output'
+                        }' to the AI generation node.`,
+                        `Map inferred task node '${mapping.review?.id ?? 'review-output'}' to the output review node.`,
+                        `Preserve inferred task edges in the simplified flow path: ${
+                            taskEdges.map(edge => `${edge.source}->${edge.target}`).join(', ') || 'none'
+                        }.`,
                     ],
                     preflightSummary: {
                         taskGraphNodeCount: feasibility.taskGraph.nodes.length,
                         feasible: feasibility.feasible,
                         missingCapabilities: feasibility.missingCapabilities,
+                    },
+                    taskGraphMapping: {
+                        flowNodes: [
+                            { flowNodeId: 'system-input', role: 'system-instruction' },
+                            {
+                                flowNodeId: 'prompt-input',
+                                taskNodeId: mapping.promptInput?.id,
+                                taskNodeLabel: mapping.promptInput?.label,
+                            },
+                            {
+                                flowNodeId: 'ai-node',
+                                taskNodeId: mapping.generate?.id,
+                                taskNodeLabel: mapping.generate?.label,
+                            },
+                            {
+                                flowNodeId: 'view-output',
+                                taskNodeId: mapping.review?.id,
+                                taskNodeLabel: mapping.review?.label,
+                            },
+                        ],
+                        taskEdges: taskEdges.map(edge => ({
+                            source: edge.source,
+                            target: edge.target,
+                            label: edge.label,
+                        })),
                     },
                 };
             },

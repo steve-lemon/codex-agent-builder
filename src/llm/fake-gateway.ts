@@ -283,6 +283,68 @@ export class FakeLlmGateway implements LlmGateway {
                     },
                     {
                         id: 's8',
+                        mode: 'single-tool',
+                        description: 'Revise the flow draft with reflection-driven improvement notes',
+                        toolCalls: [
+                            {
+                                toolName: ensureToolAvailable('designFlowDraft'),
+                                args: {
+                                    userRequest: input.userInput,
+                                    sampleInput: { $fromStep: 's1', path: 'toolResults.0.data.sampleInput' },
+                                    desiredCount: { $fromStep: 's1', path: 'toolResults.0.data.desiredCount' },
+                                    wantsJson: { $fromStep: 's1', path: 'toolResults.0.data.wantsJson' },
+                                    preflight: { $fromStep: 's2', path: 'toolResults.0.data' },
+                                    improvementNotes: { $fromStep: 's7', path: 'toolResults.0.data.improvementNotes' },
+                                },
+                            },
+                        ],
+                    },
+                    {
+                        id: 's9',
+                        mode: 'single-tool',
+                        description: 'Validate the revised flow draft',
+                        toolCalls: [
+                            {
+                                toolName: ensureToolAvailable('validateFlowDraft'),
+                                args: {
+                                    flow: { $fromStep: 's8', path: 'toolResults.0.data.flow' },
+                                },
+                            },
+                        ],
+                    },
+                    {
+                        id: 's10',
+                        mode: 'single-tool',
+                        description: 'Run the revised flow sample',
+                        toolCalls: [
+                            {
+                                toolName: ensureToolAvailable('runFlowSample'),
+                                args: {
+                                    userRequest: input.userInput,
+                                    flow: { $fromStep: 's8', path: 'toolResults.0.data.flow' },
+                                    improvementNotes: { $fromStep: 's7', path: 'toolResults.0.data.improvementNotes' },
+                                },
+                            },
+                        ],
+                    },
+                    {
+                        id: 's11',
+                        mode: 'single-tool',
+                        description: 'Reflect on the revised sample result',
+                        toolCalls: [
+                            {
+                                toolName: ensureToolAvailable('reflectFlowResult'),
+                                args: {
+                                    userRequest: input.userInput,
+                                    desiredCount: { $fromStep: 's1', path: 'toolResults.0.data.desiredCount' },
+                                    wantsJson: { $fromStep: 's1', path: 'toolResults.0.data.wantsJson' },
+                                    sampleResult: { $fromStep: 's10', path: 'toolResults.0.data' },
+                                },
+                            },
+                        ],
+                    },
+                    {
+                        id: 's12',
                         mode: 'finalize',
                         description: 'Finalize flow design response',
                     },
@@ -389,6 +451,17 @@ export class FakeLlmGateway implements LlmGateway {
                   }
                 | undefined;
             const feasibilityData = feasibility?.toolResults?.[0]?.data;
+            const reflections = input.stepResults.filter(step =>
+                JSON.stringify(step).includes('"toolName":"reflectFlowResult"'),
+            ) as Array<{
+                toolResults?: Array<{
+                    data?: {
+                        satisfied?: boolean;
+                        issues?: string[];
+                        improvementNotes?: string[];
+                    };
+                }>;
+            }>;
 
             if (feasibilityData?.feasible === false) {
                 const missingCapabilities = feasibilityData.missingCapabilities ?? [];
@@ -400,6 +473,35 @@ export class FakeLlmGateway implements LlmGateway {
                         `Add blocks or tools for: ${missingCapabilities.join(', ')}`,
                         'Retry flow design after the missing capabilities are available',
                     ],
+                };
+            }
+
+            const latestReflection = reflections[reflections.length - 1]?.toolResults?.[0]?.data;
+            const designPasses = Math.max(reflections.length, 1);
+
+            if (latestReflection?.satisfied === false) {
+                return {
+                    summary: `Handled with skill flow-designer. The flow still needs improvement after ${designPasses} design pass(es).`,
+                    success: false,
+                    nextActions: [
+                        ...((latestReflection.issues ?? [])
+                            .slice(0, 2)
+                            .map((issue: string) => `Address issue: ${issue}`)),
+                        ...((latestReflection.improvementNotes ?? [])
+                            .slice(0, 2)
+                            .map((note: string) => `Retry with improvement: ${note}`)),
+                    ],
+                };
+            }
+
+            if (latestReflection?.satisfied === true) {
+                return {
+                    summary: `Handled with skill flow-designer. The flow satisfied the request after ${designPasses} design pass(es).`,
+                    success: true,
+                    nextActions:
+                        designPasses > 1
+                            ? ['Review the revised flow draft and keep the applied improvement notes for future runs']
+                            : ['Review the generated flow and sample output'],
                 };
             }
         }

@@ -436,7 +436,22 @@ describe('tools modules', () => {
         expect(design.data).toEqual(
             expect.objectContaining({
                 flow: expect.objectContaining({
-                    nodes: expect.arrayContaining([expect.objectContaining({ id: 'ai-node', blockId: 'ai-generate' })]),
+                    nodes: expect.arrayContaining([
+                        expect.objectContaining({ id: 'ai-node', blockId: 'ai-generate', label: 'Generate Titles' }),
+                        expect.objectContaining({ id: 'prompt-input', label: 'Capture Request' }),
+                        expect.objectContaining({ id: 'view-output', label: 'Review Output' }),
+                    ]),
+                }),
+                taskGraphMapping: expect.objectContaining({
+                    flowNodes: expect.arrayContaining([
+                        expect.objectContaining({ flowNodeId: 'prompt-input', taskNodeId: 'capture-request' }),
+                        expect.objectContaining({ flowNodeId: 'ai-node', taskNodeId: 'generate-titles' }),
+                        expect.objectContaining({ flowNodeId: 'view-output', taskNodeId: 'review-output' }),
+                    ]),
+                    taskEdges: expect.arrayContaining([
+                        expect.objectContaining({ source: 'capture-request', target: 'generate-titles' }),
+                        expect.objectContaining({ source: 'generate-titles', target: 'review-output' }),
+                    ]),
                 }),
             }),
         );
@@ -506,8 +521,12 @@ describe('tools modules', () => {
                 args: {
                     blockId: 'ai-generate',
                     probeResult: {
-                        behaviorNotes: ['Reads system/prompt text and writes the mock generation result into the output port.'],
-                        mismatchesFromSpec: ['The output port can emit structured object payloads when jsonOutput=true, but the description does not explain that.'],
+                        behaviorNotes: [
+                            'Reads system/prompt text and writes the mock generation result into the output port.',
+                        ],
+                        mismatchesFromSpec: [
+                            'The output port can emit structured object payloads when jsonOutput=true, but the description does not explain that.',
+                        ],
                         observedOutputs: {
                             output: {
                                 model: 'mock-flow-model',
