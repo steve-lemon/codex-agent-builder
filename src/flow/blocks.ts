@@ -24,8 +24,23 @@ export function defineFlowBlock(definition: FlowBlockDefinition): FlowBlockDefin
         seenPortLocalIds.add(port.localId);
     }
 
+    const seenConfigIds = new Set<string>();
+    for (const config of definition.configs ?? []) {
+        if (!config.id.trim()) {
+            throw new AgentError(`Flow block config id must be a non-empty string: ${definition.id}`);
+        }
+        if (seenConfigIds.has(config.id)) {
+            throw new AgentError(`Flow block config ids must be unique within a block: ${definition.id}:${config.id}`);
+        }
+        if (config.hint === 'select' && (!config.options || config.options.length === 0)) {
+            throw new AgentError(`Flow select config must define options: ${definition.id}:${config.id}`);
+        }
+        seenConfigIds.add(config.id);
+    }
+
     return {
         ...definition,
+        configs: [...(definition.configs ?? [])],
         inputs: [...definition.inputs],
         outputs: [...definition.outputs],
     };
@@ -41,6 +56,20 @@ export const TextInputBlock = defineFlowBlock({
     id: 'text-input',
     label: 'Text Input',
     description: 'Accepts user text and emits it through a single output port.',
+    configs: [
+        {
+            id: 'label',
+            label: 'Prompt Label',
+            hint: 'text',
+            defaultValue: 'User Input',
+        },
+        {
+            id: 'multiline',
+            label: 'Multiline',
+            hint: 'checkbox',
+            defaultValue: 'false',
+        },
+    ],
     inputs: [],
     outputs: [
         {
@@ -51,4 +80,76 @@ export const TextInputBlock = defineFlowBlock({
             description: 'User-entered text payload.',
         },
     ],
+});
+
+/** Sample block that emits its configured input string through one output port. */
+export const InputBlock = defineFlowBlock({
+    id: 'input',
+    label: 'Input',
+    description: 'Emits the configured input string as a packet on the output port.',
+    configs: [
+        {
+            id: 'input',
+            label: 'Input',
+            hint: 'text',
+            required: true,
+        },
+    ],
+    inputs: [],
+    outputs: [
+        {
+            localId: 'output',
+            label: 'Output',
+            direction: 'output',
+            dataType: 'text',
+        },
+    ],
+});
+
+/** Sample block that forwards its input packet after waiting for the configured delay. */
+export const BufferBlock = defineFlowBlock({
+    id: 'buffer',
+    label: 'Buffer',
+    description: 'Waits for the configured duration, then forwards the input packet.',
+    configs: [
+        {
+            id: 'wait',
+            label: 'Wait (ms)',
+            hint: 'number',
+            required: true,
+            defaultValue: '0',
+        },
+    ],
+    inputs: [
+        {
+            localId: 'input',
+            label: 'Input',
+            direction: 'input',
+            dataType: 'any',
+        },
+    ],
+    outputs: [
+        {
+            localId: 'output',
+            label: 'Output',
+            direction: 'output',
+            dataType: 'any',
+        },
+    ],
+});
+
+/** Sample block that logs the input packet value for inspection. */
+export const ViewBlock = defineFlowBlock({
+    id: 'view',
+    label: 'View',
+    description: 'Logs the current input packet value.',
+    inputs: [
+        {
+            localId: 'input',
+            label: 'Input',
+            direction: 'input',
+            dataType: 'any',
+        },
+    ],
+    outputs: [],
 });

@@ -42,7 +42,10 @@ describe('flow graph conversion', () => {
                     label: source.node.label,
                     data: {
                         blockId: 'text-input',
-                        config: undefined,
+                        config: {
+                            label: 'User Input',
+                            multiline: 'false',
+                        },
                         inputPortIds: [],
                         outputPortIds: [`${source.node.id}:text`],
                     },

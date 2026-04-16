@@ -46,6 +46,42 @@ export interface SerializedFlowPacket {
 /** Direction of data travel relative to a node. */
 export type FlowPortDirection = 'input' | 'output';
 
+/** Editor hint describing how a config field should be presented. */
+export type FlowConfigHintKind = 'text' | 'select' | 'checkbox' | 'number';
+
+/** One option for a select-style config field. */
+export interface FlowConfigOption {
+    /** Stable stored string value for the option. */
+    value: string;
+
+    /** Human-friendly label shown in editors. */
+    label: string;
+}
+
+/** Config field definition declared by a block. */
+export interface FlowBlockConfigDefinition {
+    /** Stable config id unique within the block definition. */
+    id: string;
+
+    /** Human-friendly label shown in editors and inspectors. */
+    label: string;
+
+    /** Optional free-form description for UI help text. */
+    description?: string;
+
+    /** Presentation hint for the editor UI. */
+    hint: FlowConfigHintKind;
+
+    /** Optional select options used when `hint === 'select'`. */
+    options?: FlowConfigOption[];
+
+    /** Whether the node must provide a non-empty string value for this config entry. */
+    required?: boolean;
+
+    /** Optional default string value stored on newly created nodes. */
+    defaultValue?: string;
+}
+
 /**
  * Defines one port on a reusable block template.
  *
@@ -84,6 +120,9 @@ export interface FlowBlockDefinition {
 
     /** Optional short description of the block's behavior. */
     description?: string;
+
+    /** Config field definitions supported by nodes created from this block. */
+    configs?: FlowBlockConfigDefinition[];
 
     /** Input port templates applied to all nodes created from this block. */
     inputs: FlowBlockPortDefinition[];
@@ -145,8 +184,8 @@ export interface FlowNode {
     /** Output ports materialized from the block definition. */
     outputPorts: FlowPort[];
 
-    /** Optional per-node configuration payload. */
-    config?: Record<string, unknown>;
+    /** Per-node configuration payload stored as string values keyed by config id. */
+    config?: Record<string, string>;
 }
 
 /**
@@ -194,8 +233,8 @@ export interface CreateFlowNodeOptions {
     /** Optional custom label for the node instance. */
     label?: string;
 
-    /** Optional per-node configuration payload. */
-    config?: Record<string, unknown>;
+    /** Optional per-node configuration payload stored as string values. */
+    config?: Record<string, string>;
 }
 
 /** Options used when connecting two flow ports. */
@@ -229,4 +268,25 @@ export interface SetFlowPortPacketOptions {
 
     /** Packet to write to the port after any required coercion. */
     packet: FlowPacket;
+}
+
+/** One validation issue discovered while checking a node against its block spec. */
+export interface FlowNodeValidationIssue {
+    /** Stable machine-readable issue code. */
+    code: 'missing_required_config' | 'unknown_config' | 'invalid_select_option';
+
+    /** Config id related to the issue when applicable. */
+    configId?: string;
+
+    /** Human-friendly explanation of the issue. */
+    message: string;
+}
+
+/** Validation result for a node created from a block definition. */
+export interface FlowNodeValidationResult {
+    /** Whether the node currently satisfies the block's config requirements. */
+    isValid: boolean;
+
+    /** Validation issues discovered for the node. */
+    issues: FlowNodeValidationIssue[];
 }

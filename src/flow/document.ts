@@ -9,6 +9,8 @@ import type {
     FlowEdge,
     FlowImageValue,
     FlowNode,
+    FlowNodeValidationIssue,
+    FlowNodeValidationResult,
     FlowPacket,
     FlowPacketValueMap,
     FlowPort,
@@ -64,7 +66,7 @@ export abstract class FlowDocumentController {
             label: options.label ?? block.label,
             inputPorts: block.inputs.map(port => this.materializePort(nodeId, port)),
             outputPorts: block.outputs.map(port => this.materializePort(nodeId, port)),
-            config: options.config,
+            config: this.buildNodeConfig(block, options.config),
         };
 
         return {
@@ -164,6 +166,51 @@ export abstract class FlowDocumentController {
         };
     }
 
+    propagatePortPacket(
+        flow: FlowDocument,
+        nodeId: string,
+        portIdOrLocalId: string,
+    ): { flow: FlowDocument; targets: FlowPort[] } {
+        const node = flow.nodes.find(candidate => candidate.id === nodeId);
+        if (!node) {
+            throw new AgentError(`Flow node not found: ${nodeId}`);
+        }
+
+        const sourcePort = this.findPort(node.outputPorts, portIdOrLocalId);
+        if (!sourcePort) {
+            throw new AgentError(`Flow output port not found: ${nodeId}:${portIdOrLocalId}`);
+        }
+
+        if (sourcePort.packet === undefined) {
+            return {
+                flow,
+                targets: [],
+            };
+        }
+
+        let nextFlow = flow;
+        const updatedTargets: FlowPort[] = [];
+
+        for (const edge of flow.edges.filter(candidate => candidate.sourcePortId === sourcePort.id)) {
+            const target = this.getPortById(nextFlow, edge.targetPortId);
+            if (!target) {
+                throw new AgentError(`Flow target port not found for edge: ${edge.id}`);
+            }
+            const updated = this.setPortPacket(nextFlow, {
+                nodeId: target.nodeId,
+                port: target.id,
+                packet: sourcePort.packet,
+            });
+            nextFlow = updated.flow;
+            updatedTargets.push(updated.port);
+        }
+
+        return {
+            flow: nextFlow,
+            targets: updatedTargets,
+        };
+    }
+
     resolvePortDataType(flow: FlowDocument, nodeId: string, portIdOrLocalId: string): FlowPortDataType {
         const node = flow.nodes.find(candidate => candidate.id === nodeId);
         if (!node) {
@@ -236,6 +283,55 @@ export abstract class FlowDocumentController {
         return undefined;
     }
 
+    validateNode(flow: FlowDocument, nodeId: string): FlowNodeValidationResult {
+        const node = flow.nodes.find(candidate => candidate.id === nodeId);
+        if (!node) {
+            throw new AgentError(`Flow node not found: ${nodeId}`);
+        }
+
+        const block = flow.blocks.find(candidate => candidate.id === node.blockId);
+        if (!block) {
+            throw new AgentError(`Flow block not found for node: ${node.blockId}`);
+        }
+
+        const issues: FlowNodeValidationIssue[] = [];
+        const configDefinitions = block.configs ?? [];
+        const knownConfigIds = new Set(configDefinitions.map(config => config.id));
+
+        for (const configId of Object.keys(node.config ?? {})) {
+            if (!knownConfigIds.has(configId)) {
+                issues.push({
+                    code: 'unknown_config',
+                    configId,
+                    message: `Unknown config is stored on node ${node.id}: ${configId}`,
+                });
+            }
+        }
+
+        for (const definition of configDefinitions) {
+            const value = node.config?.[definition.id];
+            if (definition.required && (!value || !value.trim())) {
+                issues.push({
+                    code: 'missing_required_config',
+                    configId: definition.id,
+                    message: `Required config is missing on node ${node.id}: ${definition.id}`,
+                });
+            }
+            if (definition.hint === 'select' && value && definition.options?.every(option => option.value !== value)) {
+                issues.push({
+                    code: 'invalid_select_option',
+                    configId: definition.id,
+                    message: `Config value is not one of the allowed options: ${definition.id}`,
+                });
+            }
+        }
+
+        return {
+            isValid: issues.length === 0,
+            issues,
+        };
+    }
+
     protected materializePort(nodeId: string, port: FlowBlockDefinition['inputs'][number]): FlowPort {
         return {
             id: `${nodeId}:${port.localId}`,
@@ -247,6 +343,23 @@ export abstract class FlowDocumentController {
             packet: undefined,
             description: port.description,
         };
+    }
+
+    protected buildNodeConfig(
+        block: FlowBlockDefinition,
+        providedConfig: Record<string, string> | undefined,
+    ): Record<string, string> | undefined {
+        const defaults = Object.fromEntries(
+            (block.configs ?? [])
+                .filter(config => config.defaultValue !== undefined)
+                .map(config => [config.id, config.defaultValue!]),
+        );
+        const merged = {
+            ...defaults,
+            ...(providedConfig ?? {}),
+        };
+
+        return Object.keys(merged).length > 0 ? merged : undefined;
     }
 
     protected createNodeId(blockId: string, nodes: FlowNode[]): string {
@@ -369,6 +482,15 @@ export function setFlowPortPacket(
     return defaultFlowDocumentController.setPortPacket(flow, options);
 }
 
+/** Propagates one output port packet to all connected input ports. */
+export function propagateFlowPortPacket(
+    flow: FlowDocument,
+    nodeId: string,
+    portIdOrLocalId: string,
+): { flow: FlowDocument; targets: FlowPort[] } {
+    return defaultFlowDocumentController.propagatePortPacket(flow, nodeId, portIdOrLocalId);
+}
+
 /** Resolves the effective runtime type of a concrete port. */
 export function resolveFlowPortDataType(flow: FlowDocument, nodeId: string, portIdOrLocalId: string): FlowPortDataType {
     return defaultFlowDocumentController.resolvePortDataType(flow, nodeId, portIdOrLocalId);
@@ -395,4 +517,9 @@ export function createFlowPacket<TValue>(value: TValue, ts = now()): FlowPacket<
 /** Returns a concrete flow port by its global id. */
 export function getFlowPortById(flow: FlowDocument, portId: string): FlowPort | undefined {
     return defaultFlowDocumentController.getPortById(flow, portId);
+}
+
+/** Validates one node against the config rules declared by its block definition. */
+export function validateFlowNode(flow: FlowDocument, nodeId: string): FlowNodeValidationResult {
+    return defaultFlowDocumentController.validateNode(flow, nodeId);
 }

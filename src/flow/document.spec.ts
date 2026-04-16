@@ -15,6 +15,7 @@ import {
     registerFlowBlock,
     resolveFlowPortDataType,
     setFlowPortPacket,
+    validateFlowNode,
 } from './document';
 
 describe('flow document', () => {
@@ -47,6 +48,30 @@ describe('flow document', () => {
         const jsonSink = defineFlowBlock({
             id: 'json-sink',
             label: 'JSON Sink',
+            configs: [
+                {
+                    id: 'requiredMode',
+                    label: 'Mode',
+                    hint: 'select',
+                    options: [
+                        { value: 'append', label: 'Append' },
+                        { value: 'replace', label: 'Replace' },
+                    ],
+                    required: true,
+                },
+                {
+                    id: 'enabled',
+                    label: 'Enabled',
+                    hint: 'checkbox',
+                    defaultValue: 'true',
+                },
+                {
+                    id: 'limit',
+                    label: 'Limit',
+                    hint: 'number',
+                    defaultValue: '10',
+                },
+            ],
             inputs: [
                 {
                     localId: 'in',
@@ -62,10 +87,19 @@ describe('flow document', () => {
 
         const created = createFlowNode(flow, 'json-sink', {
             label: 'Result Sink',
+            config: {
+                requiredMode: 'append',
+                limit: '25',
+            },
         });
 
         expect(created.node.label).toBe('Result Sink');
         expect(created.node.inputPorts[0]?.dataType).toBe('json');
+        expect(created.node.config).toEqual({
+            requiredMode: 'append',
+            enabled: 'true',
+            limit: '25',
+        });
     });
 
     it('connects compatible ports between nodes and enforces single incoming edge per input port', () => {
@@ -387,5 +421,94 @@ describe('flow document', () => {
 
         expect(source.node.id).toBe('custom-text-input');
         expect(connected.edge.id).toBe('edge:custom-text-input:text->target:in');
+    });
+
+    it('validates node config against block config requirements', () => {
+        const configurable = defineFlowBlock({
+            id: 'configurable',
+            label: 'Configurable',
+            configs: [
+                {
+                    id: 'mode',
+                    label: 'Mode',
+                    hint: 'select',
+                    options: [
+                        { value: 'fast', label: 'Fast' },
+                        { value: 'safe', label: 'Safe' },
+                    ],
+                    required: true,
+                },
+                {
+                    id: 'enabled',
+                    label: 'Enabled',
+                    hint: 'checkbox',
+                },
+                {
+                    id: 'retries',
+                    label: 'Retries',
+                    hint: 'number',
+                },
+            ],
+            inputs: [],
+            outputs: [],
+        });
+
+        let flow = createFlowDocument([configurable]);
+        flow = createFlowNode(flow, 'configurable', {
+            nodeId: 'node-1',
+            config: {
+                enabled: 'false',
+                retries: '3',
+            },
+        }).flow;
+
+        expect(validateFlowNode(flow, 'node-1')).toEqual({
+            isValid: false,
+            issues: [
+                {
+                    code: 'missing_required_config',
+                    configId: 'mode',
+                    message: 'Required config is missing on node node-1: mode',
+                },
+            ],
+        });
+
+        flow = createFlowNode(flow, 'configurable', {
+            nodeId: 'node-2',
+            config: {
+                mode: 'invalid',
+                stray: 'value',
+            },
+        }).flow;
+
+        expect(validateFlowNode(flow, 'node-2')).toEqual({
+            isValid: false,
+            issues: [
+                {
+                    code: 'unknown_config',
+                    configId: 'stray',
+                    message: 'Unknown config is stored on node node-2: stray',
+                },
+                {
+                    code: 'invalid_select_option',
+                    configId: 'mode',
+                    message: 'Config value is not one of the allowed options: mode',
+                },
+            ],
+        });
+
+        flow = createFlowNode(flow, 'configurable', {
+            nodeId: 'node-3',
+            config: {
+                mode: 'safe',
+                enabled: 'true',
+                retries: '5',
+            },
+        }).flow;
+
+        expect(validateFlowNode(flow, 'node-3')).toEqual({
+            isValid: true,
+            issues: [],
+        });
     });
 });
