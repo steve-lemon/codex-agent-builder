@@ -20,6 +20,7 @@ import { createLazyRunStateContext } from '../state/lazy-run-state';
 import { buildToolManifest } from '../tools/types';
 import { TraceStore } from '../observability/types';
 import type { FlowDesignConnection } from '../flow/design-monitor';
+import { UnifiedRunEventBus, type UnifiedRunEventConnection } from '../observability/unified-timeline';
 
 /** Constructor dependencies required by the runtime coordinator. */
 export interface AgentRuntimeOptions {
@@ -33,6 +34,11 @@ export interface AgentRuntimeOptions {
         skillName: SkillName;
         userInput: string;
     }) => FlowDesignConnection | undefined;
+    unifiedEventConnectionFactory?: (params: {
+        runId: string;
+        skillName: SkillName;
+        userInput: string;
+    }) => UnifiedRunEventConnection | undefined;
 }
 
 /** Orchestrates selection, planning, execution, persistence, approvals, and tracing. */
@@ -68,11 +74,25 @@ export class AgentRuntime {
         const allowedToolDefinitions = this.router.toolsForSkill(skillName);
         const allowedTools = allowedToolDefinitions.map(tool => tool.name);
         const toolManifests = allowedToolDefinitions.map(buildToolManifest);
-        const designConnection = this.options.flowDesignConnectionFactory?.({
+        const unifiedConnection = this.options.unifiedEventConnectionFactory?.({
             runId,
             skillName,
             userInput,
         });
+        const unifiedBus = unifiedConnection ? new UnifiedRunEventBus(runId, unifiedConnection) : undefined;
+        const timelineTraceConnection = unifiedBus?.asTraceConnection();
+        if (timelineTraceConnection) {
+            this.tracer.attachConnection(runId, timelineTraceConnection);
+        }
+        const externalDesignConnection = this.options.flowDesignConnectionFactory?.({
+            runId,
+            skillName,
+            userInput,
+        });
+        const designConnection = this.combineFlowDesignConnections([
+            externalDesignConnection,
+            unifiedBus?.asFlowDesignConnection(),
+        ]);
 
         this.tracer.log(runId, 'skill_selected', { skillName, allowedTools });
         this.tracer.log(runId, 'planner_call', {});
@@ -109,7 +129,11 @@ export class AgentRuntime {
         if (result.status !== 'waiting_for_approval') {
             await this.tracer.flush(runId);
         }
+        if (timelineTraceConnection) {
+            this.tracer.detachConnection(runId, timelineTraceConnection);
+        }
         void designConnection?.close?.();
+        unifiedBus?.close();
         return { ...result, trace: this.tracer.getEvents(runId) };
     }
 
@@ -159,17 +183,35 @@ export class AgentRuntime {
             }));
         }
 
-        const designConnection = this.options.flowDesignConnectionFactory?.({
+        const unifiedConnection = this.options.unifiedEventConnectionFactory?.({
             runId,
             skillName: run.skillName as SkillName,
             userInput: run.userInput,
         });
+        const unifiedBus = unifiedConnection ? new UnifiedRunEventBus(runId, unifiedConnection) : undefined;
+        const timelineTraceConnection = unifiedBus?.asTraceConnection();
+        if (timelineTraceConnection) {
+            this.tracer.attachConnection(runId, timelineTraceConnection);
+        }
+        const externalDesignConnection = this.options.flowDesignConnectionFactory?.({
+            runId,
+            skillName: run.skillName as SkillName,
+            userInput: run.userInput,
+        });
+        const designConnection = this.combineFlowDesignConnections([
+            externalDesignConnection,
+            unifiedBus?.asFlowDesignConnection(),
+        ]);
         const result = await this.executeUntilPauseOrComplete(runId, designConnection);
         this.tracer.log(runId, 'run_end', { status: result.status });
         if (result.status !== 'waiting_for_approval') {
             await this.tracer.flush(runId);
         }
+        if (timelineTraceConnection) {
+            this.tracer.detachConnection(runId, timelineTraceConnection);
+        }
         void designConnection?.close?.();
+        unifiedBus?.close();
         return { ...result, trace: this.tracer.getEvents(runId) };
     }
 
@@ -267,6 +309,34 @@ export class AgentRuntime {
     private loadSkillInstructions(skillName: SkillName): string {
         const filePath = join(process.cwd(), 'data', 'skills', skillName, 'SKILL.md');
         return readFileSync(filePath, 'utf-8');
+    }
+
+    private combineFlowDesignConnections(
+        connections: Array<FlowDesignConnection | undefined>,
+    ): FlowDesignConnection | undefined {
+        const activeConnections = connections.filter(
+            (connection): connection is FlowDesignConnection => connection !== undefined,
+        );
+        if (activeConnections.length === 0) {
+            return undefined;
+        }
+
+        if (activeConnections.length === 1) {
+            return activeConnections[0];
+        }
+
+        return {
+            send(event) {
+                for (const connection of activeConnections) {
+                    connection.send(event);
+                }
+            },
+            close() {
+                for (const connection of activeConnections) {
+                    void connection.close?.();
+                }
+            },
+        };
     }
 
     private createRunStateContext(runId: string) {

@@ -3,6 +3,7 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { CallbackUnifiedRunEventConnection, UnifiedRunEventBus } from './unified-timeline';
 import { FileTraceStore } from './file-trace-store';
 import { AgentTracer } from './tracer';
 
@@ -63,5 +64,25 @@ describe('AgentTracer', () => {
         expect(saved.traceId).toBe('run-flush');
         expect(saved.events).toHaveLength(2);
         expect(saved.events[1]?.message).toBe('Run ended with status completed');
+    });
+
+    it('can forward trace events into a unified run timeline bus', () => {
+        const received: Array<{ source: string; type: string; seq: number }> = [];
+        const tracer = new AgentTracer();
+        const bus = new UnifiedRunEventBus(
+            'run-unified',
+            new CallbackUnifiedRunEventConnection(event => {
+                received.push({ source: event.source, type: event.type, seq: event.seq });
+            }),
+        );
+
+        tracer.attachConnection('run-unified', bus.asTraceConnection());
+        tracer.log('run-unified', 'run_start', { userInput: 'hello' });
+        tracer.log('run-unified', 'step_start', { stepId: 's1', mode: 'single-tool' });
+
+        expect(received).toEqual([
+            { source: 'trace', type: 'run_start', seq: 1 },
+            { source: 'trace', type: 'step_start', seq: 2 },
+        ]);
     });
 });

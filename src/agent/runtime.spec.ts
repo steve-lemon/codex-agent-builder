@@ -9,6 +9,7 @@ import { buildDefaultToolRegistry } from '../tools';
 import type { LlmGateway } from '../llm/types';
 import { now } from '../time/now';
 import { CallbackFlowDesignConnection, type FlowDesignEvent } from '../flow/design-monitor';
+import { CallbackUnifiedRunEventConnection, type UnifiedRunEvent } from '../observability/unified-timeline';
 
 function buildDefaultRuntime() {
     return new AgentRuntime({
@@ -96,6 +97,29 @@ describe('runtime flow', () => {
         expect(
             events.filter(event => event.type === 'graph_started' && event.data?.toolName === 'designFlowDraft').length,
         ).toBeGreaterThanOrEqual(1);
+    });
+
+    it('can stream trace and flow-design events into one unified runtime timeline', async () => {
+        const timeline: UnifiedRunEvent[] = [];
+        const runtime = new AgentRuntime({
+            llm: new FakeLlmGateway(),
+            store: new InMemoryRunStateStore(),
+            toolRegistry: buildDefaultToolRegistry(),
+            unifiedEventConnectionFactory: () =>
+                new CallbackUnifiedRunEventConnection(event => {
+                    timeline.push(event);
+                }),
+        });
+
+        const result = await runtime.run('키워드를 줄테니 블로그 타이틀 여러개 만들기');
+
+        expect(result.status).toBe('completed');
+        expect(timeline.some(event => event.source === 'trace' && event.type === 'skill_selected')).toBe(true);
+        expect(timeline.some(event => event.source === 'trace' && event.type === 'tool_start')).toBe(true);
+        expect(timeline.some(event => event.source === 'flow-design' && event.type === 'graph_started')).toBe(true);
+        expect(timeline.some(event => event.source === 'flow-design' && event.type === 'node_created')).toBe(true);
+        expect(timeline.some(event => event.source === 'flow-design' && event.type === 'graph_completed')).toBe(true);
+        expect(timeline.every((event, index) => event.seq === index + 1)).toBe(true);
     });
 
     it('completes a preflight validation run and returns task-graph feasibility feedback', async () => {

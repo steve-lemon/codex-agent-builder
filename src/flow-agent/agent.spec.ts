@@ -120,8 +120,12 @@ describe('flow design agent', () => {
             }),
         );
         expect(
-            events.filter(event => event.type === 'node_created' && event.data?.node && (event.data.node as { id?: string }).id === 'ai-node')
-                .length,
+            events.filter(
+                event =>
+                    event.type === 'node_created' &&
+                    event.data?.node &&
+                    (event.data.node as { id?: string }).id === 'ai-node',
+            ).length,
         ).toBeGreaterThanOrEqual(2);
     });
 });
