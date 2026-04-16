@@ -28,6 +28,14 @@ describe('runtime flow', () => {
         expect(Array.isArray(result.finalResult?.nextActions)).toBe(true);
     });
 
+    it('completes a flow-designer skill run with the bundled flow-design tools', async () => {
+        const runtime = buildDefaultRuntime();
+        const result = await runtime.run('키워드를 줄테니 블로그 타이틀 여러개 만들기');
+
+        expect(result.status).toBe('completed');
+        expect(result.finalResult?.summary).toContain('flow-designer');
+    });
+
     it('runs parallel-safe tools concurrently in parallel step', async () => {
         const registry = new ToolRegistry();
         const timeline: Array<{ name: string; ts: number }> = [];

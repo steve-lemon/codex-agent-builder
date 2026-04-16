@@ -17,6 +17,12 @@ describe('skill selector and router', () => {
         expect(skill).toBe('ops-automation-agent');
     });
 
+    it('selects flow designer skill for flow-design-like prompts', async () => {
+        const selector = new SkillSelector();
+        const skill = await selector.select('키워드를 줄테니 블로그 타이틀 여러개 만들기');
+        expect(skill).toBe('flow-designer');
+    });
+
     it('defaults to customer support reviewer otherwise', async () => {
         const selector = new SkillSelector();
         const skill = await selector.select('Help me review this customer complaint');
@@ -29,5 +35,18 @@ describe('skill selector and router', () => {
         expect(tools).toContain('webSearch');
         expect(tools).not.toContain('refundOrder');
         expect(tools).not.toContain('getCustomerById');
+    });
+
+    it('exposes only flow design tools for the flow designer skill', async () => {
+        const router = new MultiSkillRouter(buildDefaultToolRegistry());
+        const tools = router.toolNamesForSkill('flow-designer');
+        expect(tools).toEqual([
+            'analyzeFlowRequest',
+            'listAvailableFlowBlocks',
+            'designFlowDraft',
+            'validateFlowDraft',
+            'runFlowSample',
+            'reflectFlowResult',
+        ]);
     });
 });

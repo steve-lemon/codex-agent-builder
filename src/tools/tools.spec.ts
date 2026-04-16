@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { buildDefaultToolRegistry } from '.';
+import { createFlowDesignTools } from './flow-tools';
 import { createMockTools } from './mock-tools';
 import { AnyArgsSchema, ToolRegistry } from './registry';
 import { defineTool, type ToolDefinition } from './types';
@@ -50,6 +51,12 @@ describe('tools modules', () => {
             'createTicket',
             'sendSlackMessage',
             'refundOrder',
+            'analyzeFlowRequest',
+            'listAvailableFlowBlocks',
+            'designFlowDraft',
+            'validateFlowDraft',
+            'runFlowSample',
+            'reflectFlowResult',
         ]);
     });
 
@@ -75,6 +82,23 @@ describe('tools modules', () => {
             }),
         );
         expect(slackTool?.allowedSkills).toEqual(['ops-automation-agent']);
+    });
+
+    it('createFlowDesignTools returns planner-safe read-only tools for the flow-designer skill', () => {
+        const tools = createFlowDesignTools();
+
+        expect(tools).toHaveLength(6);
+        expect(tools.map(tool => tool.name)).toEqual([
+            'analyzeFlowRequest',
+            'listAvailableFlowBlocks',
+            'designFlowDraft',
+            'validateFlowDraft',
+            'runFlowSample',
+            'reflectFlowResult',
+        ]);
+        expect(tools.every(tool => tool.allowedSkills.includes('flow-designer'))).toBe(true);
+        expect(tools.every(tool => tool.riskLevel === 'read-only')).toBe(true);
+        expect(tools.every(tool => tool.requiresConfirmation === false)).toBe(true);
     });
 
     it('mock tools return deterministic customer and order data', async () => {
@@ -182,6 +206,115 @@ describe('tools modules', () => {
                 message: 'Daily automation summary ready.',
                 delivered: true,
             },
+        });
+    });
+
+    it('flow design tools produce deterministic intent, flow draft, validation, execution, and reflection outputs', async () => {
+        const registry = buildDefaultToolRegistry();
+
+        const intent = await registry.execute(
+            {
+                toolName: 'analyzeFlowRequest',
+                args: { userRequest: '키워드를 줄테니 블로그 타이틀 여러개 만들기' },
+            },
+            makeToolContext('flow-tools-1'),
+        );
+        const blocks = await registry.execute(
+            {
+                toolName: 'listAvailableFlowBlocks',
+                args: {},
+            },
+            makeToolContext('flow-tools-1'),
+        );
+        const design = await registry.execute(
+            {
+                toolName: 'designFlowDraft',
+                args: {
+                    userRequest: '키워드를 줄테니 블로그 타이틀 여러개 만들기',
+                    sampleInput: '생산성 향상',
+                    desiredCount: 5,
+                    wantsJson: false,
+                },
+            },
+            makeToolContext('flow-tools-1'),
+        );
+
+        expect(intent.ok).toBe(true);
+        expect(intent.data).toEqual(
+            expect.objectContaining({
+                taskType: 'blog-title-generation',
+                wantsMultiple: true,
+                desiredCount: 5,
+            }),
+        );
+        expect(blocks.ok).toBe(true);
+        expect(blocks.data).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'ai-generate' })]));
+        expect(design.ok).toBe(true);
+        expect(design.data).toEqual(
+            expect.objectContaining({
+                flow: expect.objectContaining({
+                    nodes: expect.arrayContaining([expect.objectContaining({ id: 'ai-node', blockId: 'ai-generate' })]),
+                }),
+            }),
+        );
+
+        const flow = (design.data as { flow: Record<string, unknown> }).flow;
+        const validation = await registry.execute(
+            {
+                toolName: 'validateFlowDraft',
+                args: { flow },
+            },
+            makeToolContext('flow-tools-1'),
+        );
+        const sample = await registry.execute(
+            {
+                toolName: 'runFlowSample',
+                args: {
+                    userRequest: '키워드를 줄테니 블로그 타이틀 여러개 만들기',
+                    flow,
+                },
+            },
+            makeToolContext('flow-tools-1'),
+        );
+        const reflection = await registry.execute(
+            {
+                toolName: 'reflectFlowResult',
+                args: {
+                    userRequest: '키워드를 줄테니 블로그 타이틀 여러개 만들기',
+                    desiredCount: 5,
+                    wantsJson: false,
+                    sampleResult: {
+                        status: 'completed',
+                        output: (sample.data as { output?: unknown }).output,
+                        logs: (sample.data as { logs: string[] }).logs,
+                    },
+                },
+            },
+            makeToolContext('flow-tools-1'),
+        );
+
+        expect(validation).toEqual({
+            toolName: 'validateFlowDraft',
+            ok: true,
+            data: expect.objectContaining({
+                isValid: true,
+                issues: [],
+            }),
+        });
+        expect(sample.ok).toBe(true);
+        expect(sample.data).toEqual(
+            expect.objectContaining({
+                status: 'completed',
+                output: expect.stringContaining('블로그 타이틀'),
+            }),
+        );
+        expect(reflection).toEqual({
+            toolName: 'reflectFlowResult',
+            ok: true,
+            data: expect.objectContaining({
+                satisfied: true,
+                issues: [],
+            }),
         });
     });
 
