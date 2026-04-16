@@ -132,6 +132,80 @@ describe('runtime flow', () => {
         );
     });
 
+    it('resolves step-result references into concrete tool args at execution time', async () => {
+        const registry = new ToolRegistry();
+        const capturedArgs: Array<{ customerId?: string; message?: string }> = [];
+
+        registry.registerMany([
+            {
+                name: 'getCustomerById',
+                description: 'lookup',
+                parameters: z.object({ customerId: z.string() }),
+                riskLevel: 'read-only',
+                allowedSkills: ['customer-support-reviewer'],
+                requiresConfirmation: false,
+                parallelSafe: true,
+                execute: async ({ customerId }) => {
+                    capturedArgs.push({ customerId });
+                    return { message: `customer:${customerId}` };
+                },
+            },
+            {
+                name: 'createMessage',
+                description: 'message tool',
+                parameters: z.object({ message: z.string() }),
+                riskLevel: 'read-only',
+                allowedSkills: ['customer-support-reviewer'],
+                requiresConfirmation: false,
+                parallelSafe: true,
+                execute: async ({ message }) => {
+                    capturedArgs.push({ message });
+                    return { echoed: message };
+                },
+            },
+        ]);
+
+        const llm: LlmGateway = {
+            plan: async () => ({
+                steps: [
+                    {
+                        id: 's1',
+                        mode: 'single-tool',
+                        description: 'lookup customer',
+                        toolCalls: [{ toolName: 'getCustomerById', args: { customerId: 'c_1' } }],
+                    },
+                    {
+                        id: 's2',
+                        mode: 'single-tool',
+                        description: 'reuse prior result',
+                        toolCalls: [
+                            {
+                                toolName: 'createMessage',
+                                args: {
+                                    message: { $fromStep: 's1', path: 'toolResults.0.data.message' },
+                                },
+                            },
+                        ],
+                    },
+                    { id: 's3', mode: 'finalize', description: 'done' },
+                ],
+            }),
+            reflect: async () => ({ isComplete: true, reason: 'ok', missingItems: [] }),
+            finalize: async () => ({ summary: 'done', success: true, nextActions: [] }),
+        };
+
+        const runtime = new AgentRuntime({
+            llm,
+            store: new InMemoryRunStateStore(),
+            toolRegistry: registry,
+        });
+
+        const result = await runtime.run('Help me review this customer complaint');
+
+        expect(result.status).toBe('completed');
+        expect(capturedArgs).toEqual([{ customerId: 'c_1' }, { message: 'customer:c_1' }]);
+    });
+
     it('fails the run when a single-tool step has no tool calls', async () => {
         const llm: LlmGateway = {
             plan: async () => ({

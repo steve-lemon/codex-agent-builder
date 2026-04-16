@@ -123,18 +123,9 @@ export class FakeLlmGateway implements LlmGateway {
                                 toolName: ensureToolAvailable('designFlowDraft'),
                                 args: {
                                     userRequest: input.userInput,
-                                    sampleInput:
-                                        input.userInput.toLowerCase().includes('키워드') ||
-                                        input.userInput.toLowerCase().includes('keyword')
-                                            ? '생산성 향상'
-                                            : '샘플 입력',
-                                    desiredCount:
-                                        input.userInput.toLowerCase().includes('여러') ||
-                                        input.userInput.toLowerCase().includes('multiple') ||
-                                        input.userInput.toLowerCase().includes('many')
-                                            ? 5
-                                            : 1,
-                                    wantsJson: input.userInput.toLowerCase().includes('json'),
+                                    sampleInput: { $fromStep: 's1', path: 'toolResults.0.data.sampleInput' },
+                                    desiredCount: { $fromStep: 's1', path: 'toolResults.0.data.desiredCount' },
+                                    wantsJson: { $fromStep: 's1', path: 'toolResults.0.data.wantsJson' },
                                 },
                             },
                         ],
@@ -147,134 +138,7 @@ export class FakeLlmGateway implements LlmGateway {
                             {
                                 toolName: ensureToolAvailable('validateFlowDraft'),
                                 args: {
-                                    flow: {
-                                        blocks: input.toolDefinitions.length >= 0 ? [] : [],
-                                        nodes: [
-                                            {
-                                                id: 'system-input',
-                                                blockId: 'input',
-                                                label: 'System Input',
-                                                config: {
-                                                    input: 'You generate clear and catchy blog titles based on one keyword.',
-                                                },
-                                                inputPorts: [],
-                                                outputPorts: [
-                                                    {
-                                                        id: 'system-input:output',
-                                                        localId: 'output',
-                                                        direction: 'output',
-                                                        dataType: 'text',
-                                                        label: 'Output',
-                                                    },
-                                                ],
-                                            },
-                                            {
-                                                id: 'prompt-input',
-                                                blockId: 'input',
-                                                label: 'Prompt Input',
-                                                config: {
-                                                    input: `User request: ${input.userInput}. Sample input: ${
-                                                        input.userInput.toLowerCase().includes('키워드') ||
-                                                        input.userInput.toLowerCase().includes('keyword')
-                                                            ? '생산성 향상'
-                                                            : '샘플 입력'
-                                                    }. ${
-                                                        input.userInput.toLowerCase().includes('여러') ||
-                                                        input.userInput.toLowerCase().includes('multiple') ||
-                                                        input.userInput.toLowerCase().includes('many')
-                                                            ? 'Return exactly 5 results.'
-                                                            : 'Return one result.'
-                                                    } ${
-                                                        input.userInput.toLowerCase().includes('json')
-                                                            ? 'Return JSON only.'
-                                                            : 'Return each result on its own line.'
-                                                    }`,
-                                                },
-                                                inputPorts: [],
-                                                outputPorts: [
-                                                    {
-                                                        id: 'prompt-input:output',
-                                                        localId: 'output',
-                                                        direction: 'output',
-                                                        dataType: 'text',
-                                                        label: 'Output',
-                                                    },
-                                                ],
-                                            },
-                                            {
-                                                id: 'ai-node',
-                                                blockId: 'ai-generate',
-                                                label: 'AI Generate',
-                                                config: {
-                                                    model: 'mock-flow-model',
-                                                    jsonOutput: String(input.userInput.toLowerCase().includes('json')),
-                                                },
-                                                inputPorts: [
-                                                    {
-                                                        id: 'ai-node:system',
-                                                        localId: 'system',
-                                                        direction: 'input',
-                                                        dataType: 'text',
-                                                        label: 'System',
-                                                    },
-                                                    {
-                                                        id: 'ai-node:prompt',
-                                                        localId: 'prompt',
-                                                        direction: 'input',
-                                                        dataType: 'text',
-                                                        label: 'Prompt',
-                                                    },
-                                                ],
-                                                outputPorts: [
-                                                    {
-                                                        id: 'ai-node:output',
-                                                        localId: 'output',
-                                                        direction: 'output',
-                                                        dataType: 'any',
-                                                        label: 'Output',
-                                                    },
-                                                ],
-                                            },
-                                            {
-                                                id: 'view-output',
-                                                blockId: 'view',
-                                                label: 'View Output',
-                                                inputPorts: [
-                                                    {
-                                                        id: 'view-output:input',
-                                                        localId: 'input',
-                                                        direction: 'input',
-                                                        dataType: 'any',
-                                                        label: 'Input',
-                                                    },
-                                                ],
-                                                outputPorts: [],
-                                            },
-                                        ],
-                                        edges: [
-                                            {
-                                                id: 'system-input:output->ai-node:system',
-                                                sourceNodeId: 'system-input',
-                                                sourcePortId: 'system-input:output',
-                                                targetNodeId: 'ai-node',
-                                                targetPortId: 'ai-node:system',
-                                            },
-                                            {
-                                                id: 'prompt-input:output->ai-node:prompt',
-                                                sourceNodeId: 'prompt-input',
-                                                sourcePortId: 'prompt-input:output',
-                                                targetNodeId: 'ai-node',
-                                                targetPortId: 'ai-node:prompt',
-                                            },
-                                            {
-                                                id: 'ai-node:output->view-output:input',
-                                                sourceNodeId: 'ai-node',
-                                                sourcePortId: 'ai-node:output',
-                                                targetNodeId: 'view-output',
-                                                targetPortId: 'view-output:input',
-                                            },
-                                        ],
-                                    },
+                                    flow: { $fromStep: 's4', path: 'toolResults.0.data.flow' },
                                 },
                             },
                         ],
@@ -288,134 +152,7 @@ export class FakeLlmGateway implements LlmGateway {
                                 toolName: ensureToolAvailable('runFlowSample'),
                                 args: {
                                     userRequest: input.userInput,
-                                    flow: {
-                                        blocks: [],
-                                        nodes: [
-                                            {
-                                                id: 'system-input',
-                                                blockId: 'input',
-                                                label: 'System Input',
-                                                config: {
-                                                    input: 'You generate clear and catchy blog titles based on one keyword.',
-                                                },
-                                                inputPorts: [],
-                                                outputPorts: [
-                                                    {
-                                                        id: 'system-input:output',
-                                                        localId: 'output',
-                                                        direction: 'output',
-                                                        dataType: 'text',
-                                                        label: 'Output',
-                                                    },
-                                                ],
-                                            },
-                                            {
-                                                id: 'prompt-input',
-                                                blockId: 'input',
-                                                label: 'Prompt Input',
-                                                config: {
-                                                    input: `User request: ${input.userInput}. Sample input: ${
-                                                        input.userInput.toLowerCase().includes('키워드') ||
-                                                        input.userInput.toLowerCase().includes('keyword')
-                                                            ? '생산성 향상'
-                                                            : '샘플 입력'
-                                                    }. ${
-                                                        input.userInput.toLowerCase().includes('여러') ||
-                                                        input.userInput.toLowerCase().includes('multiple') ||
-                                                        input.userInput.toLowerCase().includes('many')
-                                                            ? 'Return exactly 5 results.'
-                                                            : 'Return one result.'
-                                                    } ${
-                                                        input.userInput.toLowerCase().includes('json')
-                                                            ? 'Return JSON only.'
-                                                            : 'Return each result on its own line.'
-                                                    }`,
-                                                },
-                                                inputPorts: [],
-                                                outputPorts: [
-                                                    {
-                                                        id: 'prompt-input:output',
-                                                        localId: 'output',
-                                                        direction: 'output',
-                                                        dataType: 'text',
-                                                        label: 'Output',
-                                                    },
-                                                ],
-                                            },
-                                            {
-                                                id: 'ai-node',
-                                                blockId: 'ai-generate',
-                                                label: 'AI Generate',
-                                                config: {
-                                                    model: 'mock-flow-model',
-                                                    jsonOutput: String(input.userInput.toLowerCase().includes('json')),
-                                                },
-                                                inputPorts: [
-                                                    {
-                                                        id: 'ai-node:system',
-                                                        localId: 'system',
-                                                        direction: 'input',
-                                                        dataType: 'text',
-                                                        label: 'System',
-                                                    },
-                                                    {
-                                                        id: 'ai-node:prompt',
-                                                        localId: 'prompt',
-                                                        direction: 'input',
-                                                        dataType: 'text',
-                                                        label: 'Prompt',
-                                                    },
-                                                ],
-                                                outputPorts: [
-                                                    {
-                                                        id: 'ai-node:output',
-                                                        localId: 'output',
-                                                        direction: 'output',
-                                                        dataType: 'any',
-                                                        label: 'Output',
-                                                    },
-                                                ],
-                                            },
-                                            {
-                                                id: 'view-output',
-                                                blockId: 'view',
-                                                label: 'View Output',
-                                                inputPorts: [
-                                                    {
-                                                        id: 'view-output:input',
-                                                        localId: 'input',
-                                                        direction: 'input',
-                                                        dataType: 'any',
-                                                        label: 'Input',
-                                                    },
-                                                ],
-                                                outputPorts: [],
-                                            },
-                                        ],
-                                        edges: [
-                                            {
-                                                id: 'system-input:output->ai-node:system',
-                                                sourceNodeId: 'system-input',
-                                                sourcePortId: 'system-input:output',
-                                                targetNodeId: 'ai-node',
-                                                targetPortId: 'ai-node:system',
-                                            },
-                                            {
-                                                id: 'prompt-input:output->ai-node:prompt',
-                                                sourceNodeId: 'prompt-input',
-                                                sourcePortId: 'prompt-input:output',
-                                                targetNodeId: 'ai-node',
-                                                targetPortId: 'ai-node:prompt',
-                                            },
-                                            {
-                                                id: 'ai-node:output->view-output:input',
-                                                sourceNodeId: 'ai-node',
-                                                sourcePortId: 'ai-node:output',
-                                                targetNodeId: 'view-output',
-                                                targetPortId: 'view-output:input',
-                                            },
-                                        ],
-                                    },
+                                    flow: { $fromStep: 's4', path: 'toolResults.0.data.flow' },
                                 },
                             },
                         ],
@@ -429,29 +166,9 @@ export class FakeLlmGateway implements LlmGateway {
                                 toolName: ensureToolAvailable('reflectFlowResult'),
                                 args: {
                                     userRequest: input.userInput,
-                                    desiredCount:
-                                        input.userInput.toLowerCase().includes('여러') ||
-                                        input.userInput.toLowerCase().includes('multiple') ||
-                                        input.userInput.toLowerCase().includes('many')
-                                            ? 5
-                                            : 1,
-                                    wantsJson: input.userInput.toLowerCase().includes('json'),
-                                    sampleResult: {
-                                        status: 'completed',
-                                        output: input.userInput.toLowerCase().includes('json')
-                                            ? {
-                                                  model: 'mock-flow-model',
-                                                  items: Array.from(
-                                                      { length: 5 },
-                                                      (_, index) => `샘플 입력 아이디어 ${index + 1}`,
-                                                  ),
-                                              }
-                                            : Array.from(
-                                                  { length: 5 },
-                                                  (_, index) => `샘플 입력 블로그 타이틀 ${index + 1}`,
-                                              ).join('\n'),
-                                        logs: [],
-                                    },
+                                    desiredCount: { $fromStep: 's1', path: 'toolResults.0.data.desiredCount' },
+                                    wantsJson: { $fromStep: 's1', path: 'toolResults.0.data.wantsJson' },
+                                    sampleResult: { $fromStep: 's6', path: 'toolResults.0.data' },
                                 },
                             },
                         ],

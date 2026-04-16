@@ -3,6 +3,7 @@ import { PlanSchema, type Plan } from './schemas';
 import type { LlmGateway } from '../llm/types';
 import type { ToolDefinition, ToolManifest } from '../tools/types';
 import { AgentError } from '../errors/agent-error';
+import { containsStepReferences, validateStepReferences } from './step-references';
 
 /** Validates planner output returned from the configured LLM gateway. */
 export class Planner {
@@ -39,6 +40,11 @@ export class Planner {
                     throw new AgentError(
                         `Planner returned tool ${toolCall.toolName} that is not available in this run`,
                     );
+                }
+
+                if (containsStepReferences(toolCall.args)) {
+                    validateStepReferences(toolCall.args);
+                    continue;
                 }
 
                 const validatedArgs = tool.parameters.safeParse(toolCall.args);

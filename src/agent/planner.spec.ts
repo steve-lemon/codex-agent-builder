@@ -139,4 +139,50 @@ describe('Planner', () => {
             }),
         ).rejects.toThrow(/Planner returned invalid args for refundOrder/);
     });
+
+    it('accepts plans that use structured step-result references in later tool args', async () => {
+        const llm: LlmGateway = {
+            plan: async () => ({
+                steps: [
+                    {
+                        id: 's1',
+                        mode: 'single-tool',
+                        description: 'Load customer',
+                        toolCalls: [{ toolName: 'getCustomerById', args: { customerId: 'c_1' } }],
+                    },
+                    {
+                        id: 's2',
+                        mode: 'single-tool',
+                        description: 'Refund order using prior result references',
+                        toolCalls: [
+                            {
+                                toolName: 'refundOrder',
+                                args: {
+                                    orderId: 'o_100',
+                                    amount: { $fromStep: 's1', path: 'toolResults.0.data.creditAmount' },
+                                },
+                            },
+                        ],
+                    },
+                ],
+            }),
+            reflect: async () => ({ isComplete: true, reason: 'ok', missingItems: [] }),
+            finalize: async () => ({ summary: 'done', success: true, nextActions: [] }),
+        };
+
+        const planner = new Planner(llm);
+        const plan = await planner.createPlan({
+            userInput: 'Refund using prior data',
+            skillName: 'customer-support-reviewer',
+            skillInstructions: 'Use support tools only.',
+            allowedTools: ['getCustomerById', 'refundOrder'],
+            toolManifests: [buildToolManifest(customerTool), buildToolManifest(refundTool)],
+            toolDefinitions: [customerTool, refundTool],
+        });
+
+        expect(plan.steps[1]?.toolCalls?.[0]?.args).toEqual({
+            orderId: 'o_100',
+            amount: { $fromStep: 's1', path: 'toolResults.0.data.creditAmount' },
+        });
+    });
 });

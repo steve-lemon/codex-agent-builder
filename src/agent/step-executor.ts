@@ -10,6 +10,7 @@ import type { ExecuteStepContext, PendingApproval, StepResult } from './types';
 import { buildPendingApproval } from './approval';
 import { AgentError } from '../errors/agent-error';
 import { now } from '../time/now';
+import { resolveStepReferences } from './step-references';
 
 export interface StepExecutorResult {
     stepResult?: StepResult;
@@ -71,8 +72,11 @@ export class StepExecutor {
                 throw new AgentError(`Tool ${toolName} not found`);
             }
 
+            const runState = await context.runState.get();
+            const resolvedArgs = resolveStepReferences(args, runState.stepResults);
+
             if (tool.requiresConfirmation) {
-                return { pendingApproval: buildPendingApproval(context.stepIndex, toolName, args) };
+                return { pendingApproval: buildPendingApproval(context.stepIndex, toolName, resolvedArgs) };
             }
 
             const policy = resolveToolExecutionPolicy(tool);
@@ -86,7 +90,7 @@ export class StepExecutor {
                 enableCircuitBreaker: policy.useCircuitBreaker,
                 execute: async () => {
                     const execution = await this.registry.execute(
-                        { toolName, args },
+                        { toolName, args: resolvedArgs },
                         {
                             runId,
                             now: now(),
