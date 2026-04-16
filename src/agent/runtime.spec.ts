@@ -50,6 +50,15 @@ describe('runtime flow', () => {
             run?.stepResults.filter(step => JSON.stringify(step).includes('"toolName":"designFlowDraft"')).length,
         ).toBe(3);
         expect(
+            run?.stepResults.filter(step => JSON.stringify(step).includes('"toolName":"designFlowNodeConfigurations"'))
+                .length,
+        ).toBe(3);
+        expect(
+            run?.stepResults.filter(step =>
+                JSON.stringify(step).includes('"toolName":"validateFlowNodeConfigurations"'),
+            ).length,
+        ).toBe(3);
+        expect(
             run?.stepResults.filter(step => JSON.stringify(step).includes('"toolName":"reflectFlowResult"')).length,
         ).toBe(3);
         expect(
@@ -57,6 +66,17 @@ describe('runtime flow', () => {
         ).toBe(2);
         expect(result.finalResult?.summary).toContain('3 design pass(es)');
         expect(result.finalResult?.summary).toContain('2 task-graph refinement step(s)');
+    });
+
+    it('completes a node-config-designer skill run with sub-agent guidance', async () => {
+        const runtime = buildDefaultRuntime();
+        const result = await runtime.run('ai 노드의 시스템 프롬프트와 모델 설정을 디자인해줘');
+
+        expect(result.status).toBe('completed');
+        expect(result.finalResult?.summary).toContain('node-config-designer');
+        expect(result.finalResult?.nextActions).toEqual(
+            expect.arrayContaining([expect.stringContaining('designFlowNodeConfigurations')]),
+        );
     });
 
     it('stops early and reports missing capabilities when the request cannot be satisfied by available blocks', async () => {

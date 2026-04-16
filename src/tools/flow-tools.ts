@@ -891,7 +891,11 @@ export function createFlowDesignTools(): ToolDefinition[] {
                 const mapping = buildTaskGraphMapping(taskNodes);
                 let flow = createFlowDocument(availableBlocks);
                 const monitor = context.designConnection
-                    ? new FlowDesignSession(`${context.runId}:designFlowDraft`, availableBlocks, context.designConnection)
+                    ? new FlowDesignSession(
+                          `${context.runId}:designFlowDraft`,
+                          availableBlocks,
+                          context.designConnection,
+                      )
                     : undefined;
 
                 monitor?.start({

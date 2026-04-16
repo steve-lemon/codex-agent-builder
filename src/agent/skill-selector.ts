@@ -5,6 +5,7 @@ export const SKILL_NAMES = [
     'research-brief-generator',
     'ops-automation-agent',
     'flow-designer',
+    'node-config-designer',
     'flow-preflight-validator',
 ] as const;
 
@@ -26,6 +27,17 @@ export class SkillSelector {
 
         if (text.includes('ops') || text.includes('automation') || text.includes('slack') || text.includes('runbook')) {
             return 'ops-automation-agent';
+        }
+
+        if (
+            text.includes('node config') ||
+            text.includes('node configuration') ||
+            text.includes('시스템 프롬프트') ||
+            text.includes('프롬프트 설정') ||
+            text.includes('모델 설정') ||
+            text.includes('노드 설정')
+        ) {
+            return 'node-config-designer';
         }
 
         if (

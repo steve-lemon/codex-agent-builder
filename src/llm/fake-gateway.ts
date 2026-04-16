@@ -128,6 +128,25 @@ export class FakeLlmGateway implements LlmGateway {
             };
         }
 
+        if (input.skillName === 'node-config-designer') {
+            return {
+                steps: [
+                    {
+                        id: 's1',
+                        mode: 'reasoning',
+                        description: 'Explain how node configuration design is applied',
+                        reasoning:
+                            'This sub-agent configures an existing flow draft after the main flow structure already exists.',
+                    },
+                    {
+                        id: 's2',
+                        mode: 'finalize',
+                        description: 'Finalize node-configuration guidance',
+                    },
+                ],
+            };
+        }
+
         if (input.skillName === 'flow-designer') {
             const isClearlyInfeasible =
                 text.includes('email') ||
@@ -292,6 +311,8 @@ export class FakeLlmGateway implements LlmGateway {
                 // passes when a reflection reports satisfaction instead of always
                 // materializing the full deterministic loop upfront.
                 const designStepId = `s${stepNumber++}`;
+                const configureStepId = `s${stepNumber++}`;
+                const validateConfigStepId = `s${stepNumber++}`;
                 const validateStepId = `s${stepNumber++}`;
                 const runStepId = `s${stepNumber++}`;
                 const reflectStepId = `s${stepNumber++}`;
@@ -327,6 +348,51 @@ export class FakeLlmGateway implements LlmGateway {
                 });
 
                 steps.push({
+                    id: configureStepId,
+                    mode: 'single-tool',
+                    description:
+                        pass === 1
+                            ? 'Configure the initial flow nodes'
+                            : `Reconfigure the revised flow nodes (${passLabel})`,
+                    toolCalls: [
+                        {
+                            toolName: ensureToolAvailable('designFlowNodeConfigurations'),
+                            args: {
+                                userRequest: input.userInput,
+                                flow: { $fromStep: designStepId, path: 'toolResults.0.data.flow' },
+                                desiredCount: { $fromStep: 's1', path: 'toolResults.0.data.desiredCount' },
+                                wantsJson: { $fromStep: 's1', path: 'toolResults.0.data.wantsJson' },
+                                ...(previousReflectionStepId
+                                    ? {
+                                          improvementNotes: {
+                                              $fromStep: previousReflectionStepId,
+                                              path: 'toolResults.0.data.improvementNotes',
+                                          },
+                                      }
+                                    : {}),
+                            },
+                        },
+                    ],
+                });
+
+                steps.push({
+                    id: validateConfigStepId,
+                    mode: 'single-tool',
+                    description:
+                        pass === 1
+                            ? 'Validate the initial node configurations'
+                            : `Validate the revised node configurations (${passLabel})`,
+                    toolCalls: [
+                        {
+                            toolName: ensureToolAvailable('validateFlowNodeConfigurations'),
+                            args: {
+                                flow: { $fromStep: configureStepId, path: 'toolResults.0.data.flow' },
+                            },
+                        },
+                    ],
+                });
+
+                steps.push({
                     id: validateStepId,
                     mode: 'single-tool',
                     description:
@@ -337,7 +403,7 @@ export class FakeLlmGateway implements LlmGateway {
                         {
                             toolName: ensureToolAvailable('validateFlowDraft'),
                             args: {
-                                flow: { $fromStep: designStepId, path: 'toolResults.0.data.flow' },
+                                flow: { $fromStep: configureStepId, path: 'toolResults.0.data.flow' },
                             },
                         },
                     ],
@@ -353,7 +419,7 @@ export class FakeLlmGateway implements LlmGateway {
                             toolName: ensureToolAvailable('runFlowSample'),
                             args: {
                                 userRequest: input.userInput,
-                                flow: { $fromStep: designStepId, path: 'toolResults.0.data.flow' },
+                                flow: { $fromStep: configureStepId, path: 'toolResults.0.data.flow' },
                                 ...(previousReflectionStepId
                                     ? {
                                           improvementNotes: {
@@ -486,6 +552,18 @@ export class FakeLlmGateway implements LlmGateway {
                               `Add capabilities: ${(preflightData?.missingCapabilities ?? []).join(', ')}`,
                           ]
                         : ['Proceed to flow design'],
+            };
+        }
+
+        if (input.skillName === 'node-config-designer') {
+            return {
+                summary:
+                    'Handled with skill node-config-designer. This sub-agent configures an existing flow draft after the main flow structure has been created.',
+                success: true,
+                nextActions: [
+                    'Run this skill after flow-designer has produced a concrete flow draft.',
+                    'Use designFlowNodeConfigurations and validateFlowNodeConfigurations on the draft flow.',
+                ],
             };
         }
 

@@ -60,6 +60,8 @@ describe('tools modules', () => {
             'proposeBlockSpecUpdate',
             'runFlowSample',
             'reflectFlowResult',
+            'designFlowNodeConfigurations',
+            'validateFlowNodeConfigurations',
             'inferTaskGraph',
             'analyzeTaskGraphCompatibility',
             'proposeMissingBlocks',
@@ -264,7 +266,10 @@ describe('tools modules', () => {
                     taskGraph: (inferred.data as { taskGraph: Record<string, unknown> }).taskGraph,
                     reflection: {
                         issues: ['The output only produced 2 item(s) but 5 were requested.'],
-                        improvementNotes: ['Ask for exactly 5 distinct results.', 'Make each result read like a publishable blog title.'],
+                        improvementNotes: [
+                            'Ask for exactly 5 distinct results.',
+                            'Make each result read like a publishable blog title.',
+                        ],
                     },
                 },
             },
@@ -323,6 +328,19 @@ describe('tools modules', () => {
         const preflightTool = registry.get('prevalidateFlowDesignRequest');
 
         expect(preflightTool?.allowedSkills).toEqual(['flow-preflight-validator', 'flow-designer']);
+    });
+
+    it('node configuration tools are shared with flow-designer and node-config-designer', () => {
+        const registry = buildDefaultToolRegistry();
+
+        expect(registry.get('designFlowNodeConfigurations')?.allowedSkills).toEqual([
+            'flow-designer',
+            'node-config-designer',
+        ]);
+        expect(registry.get('validateFlowNodeConfigurations')?.allowedSkills).toEqual([
+            'flow-designer',
+            'node-config-designer',
+        ]);
     });
 
     it('mock tools return deterministic customer and order data', async () => {
@@ -623,6 +641,83 @@ describe('tools modules', () => {
                 ],
                 suggestedDocPatch: expect.stringContaining('Update ai-generate block documentation to clarify:'),
             }),
+        });
+    });
+
+    it('node configuration tools configure prompts/model settings and validate them deterministically', async () => {
+        const registry = buildDefaultToolRegistry();
+
+        const design = await registry.execute(
+            {
+                toolName: 'designFlowDraft',
+                args: {
+                    userRequest: '키워드를 줄테니 블로그 타이틀 여러개 만들기',
+                    sampleInput: '생산성 향상',
+                    desiredCount: 5,
+                    wantsJson: false,
+                },
+            },
+            makeToolContext('node-config-tools-1'),
+        );
+
+        const configured = await registry.execute(
+            {
+                toolName: 'designFlowNodeConfigurations',
+                args: {
+                    userRequest: '키워드를 줄테니 블로그 타이틀 여러개 만들기',
+                    flow: (design.data as { flow: Record<string, unknown> }).flow,
+                    desiredCount: 5,
+                    wantsJson: false,
+                },
+            },
+            makeToolContext('node-config-tools-1'),
+        );
+
+        expect(configured).toEqual({
+            toolName: 'designFlowNodeConfigurations',
+            ok: true,
+            data: expect.objectContaining({
+                summary: expect.stringContaining('Configured'),
+                suggestions: expect.arrayContaining([
+                    expect.objectContaining({
+                        nodeId: 'system-input',
+                        config: expect.objectContaining({
+                            input: expect.stringContaining('You generate clear and catchy blog titles'),
+                        }),
+                    }),
+                    expect.objectContaining({
+                        nodeId: 'prompt-input',
+                        config: expect.objectContaining({
+                            input: expect.stringContaining('Return exactly 5 results.'),
+                        }),
+                    }),
+                    expect.objectContaining({
+                        nodeId: 'ai-node',
+                        config: expect.objectContaining({
+                            model: 'mock-blog-gpt',
+                            jsonOutput: 'false',
+                        }),
+                    }),
+                ]),
+            }),
+        });
+
+        const configuredFlow = (configured.data as { flow: Record<string, unknown> }).flow;
+        const validation = await registry.execute(
+            {
+                toolName: 'validateFlowNodeConfigurations',
+                args: { flow: configuredFlow },
+            },
+            makeToolContext('node-config-tools-1'),
+        );
+
+        expect(validation).toEqual({
+            toolName: 'validateFlowNodeConfigurations',
+            ok: true,
+            data: {
+                isValid: true,
+                issues: [],
+            },
         });
     });
 

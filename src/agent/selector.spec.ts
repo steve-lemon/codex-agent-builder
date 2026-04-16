@@ -35,6 +35,12 @@ describe('skill selector and router', () => {
         expect(skill).toBe('flow-preflight-validator');
     });
 
+    it('selects node-config designer skill for node prompt/model configuration prompts', async () => {
+        const selector = new SkillSelector();
+        const skill = await selector.select('ai 노드의 시스템 프롬프트와 모델 설정을 디자인해줘');
+        expect(skill).toBe('node-config-designer');
+    });
+
     it('defaults to customer support reviewer otherwise', async () => {
         const selector = new SkillSelector();
         const skill = await selector.select('Help me review this customer complaint');
@@ -62,9 +68,17 @@ describe('skill selector and router', () => {
             'proposeBlockSpecUpdate',
             'runFlowSample',
             'reflectFlowResult',
+            'designFlowNodeConfigurations',
+            'validateFlowNodeConfigurations',
             'refineTaskGraph',
             'prevalidateFlowDesignRequest',
         ]);
+    });
+
+    it('exposes only node-configuration tools for the node-config designer skill', async () => {
+        const router = new MultiSkillRouter(buildDefaultToolRegistry());
+        const tools = router.toolNamesForSkill('node-config-designer');
+        expect(tools).toEqual(['designFlowNodeConfigurations', 'validateFlowNodeConfigurations']);
     });
 
     it('exposes only task-graph preflight tools for the preflight validator skill', async () => {
