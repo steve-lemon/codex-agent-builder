@@ -53,8 +53,10 @@ describe('tools modules', () => {
             'refundOrder',
             'analyzeFlowRequest',
             'listAvailableFlowBlocks',
+            'probeFlowBlock',
             'designFlowDraft',
             'validateFlowDraft',
+            'proposeBlockSpecUpdate',
             'runFlowSample',
             'reflectFlowResult',
         ]);
@@ -87,12 +89,14 @@ describe('tools modules', () => {
     it('createFlowDesignTools returns planner-safe read-only tools for the flow-designer skill', () => {
         const tools = createFlowDesignTools();
 
-        expect(tools).toHaveLength(6);
+        expect(tools).toHaveLength(8);
         expect(tools.map(tool => tool.name)).toEqual([
             'analyzeFlowRequest',
             'listAvailableFlowBlocks',
+            'probeFlowBlock',
             'designFlowDraft',
             'validateFlowDraft',
+            'proposeBlockSpecUpdate',
             'runFlowSample',
             'reflectFlowResult',
         ]);
@@ -249,6 +253,38 @@ describe('tools modules', () => {
         );
         expect(blocks.ok).toBe(true);
         expect(blocks.data).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'ai-generate' })]));
+        const probe = await registry.execute(
+            {
+                toolName: 'probeFlowBlock',
+                args: {
+                    blockId: 'ai-generate',
+                    sampleConfig: {
+                        model: 'mock-flow-model',
+                        jsonOutput: 'true',
+                    },
+                    sampleInputs: {
+                        system: 'You are helpful.',
+                        prompt: 'Return JSON only.',
+                    },
+                },
+            },
+            makeToolContext('flow-tools-1'),
+        );
+        expect(probe).toEqual({
+            toolName: 'probeFlowBlock',
+            ok: true,
+            data: expect.objectContaining({
+                blockId: 'ai-generate',
+                observedOutputs: {
+                    output: expect.objectContaining({
+                        model: 'mock-flow-model',
+                        format: 'json',
+                    }),
+                },
+                behaviorNotes: expect.any(Array),
+                mismatchesFromSpec: expect.any(Array),
+            }),
+        });
         expect(design.ok).toBe(true);
         expect(design.data).toEqual(
             expect.objectContaining({
@@ -314,6 +350,39 @@ describe('tools modules', () => {
             data: expect.objectContaining({
                 satisfied: true,
                 issues: [],
+            }),
+        });
+
+        const specUpdate = await registry.execute(
+            {
+                toolName: 'proposeBlockSpecUpdate',
+                args: {
+                    blockId: 'ai-generate',
+                    probeResult: {
+                        behaviorNotes: ['Reads system/prompt text and writes the mock generation result into the output port.'],
+                        mismatchesFromSpec: ['The output port can emit structured object payloads when jsonOutput=true, but the description does not explain that.'],
+                        observedOutputs: {
+                            output: {
+                                model: 'mock-flow-model',
+                                format: 'json',
+                            },
+                        },
+                        observedLogs: [],
+                    },
+                },
+            },
+            makeToolContext('flow-tools-1'),
+        );
+
+        expect(specUpdate).toEqual({
+            toolName: 'proposeBlockSpecUpdate',
+            ok: true,
+            data: expect.objectContaining({
+                blockId: 'ai-generate',
+                missingDetails: [
+                    'The output port can emit structured object payloads when jsonOutput=true, but the description does not explain that.',
+                ],
+                suggestedDocPatch: expect.stringContaining('Update ai-generate block documentation to clarify:'),
             }),
         });
     });

@@ -96,6 +96,27 @@ export class FakeLlmGateway implements LlmGateway {
                     {
                         id: 's3',
                         mode: 'single-tool',
+                        description: 'Probe the AI block behavior before using it',
+                        toolCalls: [
+                            {
+                                toolName: ensureToolAvailable('probeFlowBlock'),
+                                args: {
+                                    blockId: 'ai-generate',
+                                    sampleConfig: {
+                                        model: 'mock-flow-model',
+                                        jsonOutput: String(input.userInput.toLowerCase().includes('json')),
+                                    },
+                                    sampleInputs: {
+                                        system: 'You generate clear and catchy blog titles based on one keyword.',
+                                        prompt: 'User request: sample. Sample input: 샘플 입력. Return one result. Return plain text.',
+                                    },
+                                },
+                            },
+                        ],
+                    },
+                    {
+                        id: 's4',
+                        mode: 'single-tool',
                         description: 'Design a flow draft',
                         toolCalls: [
                             {
@@ -119,7 +140,7 @@ export class FakeLlmGateway implements LlmGateway {
                         ],
                     },
                     {
-                        id: 's4',
+                        id: 's5',
                         mode: 'single-tool',
                         description: 'Validate the flow draft',
                         toolCalls: [
@@ -259,7 +280,7 @@ export class FakeLlmGateway implements LlmGateway {
                         ],
                     },
                     {
-                        id: 's5',
+                        id: 's6',
                         mode: 'single-tool',
                         description: 'Run the flow sample',
                         toolCalls: [
@@ -400,7 +421,7 @@ export class FakeLlmGateway implements LlmGateway {
                         ],
                     },
                     {
-                        id: 's6',
+                        id: 's7',
                         mode: 'single-tool',
                         description: 'Reflect on the sample result',
                         toolCalls: [
@@ -436,7 +457,7 @@ export class FakeLlmGateway implements LlmGateway {
                         ],
                     },
                     {
-                        id: 's7',
+                        id: 's8',
                         mode: 'finalize',
                         description: 'Finalize flow design response',
                     },

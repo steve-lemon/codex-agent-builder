@@ -43,8 +43,10 @@ describe('skill selector and router', () => {
         expect(tools).toEqual([
             'analyzeFlowRequest',
             'listAvailableFlowBlocks',
+            'probeFlowBlock',
             'designFlowDraft',
             'validateFlowDraft',
+            'proposeBlockSpecUpdate',
             'runFlowSample',
             'reflectFlowResult',
         ]);

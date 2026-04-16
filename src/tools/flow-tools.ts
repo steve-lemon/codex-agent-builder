@@ -6,7 +6,9 @@ import {
     connectFlowPorts,
     createFlowDocument,
     createFlowNode,
+    createFlowPacket,
     getFlowPortById,
+    setFlowPortPacket,
     validateFlowNode,
 } from '../flow/document';
 import { planFlowGraph } from '../flow/graph';
@@ -201,6 +203,116 @@ function extractItems(output: unknown): string[] {
     return [];
 }
 
+function getBlockById(blockId: string) {
+    const block = availableBlocks.find(candidate => candidate.id === blockId);
+    if (!block) {
+        throw new AgentError(`Flow block not found: ${blockId}`);
+    }
+
+    return block;
+}
+
+function buildBehaviorNotes(blockId: string): string[] {
+    switch (blockId) {
+        case 'input':
+            return ['Writes the string config.input value into the output packet.'];
+        case 'buffer':
+            return ['Reads the input packet, waits for the configured delay, then forwards the same packet to output.'];
+        case 'view':
+            return ['Reads the input packet and logs its formatted value without creating a new output packet.'];
+        case 'ai-generate':
+            return ['Reads system/prompt text and writes the mock generation result into the output port.'];
+        default:
+            return ['Observed block behavior via deterministic sample execution.'];
+    }
+}
+
+function inferSpecMismatches(
+    blockId: string,
+    observedOutputs: Record<string, unknown>,
+    observedLogs: string[],
+    blockDescription: string | undefined,
+): string[] {
+    const mismatches: string[] = [];
+
+    if (!blockDescription || blockDescription.trim().length < 20) {
+        mismatches.push('Block description is short and may not explain practical runtime behavior.');
+    }
+
+    if (blockId === 'ai-generate' && observedOutputs.output && typeof observedOutputs.output === 'object') {
+        mismatches.push(
+            'The output port can emit structured object payloads when jsonOutput=true, but the description does not explain that.',
+        );
+    }
+
+    if (blockId === 'view' && observedLogs.length > 0 && !(blockDescription ?? '').toLowerCase().includes('log')) {
+        mismatches.push('The description should mention that execution produces logs rather than output packets.');
+    }
+
+    return mismatches;
+}
+
+async function probeFlowBlockRuntime(args: {
+    blockId: string;
+    sampleConfig?: Record<string, string>;
+    sampleInputs?: Record<string, unknown>;
+}) {
+    const block = getBlockById(args.blockId);
+    if (!['input', 'buffer', 'view', 'ai-generate'].includes(block.id)) {
+        throw new AgentError(`Flow block does not support runtime probing yet: ${block.id}`);
+    }
+
+    let flow = createFlowDocument(availableBlocks);
+    const created = createFlowNode(flow, block.id, {
+        nodeId: 'probe-node',
+        config: args.sampleConfig,
+    });
+    flow = created.flow;
+
+    for (const [portId, value] of Object.entries(args.sampleInputs ?? {})) {
+        flow = setFlowPortPacket(flow, {
+            nodeId: 'probe-node',
+            port: portId,
+            packet: createFlowPacket(value, 1000),
+        }).flow;
+    }
+
+    const observedLogs: string[] = [];
+    const factory = new DefaultExecutableFlowNodeFactory({
+        logger: message => {
+            observedLogs.push(message);
+        },
+        sleep: async () => {
+            return;
+        },
+        aiGenerate: async request => {
+            if (request.jsonOutput) {
+                return {
+                    model: request.model,
+                    output: `mocked response for: ${request.prompt}`,
+                    format: 'json',
+                };
+            }
+
+            return `[${request.model}] mocked response for: ${request.prompt}`;
+        },
+    });
+
+    const runtime = factory.create(flow, 'probe-node');
+    const nextFlow = await runtime.execute(flow);
+    const observedOutputs = Object.fromEntries(
+        created.node.outputPorts.map(port => [port.localId, getFlowPortById(nextFlow, port.id)?.packet?.value]),
+    );
+
+    return {
+        blockId: block.id,
+        observedOutputs,
+        observedLogs,
+        behaviorNotes: buildBehaviorNotes(block.id),
+        mismatchesFromSpec: inferSpecMismatches(block.id, observedOutputs, observedLogs, block.description),
+    };
+}
+
 async function executeFlowSample(flow: FlowDocument, userRequest: string, improvementNotes: string[]) {
     const logs: string[] = [];
     let currentFlow = flow;
@@ -313,6 +425,27 @@ export function createFlowDesignTools(): ToolDefinition[] {
             },
         }),
         defineTool({
+            name: 'probeFlowBlock',
+            description:
+                'Run a deterministic probe against one executable block to observe its actual runtime behavior.',
+            parameters: z.object({
+                blockId: z.string(),
+                sampleConfig: z.record(z.string()).optional(),
+                sampleInputs: z.record(z.unknown()).optional(),
+            }),
+            riskLevel: 'read-only',
+            allowedSkills: ['flow-designer'],
+            requiresConfirmation: false,
+            parallelSafe: false,
+            execute: async ({ blockId, sampleConfig, sampleInputs }) => {
+                return await probeFlowBlockRuntime({
+                    blockId,
+                    sampleConfig,
+                    sampleInputs,
+                });
+            },
+        }),
+        defineTool({
             name: 'designFlowDraft',
             description: 'Create a flow draft using only the available flow blocks and optional improvement notes.',
             parameters: z.object({
@@ -416,6 +549,46 @@ export function createFlowDesignTools(): ToolDefinition[] {
                     isValid: issues.length === 0,
                     issues,
                     planSummary,
+                };
+            },
+        }),
+        defineTool({
+            name: 'proposeBlockSpecUpdate',
+            description:
+                'Generate a documentation update proposal when block probing reveals missing or unclear behavior details.',
+            parameters: z.object({
+                blockId: z.string(),
+                probeResult: z.object({
+                    behaviorNotes: z.array(z.string()),
+                    mismatchesFromSpec: z.array(z.string()),
+                    observedOutputs: z.record(z.unknown()).optional(),
+                    observedLogs: z.array(z.string()).optional(),
+                }),
+            }),
+            riskLevel: 'read-only',
+            allowedSkills: ['flow-designer'],
+            requiresConfirmation: false,
+            parallelSafe: true,
+            execute: async ({ blockId, probeResult }) => {
+                const block = getBlockById(blockId);
+                if (probeResult.mismatchesFromSpec.length === 0) {
+                    return {
+                        blockId,
+                        missingDetails: [],
+                        suggestedDocPatch: `No documentation update appears necessary for ${block.label}.`,
+                    };
+                }
+
+                const suggestedDocPatch = [
+                    `Update ${block.id} block documentation to clarify:`,
+                    ...probeResult.mismatchesFromSpec.map(detail => `- ${detail}`),
+                    ...probeResult.behaviorNotes.map(note => `- Observed behavior: ${note}`),
+                ].join('\n');
+
+                return {
+                    blockId,
+                    missingDetails: [...probeResult.mismatchesFromSpec],
+                    suggestedDocPatch,
                 };
             },
         }),
