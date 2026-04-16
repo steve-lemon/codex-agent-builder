@@ -1,7 +1,7 @@
 // Flow-to-graph conversion helpers so flow documents can reuse graph planning.
 import { planGraphExecution } from '../graph/planner';
 import type { DirectedGraph, GraphExecutionPlan } from '../graph/types';
-import type { FlowDocument } from './types';
+import type { FlowDocument, FlowEdge, FlowNode } from './types';
 
 /** Result of converting a flow document into the generic graph representation. */
 export interface FlowGraphConversionResult {
@@ -16,15 +16,31 @@ export interface PlannedFlowGraph extends FlowGraphConversionResult {
 }
 
 /**
- * Converts a flow document into the generic directed graph representation.
+ * Base class for adapting flow documents into the shared graph model.
  *
- * Port-level constraints are intentionally ignored here. The resulting graph
- * keeps the existing graph concept: flow nodes become graph nodes, and flow
- * edges become node-to-node directed edges.
+ * This keeps the higher-level conversion contract stable while subclasses can
+ * enrich graph metadata for a specific runtime or editor integration.
  */
-export function convertFlowToGraph(flow: FlowDocument): FlowGraphConversionResult {
-    const graph: DirectedGraph = {
-        nodes: flow.nodes.map(node => ({
+export abstract class FlowGraphAdapter {
+    convert(flow: FlowDocument): FlowGraphConversionResult {
+        return {
+            graph: {
+                nodes: flow.nodes.map(node => this.toGraphNode(node)),
+                edges: flow.edges.map(edge => this.toGraphEdge(edge)),
+            },
+        };
+    }
+
+    plan(flow: FlowDocument): PlannedFlowGraph {
+        const { graph } = this.convert(flow);
+        return {
+            graph,
+            plan: planGraphExecution(graph),
+        };
+    }
+
+    protected toGraphNode(node: FlowNode): DirectedGraph['nodes'][number] {
+        return {
             id: node.id,
             label: node.label,
             data: {
@@ -33,8 +49,11 @@ export function convertFlowToGraph(flow: FlowDocument): FlowGraphConversionResul
                 inputPortIds: node.inputPorts.map(port => port.id),
                 outputPortIds: node.outputPorts.map(port => port.id),
             },
-        })),
-        edges: flow.edges.map(edge => ({
+        };
+    }
+
+    protected toGraphEdge(edge: FlowEdge): DirectedGraph['edges'][number] {
+        return {
             source: edge.sourceNodeId,
             target: edge.targetNodeId,
             label: edge.label,
@@ -43,21 +62,21 @@ export function convertFlowToGraph(flow: FlowDocument): FlowGraphConversionResul
                 sourcePortId: edge.sourcePortId,
                 targetPortId: edge.targetPortId,
             },
-        })),
-    };
-
-    return { graph };
+        };
+    }
 }
 
-/**
- * Converts a flow document into a graph and immediately produces an execution plan.
- *
- * This keeps the flow layer aligned with the existing graph planning model.
- */
+/** Default adapter that preserves the current flow-to-graph mapping. */
+export class DefaultFlowGraphAdapter extends FlowGraphAdapter {}
+
+const defaultFlowGraphAdapter = new DefaultFlowGraphAdapter();
+
+/** Converts a flow document into the generic directed graph representation. */
+export function convertFlowToGraph(flow: FlowDocument): FlowGraphConversionResult {
+    return defaultFlowGraphAdapter.convert(flow);
+}
+
+/** Converts a flow document into a graph and immediately produces an execution plan. */
 export function planFlowGraph(flow: FlowDocument): PlannedFlowGraph {
-    const { graph } = convertFlowToGraph(flow);
-    return {
-        graph,
-        plan: planGraphExecution(graph),
-    };
+    return defaultFlowGraphAdapter.plan(flow);
 }

@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { AgentError } from '../errors/agent-error';
 import { TextInputBlock, defineFlowBlock } from './blocks';
 import {
+    DefaultFlowDocumentController,
+    FlowDocumentController,
     arePortTypesCompatible,
     coercePacketForPort,
     connectFlowPorts,
@@ -342,5 +344,48 @@ describe('flow document', () => {
                 edgeId: 'duplicate',
             }),
         ).toThrow(/already connected/);
+    });
+
+    it('allows subclasses to override document policies without changing the public workflow', () => {
+        class PrefixedFlowController extends DefaultFlowDocumentController {
+            protected override createNodeId(blockId: string): string {
+                return `custom-${blockId}`;
+            }
+
+            protected override createEdgeId(sourcePort: { id: string }, targetPort: { id: string }): string {
+                return `edge:${sourcePort.id}->${targetPort.id}`;
+            }
+        }
+
+        const controller: FlowDocumentController = new PrefixedFlowController();
+        const consumer = defineFlowBlock({
+            id: 'text-consumer',
+            label: 'Text Consumer',
+            inputs: [
+                {
+                    localId: 'in',
+                    label: 'Input',
+                    direction: 'input',
+                    dataType: 'text',
+                },
+            ],
+            outputs: [],
+        });
+
+        let flow = controller.createDocument([TextInputBlock, consumer]);
+        const source = controller.createNode(flow, 'text-input');
+        flow = source.flow;
+        const target = controller.createNode(flow, 'text-consumer', { nodeId: 'target' });
+        flow = target.flow;
+
+        const connected = controller.connectPorts(flow, {
+            sourceNodeId: source.node.id,
+            sourcePort: 'text',
+            targetNodeId: 'target',
+            targetPort: 'in',
+        });
+
+        expect(source.node.id).toBe('custom-text-input');
+        expect(connected.edge.id).toBe('edge:custom-text-input:text->target:in');
     });
 });

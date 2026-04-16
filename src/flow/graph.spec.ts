@@ -2,7 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import { defineFlowBlock, TextInputBlock } from './blocks';
 import { connectFlowPorts, createFlowDocument, createFlowNode } from './document';
-import { convertFlowToGraph, planFlowGraph } from './graph';
+import { convertFlowToGraph, DefaultFlowGraphAdapter, planFlowGraph } from './graph';
+import type { FlowNode } from './types';
 
 describe('flow graph conversion', () => {
     it('converts flow nodes and edges into the generic graph representation', () => {
@@ -164,5 +165,30 @@ describe('flow graph conversion', () => {
             ['input', 1],
             ['sink', 3],
         ]);
+    });
+
+    it('allows subclasses to customize graph conversion metadata', () => {
+        class TaggedFlowGraphAdapter extends DefaultFlowGraphAdapter {
+            protected override toGraphNode(node: FlowNode) {
+                const converted = super.toGraphNode(node);
+                return {
+                    ...converted,
+                    data: {
+                        ...converted.data,
+                        source: 'custom-adapter',
+                    },
+                };
+            }
+        }
+
+        const adapter = new TaggedFlowGraphAdapter();
+        let flow = createFlowDocument([TextInputBlock]);
+        flow = createFlowNode(flow, 'text-input', { nodeId: 'input' }).flow;
+
+        const converted = adapter.convert(flow);
+
+        expect(converted.graph.nodes[0]?.data).toMatchObject({
+            source: 'custom-adapter',
+        });
     });
 });

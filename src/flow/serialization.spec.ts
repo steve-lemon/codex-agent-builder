@@ -2,7 +2,13 @@
 import { describe, expect, it } from 'vitest';
 import { AgentError } from '../errors/agent-error';
 import { createFlowPacket } from './document';
-import { deserializeFlowPacket, serializeFlowPacket } from './serialization';
+import {
+    DefaultFlowPacketSerializer,
+    FlowPacketSerializer,
+    deserializeFlowPacket,
+    serializeFlowPacket,
+} from './serialization';
+import type { FlowPacket, FlowPortDataType } from './types';
 
 describe('flow packet serialization', () => {
     it('serializes and deserializes text packets for database storage', () => {
@@ -100,5 +106,30 @@ describe('flow packet serialization', () => {
                 value: '"hello"',
             }),
         ).toThrow(/must use string encoding/);
+    });
+
+    it('allows subclasses to customize packet encoding policies', () => {
+        class UppercaseTextSerializer extends DefaultFlowPacketSerializer {
+            protected override serializeNonNull(dataType: FlowPortDataType, packet: FlowPacket) {
+                const serialized = super.serializeNonNull(dataType, packet);
+                if (dataType === 'text' && serialized.encoding === 'string') {
+                    return {
+                        ...serialized,
+                        value: serialized.value.toUpperCase(),
+                    };
+                }
+                return serialized;
+            }
+        }
+
+        const serializer: FlowPacketSerializer = new UppercaseTextSerializer();
+        const serialized = serializer.serialize('text', createFlowPacket('hello', 9));
+
+        expect(serialized).toEqual({
+            dataType: 'text',
+            ts: 9,
+            encoding: 'string',
+            value: 'HELLO',
+        });
     });
 });
