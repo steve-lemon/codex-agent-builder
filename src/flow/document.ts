@@ -248,6 +248,14 @@ export abstract class FlowDocumentController {
             return true;
         }
 
+        if ((sourceType === 'json' && targetType === 'number') || (sourceType === 'number' && targetType === 'json')) {
+            return true;
+        }
+
+        if ((sourceType === 'text' && targetType === 'number') || (sourceType === 'number' && targetType === 'text')) {
+            return true;
+        }
+
         if ((sourceType === 'image' && targetType === 'text') || (sourceType === 'text' && targetType === 'image')) {
             return true;
         }
@@ -406,6 +414,8 @@ export abstract class FlowDocumentController {
                 return this.coerceToJson(value);
             case 'image':
                 return this.coerceToImage(value);
+            case 'number':
+                return this.coerceToNumber(value);
             default:
                 return value;
         }
@@ -414,6 +424,13 @@ export abstract class FlowDocumentController {
     protected coerceToText(value: unknown): string {
         if (typeof value === 'string') {
             return value;
+        }
+
+        if (typeof value === 'number') {
+            if (!Number.isFinite(value)) {
+                throw new AgentError('Flow number packet must be a finite value to coerce into text');
+            }
+            return String(value);
         }
 
         return JSON.stringify(value);
@@ -439,6 +456,32 @@ export abstract class FlowDocumentController {
         }
 
         throw new AgentError('Flow image packet must be a URL string or base64-encoded string');
+    }
+
+    protected coerceToNumber(value: unknown): number {
+        if (typeof value === 'number') {
+            if (!Number.isFinite(value)) {
+                throw new AgentError('Flow number packet must be a finite value');
+            }
+
+            return value;
+        }
+
+        if (typeof value === 'string') {
+            const trimmed = value.trim();
+            if (!trimmed) {
+                throw new AgentError('Flow text packet could not be parsed as a number');
+            }
+
+            const parsed = Number(trimmed);
+            if (!Number.isFinite(parsed)) {
+                throw new AgentError('Flow text packet could not be parsed as a number');
+            }
+
+            return parsed;
+        }
+
+        throw new AgentError('Flow number packet must be a finite number or numeric string');
     }
 }
 

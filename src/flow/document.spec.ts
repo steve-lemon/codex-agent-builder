@@ -291,6 +291,10 @@ describe('flow document', () => {
         expect(arePortTypesCompatible('text', 'any')).toBe(true);
         expect(arePortTypesCompatible('json', 'text')).toBe(true);
         expect(arePortTypesCompatible('text', 'json')).toBe(true);
+        expect(arePortTypesCompatible('number', 'text')).toBe(true);
+        expect(arePortTypesCompatible('text', 'number')).toBe(true);
+        expect(arePortTypesCompatible('number', 'json')).toBe(true);
+        expect(arePortTypesCompatible('json', 'number')).toBe(true);
         expect(arePortTypesCompatible('image', 'text')).toBe(true);
         expect(arePortTypesCompatible('text', 'image')).toBe(true);
         expect(arePortTypesCompatible('image', 'image')).toBe(true);
@@ -302,6 +306,22 @@ describe('flow document', () => {
         expect(coercePacketForPort('text', createFlowPacket({ a: 1 }, 12))).toEqual({
             value: '{"a":1}',
             ts: 12,
+        });
+        expect(coercePacketForPort('number', createFlowPacket('42.5', 16))).toEqual({
+            value: 42.5,
+            ts: 16,
+        });
+        expect(coercePacketForPort('text', createFlowPacket(7, 17))).toEqual({
+            value: '7',
+            ts: 17,
+        });
+        expect(coercePacketForPort('json', createFlowPacket(9, 18))).toEqual({
+            value: 9,
+            ts: 18,
+        });
+        expect(coercePacketForPort('number', createFlowPacket(null, 19))).toEqual({
+            value: null,
+            ts: 19,
         });
         expect(coercePacketForPort('image', createFlowPacket('https://example.com/a.png', 13))).toEqual({
             value: 'https://example.com/a.png',
@@ -343,6 +363,9 @@ describe('flow document', () => {
 
         expect(() => coercePacketForPort('json', createFlowPacket('not-json', 1))).toThrow(/parsed as JSON/);
         expect(() => coercePacketForPort('image', createFlowPacket({ bad: true }, 1))).toThrow(/image packet/);
+        expect(() => coercePacketForPort('number', createFlowPacket('not-a-number', 1))).toThrow(/parsed as a number/);
+        expect(() => coercePacketForPort('number', createFlowPacket(Number.NaN, 1))).toThrow(/finite value/);
+        expect(() => coercePacketForPort('number', createFlowPacket({ bad: true }, 1))).toThrow(/finite number or numeric string/);
 
         const consumer = defineFlowBlock({
             id: 'text-consumer',

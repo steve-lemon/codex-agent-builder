@@ -6,7 +6,7 @@
  * `any` acts as a permissive type that may connect to or from any other port
  * type when a block intentionally supports mixed payloads.
  */
-export type FlowPortDataType = 'text' | 'json' | 'image' | 'any';
+export type FlowPortDataType = 'text' | 'json' | 'image' | 'number' | 'any';
 
 /** String payload used for image ports. It may contain a URL or base64-encoded image data. */
 export type FlowImageValue = string;
@@ -16,6 +16,7 @@ export interface FlowPacketValueMap {
     text: string | null;
     json: unknown | null;
     image: FlowImageValue | null;
+    number: number | null;
     any: unknown | null;
 }
 

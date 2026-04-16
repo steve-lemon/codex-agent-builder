@@ -53,6 +53,16 @@ export class DefaultFlowPacketSerializer extends FlowPacketSerializer {
                     encoding: 'string',
                     value: packet.value,
                 };
+            case 'number':
+                if (typeof packet.value !== 'number' || !Number.isFinite(packet.value)) {
+                    throw new AgentError('Flow number packet must serialize from a finite number value');
+                }
+                return {
+                    dataType,
+                    ts: packet.ts,
+                    encoding: 'json',
+                    value: JSON.stringify(packet.value),
+                };
             case 'json':
             case 'any':
                 return {
@@ -82,6 +92,29 @@ export class DefaultFlowPacketSerializer extends FlowPacketSerializer {
                     value: serialized.value,
                     ts: serialized.ts,
                 };
+            case 'number':
+                if (serialized.encoding !== 'json') {
+                    throw new AgentError('Serialized flow number packet must use json encoding');
+                }
+                try {
+                    const value = JSON.parse(serialized.value);
+                    if (typeof value !== 'number' || !Number.isFinite(value)) {
+                        throw new AgentError('Serialized flow number packet must decode to a finite number');
+                    }
+
+                    return {
+                        value,
+                        ts: serialized.ts,
+                    };
+                } catch (error) {
+                    if (error instanceof AgentError) {
+                        throw error;
+                    }
+
+                    throw new AgentError('Serialized flow packet could not be parsed from JSON', {
+                        cause: AgentError.rootCause(error),
+                    });
+                }
             case 'json':
             case 'any':
                 if (serialized.encoding !== 'json') {

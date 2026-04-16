@@ -49,6 +49,21 @@ describe('flow packet serialization', () => {
         expect(deserializeFlowPacket(serializeFlowPacket('image', base64Packet))).toEqual(base64Packet);
     });
 
+    it('serializes and deserializes finite number packets through json encoding', () => {
+        const packet = createFlowPacket(42.25, 305);
+
+        const serialized = serializeFlowPacket('number', packet);
+        const restored = deserializeFlowPacket(serialized);
+
+        expect(serialized).toEqual({
+            dataType: 'number',
+            ts: 305,
+            encoding: 'json',
+            value: '42.25',
+        });
+        expect(restored).toEqual(packet);
+    });
+
     it('preserves null packet values for every supported data type', () => {
         expect(serializeFlowPacket('text', createFlowPacket(null, 501))).toEqual({
             dataType: 'text',
@@ -68,6 +83,10 @@ describe('flow packet serialization', () => {
             value: null,
             ts: 503,
         });
+        expect(deserializeFlowPacket(serializeFlowPacket('number', createFlowPacket(null, 504)))).toEqual({
+            value: null,
+            ts: 504,
+        });
     });
 
     it('supports any packets through json encoding', () => {
@@ -82,6 +101,9 @@ describe('flow packet serialization', () => {
 
     it('rejects invalid serialization or deserialization payloads', () => {
         expect(() => serializeFlowPacket('image', createFlowPacket({ bad: true }, 1))).toThrow(AgentError);
+        expect(() => serializeFlowPacket('number', createFlowPacket(Number.POSITIVE_INFINITY, 1))).toThrow(
+            /finite number value/,
+        );
         expect(() =>
             deserializeFlowPacket({
                 dataType: 'json',
@@ -106,6 +128,22 @@ describe('flow packet serialization', () => {
                 value: '"hello"',
             }),
         ).toThrow(/must use string encoding/);
+        expect(() =>
+            deserializeFlowPacket({
+                dataType: 'number',
+                ts: 1,
+                encoding: 'string',
+                value: '1',
+            }),
+        ).toThrow(/must use json encoding/);
+        expect(() =>
+            deserializeFlowPacket({
+                dataType: 'number',
+                ts: 1,
+                encoding: 'json',
+                value: '"oops"',
+            }),
+        ).toThrow(/decode to a finite number/);
     });
 
     it('allows subclasses to customize packet encoding policies', () => {
