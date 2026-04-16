@@ -27,6 +27,9 @@ export interface FlowPacket<TValue = unknown> {
 
     /** Unix timestamp in milliseconds when the packet was last written. */
     ts: number;
+
+    // TODO(flow): Add packet-level metadata for provenance, schema versioning,
+    // and partial execution diagnostics once packets move across process boundaries.
 }
 
 /** String-safe packet representation intended for database storage. */
@@ -130,6 +133,9 @@ export interface FlowBlockDefinition {
 
     /** Output port templates applied to all nodes created from this block. */
     outputs: FlowBlockPortDefinition[];
+
+    // TODO(flow): Add optional block-level execution metadata such as timeout,
+    // retry policy, and sandbox requirements when real production runtimes are wired in.
 }
 
 /**
@@ -187,6 +193,9 @@ export interface FlowNode {
 
     /** Per-node configuration payload stored as string values keyed by config id. */
     config?: Record<string, string>;
+
+    // TODO(flow): Persist node-level runtime status and validation snapshots so
+    // editors can resume incomplete runs and surface execution history.
 }
 
 /**
@@ -224,6 +233,9 @@ export interface FlowDocument {
 
     /** Directed port-to-port connections. */
     edges: FlowEdge[];
+
+    // TODO(flow): Introduce a document version and migration contract before
+    // flow documents are stored long-term or exchanged with external services.
 }
 
 /** Options used when creating a node from a block definition. */

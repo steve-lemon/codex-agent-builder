@@ -41,6 +41,8 @@ export abstract class FlowPacketSerializer {
 /** Default database-safe serializer for flow packets. */
 export class DefaultFlowPacketSerializer extends FlowPacketSerializer {
     protected serializeNonNull(dataType: FlowPortDataType, packet: FlowPacket): SerializedFlowPacket {
+        // TODO(flow): Add binary/blob offloading for large image payloads before
+        // packets are persisted in production storage backends.
         switch (dataType) {
             case 'text':
             case 'image':
@@ -82,6 +84,8 @@ export class DefaultFlowPacketSerializer extends FlowPacketSerializer {
     }
 
     protected deserializeNonNull(serialized: SerializedFlowPacket): FlowPacket {
+        // TODO(flow): Support serializer versioning and backward-compatible
+        // migration once persisted packets may outlive the current runtime contract.
         switch (serialized.dataType) {
             case 'text':
             case 'image':

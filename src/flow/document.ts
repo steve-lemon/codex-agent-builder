@@ -129,6 +129,8 @@ export abstract class FlowDocumentController {
             edges: [...flow.edges, edge],
         };
 
+        // TODO(flow): Support optional transform adapters on edges so future
+        // editor-defined conversion rules can run before the target packet is written.
         if (sourcePort.packet !== undefined) {
             nextFlow = this.setPortPacket(nextFlow, {
                 nodeId: targetNode.id,
@@ -191,6 +193,8 @@ export abstract class FlowDocumentController {
         let nextFlow = flow;
         const updatedTargets: FlowPort[] = [];
 
+        // TODO(flow): Batch or queue downstream propagation when a single output
+        // fans out to many targets so large flows can avoid repeated document copies.
         for (const edge of flow.edges.filter(candidate => candidate.sourcePortId === sourcePort.id)) {
             const target = this.getPortById(nextFlow, edge.targetPortId);
             if (!target) {
@@ -332,6 +336,9 @@ export abstract class FlowDocumentController {
                     message: `Config value is not one of the allowed options: ${definition.id}`,
                 });
             }
+
+            // TODO(flow): Add richer config validation for numeric ranges, checkbox
+            // normalization, and custom validators once block authors can declare them.
         }
 
         return {
@@ -405,6 +412,8 @@ export abstract class FlowDocumentController {
             return null;
         }
 
+        // TODO(flow): Replace the built-in coercion matrix with a pluggable
+        // conversion registry if custom data types or media loaders are introduced.
         switch (targetType) {
             case 'any':
                 return value;

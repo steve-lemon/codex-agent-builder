@@ -31,6 +31,9 @@ export interface FlowNodeExecutionServices {
 
     /** Mockable AI generation hook used by the sample AI block. */
     aiGenerate?: (request: FlowAiGenerateRequest) => Promise<unknown>;
+
+    // TODO(flow): Add shared tracing, cancellation, and persistence services so
+    // flow runtimes can integrate with the broader graph execution infrastructure.
 }
 
 /** Default runtime services used when the caller does not provide overrides. */
@@ -81,6 +84,9 @@ export abstract class ExecutableFlowNode {
 
     /** Executes the node and returns the updated flow document. */
     abstract execute(flow: FlowDocument): Promise<FlowDocument>;
+
+    // TODO(flow): Support structured execution results separate from document
+    // mutation so runtimes can emit metrics, logs, and side-effect summaries.
 
     protected ensureValid(flow: FlowDocument): void {
         const result = this.controller.validateNode(flow, this.node.id);
@@ -196,7 +202,11 @@ export class AiGenerateExecutableFlowNode extends ExecutableFlowNode {
         if (typeof promptPacket.value !== 'string') {
             throw new AgentError(`AI generate prompt packet must be text on node ${this.node.id}`);
         }
-        if (systemPacket?.value !== undefined && systemPacket.value !== null && typeof systemPacket.value !== 'string') {
+        if (
+            systemPacket?.value !== undefined &&
+            systemPacket.value !== null &&
+            typeof systemPacket.value !== 'string'
+        ) {
             throw new AgentError(`AI generate system packet must be text on node ${this.node.id}`);
         }
 
@@ -207,6 +217,8 @@ export class AiGenerateExecutableFlowNode extends ExecutableFlowNode {
             jsonOutput,
         });
 
+        // TODO(flow): Replace the mock hook with a provider abstraction that can
+        // support streaming tokens, tool calls, and schema-constrained outputs.
         return this.writeOutputPacket(flow, 'output', this.controller.createPacket(result));
     }
 }
@@ -241,6 +253,8 @@ export abstract class ExecutableFlowNodeFactory {
             throw new AgentError(`Flow block not found for node: ${node.blockId}`);
         }
 
+        // TODO(flow): Allow runtime registration from external modules so apps
+        // can contribute block executors without subclassing the default factory.
         return this.createNodeRuntime(node, block);
     }
 

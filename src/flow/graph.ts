@@ -33,6 +33,9 @@ export abstract class FlowGraphAdapter {
 
     plan(flow: FlowDocument): PlannedFlowGraph {
         const { graph } = this.convert(flow);
+
+        // TODO(flow): Allow flow-specific planning hints such as pinned start
+        // nodes, disabled branches, and editor-driven execution scopes.
         return {
             graph,
             plan: planGraphExecution(graph),
@@ -64,6 +67,9 @@ export abstract class FlowGraphAdapter {
             },
         };
     }
+
+    // TODO(flow): Reintroduce optional port-level planning semantics here if
+    // future runtimes need join conditions based on specific input ports.
 }
 
 /** Default adapter that preserves the current flow-to-graph mapping. */
