@@ -10,6 +10,11 @@ import {
     validateStepReferences,
 } from './step-references';
 import type { PlanStep } from './schemas';
+import {
+    buildFlowDesignerPlan,
+    buildFlowPreflightValidatorPlan,
+    buildNodeConfigDesignerPlan,
+} from '../llm/fake-plan-builders';
 
 const REFERENCE_ONLY_TOOL_ARGS: Readonly<Record<string, readonly string[]>> = {
     validateFlowDraft: ['flow'],
@@ -93,15 +98,73 @@ export class Planner {
         toolManifests: ToolManifest[];
         toolDefinitions: ToolDefinition[];
     }): Promise<Plan> {
-        const plan = await this.llm.plan({
+        const plannerInput = {
             userInput: input.userInput,
             skillName: input.skillName,
             skillInstructions: input.skillInstructions,
             allowedTools: input.allowedTools,
             toolManifests: input.toolManifests,
             toolDefinitions: input.toolDefinitions,
-        });
+        };
+        let plan: Plan;
+        try {
+            plan = await this.llm.plan(plannerInput);
+        } catch (error) {
+            const fallbackPlan = await this.buildDeterministicFallbackPlan(plannerInput, error);
+            if (!fallbackPlan) {
+                throw error;
+            }
+            plan = fallbackPlan;
+        }
         return this.validatePlan(plan, input.toolDefinitions);
+    }
+
+    private async buildDeterministicFallbackPlan(
+        input: {
+            userInput: string;
+            skillName: string;
+            skillInstructions: string;
+            allowedTools: string[];
+            toolManifests: ToolManifest[];
+            toolDefinitions: ToolDefinition[];
+        },
+        error: unknown,
+    ): Promise<Plan | undefined> {
+        const rootCause = AgentError.rootCause(error);
+        const code = error instanceof AgentError ? error.code : undefined;
+        const shouldFallback =
+            code === 'PLAN_ARGS_JSON_INVALID' ||
+            code === 'OPENAI_STRUCTURED_PARSE_FAILED' ||
+            code === 'GEMINI_STRUCTURED_PARSE_FAILED';
+
+        if (!shouldFallback) {
+            return undefined;
+        }
+
+        const ensureToolAvailable = (toolName: string): string => {
+            if (!input.allowedTools.includes(toolName)) {
+                throw new AgentError(
+                    `Deterministic planner fallback required tool ${toolName}, but it is not available in this run`,
+                    {
+                        code: 'PLANNER_FALLBACK_TOOL_UNAVAILABLE',
+                        cause: rootCause,
+                    },
+                );
+            }
+            return toolName;
+        };
+
+        if (input.skillName === 'flow-designer') {
+            return await buildFlowDesignerPlan(input, ensureToolAvailable);
+        }
+        if (input.skillName === 'flow-preflight-validator') {
+            return await buildFlowPreflightValidatorPlan(input, ensureToolAvailable);
+        }
+        if (input.skillName === 'node-config-designer') {
+            return await buildNodeConfigDesignerPlan();
+        }
+
+        return undefined;
     }
 
     /** Rejects plans that reference unavailable tools or invalid tool arguments before execution begins. */

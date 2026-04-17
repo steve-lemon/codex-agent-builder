@@ -86,7 +86,11 @@ function normalizeSkill(value: string, fallback: ProductFlowSkill): ProductFlowS
     return fallback;
 }
 
-function printSessionHeader(sessionDir: string, paths: PromptLabArtifactPaths): void {
+function printSessionHeader(
+    sessionDir: string,
+    paths: PromptLabArtifactPaths,
+    options: { includeFailureArtifacts?: boolean } = {},
+): void {
     output.write('\n=== Prompt Lab Session ===\n');
     output.write(`session: ${sessionDir}\n`);
     output.write(`timeline: ${paths.timelinePath}\n`);
@@ -95,8 +99,12 @@ function printSessionHeader(sessionDir: string, paths: PromptLabArtifactPaths): 
     output.write(`designed flow: ${paths.designedFlowPath}\n`);
     output.write(`designed flow yaml: ${paths.designedFlowYamlPath}\n`);
     output.write(`designed flow graph: ${paths.designedFlowGraphPath}\n`);
-    output.write(`failure text: ${paths.failureTextPath}\n`);
-    output.write(`failure json: ${paths.failureJsonPath}\n`);
+    if (options.includeFailureArtifacts) {
+        output.write(`failure text: ${paths.failureTextPath}\n`);
+        output.write(`failure json: ${paths.failureJsonPath}\n`);
+    } else {
+        output.write('failure artifacts: generated only on failure\n');
+    }
     output.write('==========================\n\n');
 }
 
@@ -358,19 +366,69 @@ function printDesignedFlowSummary(event: FlowDesignEvent | undefined): void {
 }
 
 function printRequirementAssessment(args: {
+    language: PromptLabLanguage;
     executionSucceeded: boolean;
     fulfillmentLevel: string;
     summary: string;
     caveats: string[];
 }): void {
-    output.write('=== Requirement Assessment ===\n');
-    output.write(`execution succeeded: ${String(args.executionSucceeded)}\n`);
-    output.write(`fulfillment level: ${args.fulfillmentLevel}\n`);
-    output.write(`${args.summary}\n`);
+    const isKorean = args.language === 'ko';
+    const title = isKorean ? '=== 요구 충족도 평가 ===' : '=== Requirement Assessment ===';
+    const executionLabel = isKorean ? '실행 성공' : 'execution succeeded';
+    const fulfillmentLabel = isKorean ? '충족도 수준' : 'fulfillment level';
+    const normalizedLevel = isKorean
+        ? ({
+              fulfilled: '충족',
+              uncertain: '불확실',
+              partial: '부분 충족',
+              'not-fulfilled': '미충족',
+          }[args.fulfillmentLevel] ?? args.fulfillmentLevel)
+        : args.fulfillmentLevel;
+    const footer = isKorean ? '=========================' : '==============================';
+    const localizeAssessmentText = (text: string): string => {
+        if (!isKorean) {
+            return text;
+        }
+
+        const replacements: Array<[string, string]> = [
+            [
+                'The run completed successfully, but requirement fulfillment is still uncertain because the design relied on generic fallback or mock execution settings.',
+                '실행은 성공했지만, 설계가 일반 fallback이나 mock 실행 설정에 의존해서 요구 충족 여부는 아직 불확실합니다.',
+            ],
+            [
+                'The run completed, but the requirement is only partially covered because some capabilities are still missing.',
+                '실행은 완료됐지만, 일부 capability가 아직 부족해서 요구사항을 부분적으로만 충족합니다.',
+            ],
+            [
+                'The run did not complete successfully, so the requirement is not yet fulfilled.',
+                '실행이 성공적으로 끝나지 않아 아직 요구사항을 충족하지 못했습니다.',
+            ],
+            [
+                'The run completed successfully and the current design appears to fulfill the requirement.',
+                '실행이 성공적으로 완료되었고, 현재 설계는 요구사항을 충족하는 것으로 보입니다.',
+            ],
+            [
+                'Task-graph classification fell back to a generic template.',
+                'task graph 분류가 일반 템플릿 fallback으로 처리되었습니다.',
+            ],
+            [
+                'The final flow still uses a mock AI model configuration.',
+                '최종 flow가 아직 mock AI 모델 설정을 사용하고 있습니다.',
+            ],
+        ];
+
+        const matched = replacements.find(([source]) => source === text);
+        return matched?.[1] ?? text;
+    };
+
+    output.write(`${title}\n`);
+    output.write(`${executionLabel}: ${String(args.executionSucceeded)}\n`);
+    output.write(`${fulfillmentLabel}: ${normalizedLevel}\n`);
+    output.write(`${localizeAssessmentText(args.summary)}\n`);
     for (const caveat of args.caveats) {
-        output.write(`- ${caveat}\n`);
+        output.write(`- ${localizeAssessmentText(caveat)}\n`);
     }
-    output.write('==============================\n\n');
+    output.write(`${footer}\n\n`);
 }
 
 function renderReagraphHtml(event: FlowDesignEvent | undefined): string {
@@ -548,7 +606,10 @@ async function main() {
             await writeText(latestPaths.designedFlowGraphPath, renderReagraphHtml(latestDesignEvent));
         }
         printDesignedFlowSummary(latestDesignEvent);
-        printRequirementAssessment(result.requirementAssessment);
+        printRequirementAssessment({
+            language,
+            ...result.requirementAssessment,
+        });
 
         const selfReview = await product.createSelfReview({ session, result, gateway });
 
@@ -569,7 +630,7 @@ async function main() {
         output.write(`${copy.completionMessage} ${session.sessionDir}\n`);
     } catch (error) {
         if (error instanceof PromptLabRunError) {
-            printSessionHeader(error.session.sessionDir, error.paths);
+            printSessionHeader(error.session.sessionDir, error.paths, { includeFailureArtifacts: true });
             printFailureClipboard(error);
             output.write(`Prompt Lab failed: ${error.cause instanceof Error ? error.cause.message : error.message}\n`);
         } else {

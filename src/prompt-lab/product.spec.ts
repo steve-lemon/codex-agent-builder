@@ -41,8 +41,8 @@ describe('PromptLabProduct', () => {
             blocks?: unknown[];
         };
 
-        expect(summary).toContain('Prompt Lab Session');
-        expect(summary).toContain('Requirement Assessment');
+        expect(summary).toContain('Prompt Lab 세션');
+        expect(summary).toContain('요구 충족도 평가');
         expect(promptMarkdown).toContain('## Prompt');
         expect(resultJson.skillName).toBe('flow-designer');
         expect(resultJson.requirementAssessment).toEqual(
@@ -52,6 +52,9 @@ describe('PromptLabProduct', () => {
                 summary: expect.any(String),
             }),
         );
+        if (resultJson.requirementAssessment.fulfillmentLevel !== 'fulfilled') {
+            expect(resultJson.summary).toContain('Current requirement assessment');
+        }
         expect(Array.isArray(designedFlow.nodes)).toBe(true);
         expect(Array.isArray(designedFlow.edges)).toBe(true);
         expect(Array.isArray(designedFlow.blocks)).toBe(true);

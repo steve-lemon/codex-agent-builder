@@ -310,4 +310,62 @@ describe('agent schemas', () => {
             }),
         ).toThrow(/Planner returned invalid tool args JSON/);
     });
+
+    it('accepts planner argsJson when JSON is followed by extra explanatory text', () => {
+        expect(
+            parsePlanResponse({
+                steps: [
+                    {
+                        id: 's1',
+                        mode: 'single-tool',
+                        description: 'args with trailing explanation',
+                        toolCalls: [
+                            {
+                                toolName: 'webSearch',
+                                argsJson: '{"query":"hello"} This tool should search the web.',
+                            },
+                        ],
+                        reasoning: null,
+                    },
+                ],
+            }),
+        ).toEqual(
+            expect.objectContaining({
+                steps: [
+                    expect.objectContaining({
+                        toolCalls: [{ toolName: 'webSearch', args: { query: 'hello' } }],
+                    }),
+                ],
+            }),
+        );
+    });
+
+    it('accepts planner argsJson wrapped in a fenced json block', () => {
+        expect(
+            parsePlanResponse({
+                steps: [
+                    {
+                        id: 's1',
+                        mode: 'single-tool',
+                        description: 'args in code fence',
+                        toolCalls: [
+                            {
+                                toolName: 'webSearch',
+                                argsJson: '```json\n{"query":"hello"}\n```',
+                            },
+                        ],
+                        reasoning: null,
+                    },
+                ],
+            }),
+        ).toEqual(
+            expect.objectContaining({
+                steps: [
+                    expect.objectContaining({
+                        toolCalls: [{ toolName: 'webSearch', args: { query: 'hello' } }],
+                    }),
+                ],
+            }),
+        );
+    });
 });

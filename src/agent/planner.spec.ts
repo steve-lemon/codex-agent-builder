@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { Planner } from './planner';
 import type { LlmGateway } from '../llm/types';
 import { defineTool, buildToolManifest } from '../tools';
+import { AgentError } from '../errors/agent-error';
 
 describe('Planner', () => {
     const customerTool = defineTool({
@@ -369,5 +370,32 @@ describe('Planner', () => {
                 path: 'toolResults.0.data.flow',
             },
         });
+    });
+
+    it('falls back to the deterministic node-config plan when planner args JSON parsing fails', async () => {
+        const llm: LlmGateway = {
+            plan: async () => {
+                throw new AgentError('Planner returned invalid tool args JSON', {
+                    code: 'PLAN_ARGS_JSON_INVALID',
+                });
+            },
+            reflect: async () => ({ isComplete: true, reason: 'ok', missingItems: [] }),
+            finalize: async () => ({ summary: 'done', success: true, nextActions: [] }),
+            generateStructured: async () => {
+                throw new Error('unused generateStructured mock');
+            },
+        };
+
+        const planner = new Planner(llm);
+        const plan = await planner.createPlan({
+            userInput: 'ai 노드 설정을 설계해줘',
+            skillName: 'node-config-designer',
+            skillInstructions: 'Use node-config tools only.',
+            allowedTools: [],
+            toolManifests: [],
+            toolDefinitions: [],
+        });
+
+        expect(plan.steps.map(step => step.mode)).toEqual(['reasoning', 'finalize']);
     });
 });

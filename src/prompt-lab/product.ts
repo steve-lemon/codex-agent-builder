@@ -112,6 +112,40 @@ function renderCodexPromptMarkdown(prompt: PromptLabCodexPrompt): string {
     ].join('\n');
 }
 
+function localizeAssessmentSummary(language: 'ko' | 'en', summary: string): string {
+    if (language !== 'ko') {
+        return summary;
+    }
+
+    const mapping: Record<string, string> = {
+        'The run did not complete successfully, so the requirement is not yet fulfilled.':
+            '실행이 성공적으로 완료되지 않았으므로, 요구사항은 아직 충족되지 않았습니다.',
+        'The run completed, but the requirement is only partially covered because some capabilities are still missing.':
+            '실행은 완료되었지만, 일부 capability가 아직 부족하여 요구사항을 부분적으로만 충족합니다.',
+        'The run completed successfully, but requirement fulfillment is still uncertain because the design relied on generic fallback or mock execution settings.':
+            '실행은 성공적으로 완료되었지만, generic fallback 또는 mock 실행 설정에 의존했기 때문에 요구사항 충족 여부는 아직 불확실합니다.',
+        'The run completed successfully and the current design appears to fulfill the requirement.':
+            '실행은 성공적으로 완료되었고, 현재 설계는 요구사항을 충족하는 것으로 보입니다.',
+    };
+
+    return mapping[summary] ?? summary;
+}
+
+function localizeAssessmentCaveat(language: 'ko' | 'en', caveat: string): string {
+    if (language !== 'ko') {
+        return caveat;
+    }
+
+    const mapping: Record<string, string> = {
+        'Task-graph classification fell back to a generic template.':
+            'Task graph 분류가 generic 템플릿으로 fallback 되었습니다.',
+        'The final flow still uses a mock AI model configuration.':
+            '최종 플로우가 아직 mock AI 모델 설정을 사용하고 있습니다.',
+    };
+
+    return mapping[caveat] ?? caveat;
+}
+
 function renderSummaryMarkdown(args: {
     session: PromptLabSessionRecord;
     result: ProductDesignRunResult;
@@ -119,45 +153,103 @@ function renderSummaryMarkdown(args: {
     userFeedback: string;
     codexPrompt: PromptLabCodexPrompt;
 }): string {
+    const isKorean = args.session.config.language === 'ko';
+    const sections = isKorean
+        ? {
+              title: 'Prompt Lab 세션',
+              requirement: '요구사항',
+              agentResult: '에이전트 결과',
+              requirementAssessment: '요구 충족도 평가',
+              selfReview: '자가 평가',
+              userFeedback: '사용자 피드백',
+              finalPromptSummary: '최종 Codex 프롬프트 요약',
+              sessionId: '세션 ID',
+              skill: '스킬',
+              provider: 'Provider',
+              mainModel: '메인 모델',
+              liteModel: 'Lite 모델',
+              language: '언어',
+              status: '상태',
+              summary: '요약',
+              success: '성공',
+              executionSucceeded: '실행 성공',
+              fulfillmentLevel: '충족도 수준',
+          }
+        : {
+              title: 'Prompt Lab Session',
+              requirement: 'Requirement',
+              agentResult: 'Agent Result',
+              requirementAssessment: 'Requirement Assessment',
+              selfReview: 'Self Review',
+              userFeedback: 'User Feedback',
+              finalPromptSummary: 'Final Codex Prompt Summary',
+              sessionId: 'Session ID',
+              skill: 'Skill',
+              provider: 'Provider',
+              mainModel: 'Main Model',
+              liteModel: 'Lite Model',
+              language: 'Language',
+              status: 'Status',
+              summary: 'Summary',
+              success: 'Success',
+              executionSucceeded: 'Execution Succeeded',
+              fulfillmentLevel: 'Fulfillment Level',
+          };
+    const fulfillmentLevel = isKorean
+        ? (
+              {
+                  fulfilled: '충족',
+                  uncertain: '불확실',
+                  partial: '부분 충족',
+                  'not-fulfilled': '미충족',
+              }[args.result.requirementAssessment.fulfillmentLevel] ??
+              args.result.requirementAssessment.fulfillmentLevel
+          )
+        : args.result.requirementAssessment.fulfillmentLevel;
+
     return [
-        '# Prompt Lab Session',
+        `# ${sections.title}`,
         '',
-        `- Session ID: ${args.session.sessionId}`,
-        `- Skill: ${args.session.config.skillName}`,
-        `- Provider: ${args.session.config.provider}`,
-        `- Main Model: ${args.session.config.mainModel}`,
-        `- Lite Model: ${args.session.config.liteModel}`,
-        `- Language: ${args.session.config.language}`,
+        `- ${sections.sessionId}: ${args.session.sessionId}`,
+        `- ${sections.skill}: ${args.session.config.skillName}`,
+        `- ${sections.provider}: ${args.session.config.provider}`,
+        `- ${sections.mainModel}: ${args.session.config.mainModel}`,
+        `- ${sections.liteModel}: ${args.session.config.liteModel}`,
+        `- ${sections.language}: ${args.session.config.language}`,
         '',
-        '## Requirement',
+        `## ${sections.requirement}`,
         '',
         args.session.requirement,
         '',
-        '## Agent Result',
+        `## ${sections.agentResult}`,
         '',
-        `- Status: ${args.result.status}`,
-        `- Summary: ${args.result.summary ?? 'n/a'}`,
-        `- Success: ${String(args.result.success ?? false)}`,
+        `- ${sections.status}: ${args.result.status}`,
+        `- ${sections.summary}: ${args.result.summary ?? 'n/a'}`,
+        `- ${sections.success}: ${String(args.result.success ?? false)}`,
         '',
-        '## Requirement Assessment',
+        `## ${sections.requirementAssessment}`,
         '',
-        `- Execution Succeeded: ${String(args.result.requirementAssessment.executionSucceeded)}`,
-        `- Fulfillment Level: ${args.result.requirementAssessment.fulfillmentLevel}`,
-        `- Summary: ${args.result.requirementAssessment.summary}`,
+        `- ${sections.executionSucceeded}: ${String(args.result.requirementAssessment.executionSucceeded)}`,
+        `- ${sections.fulfillmentLevel}: ${fulfillmentLevel}`,
+        `- ${sections.summary}: ${localizeAssessmentSummary(args.session.config.language, args.result.requirementAssessment.summary)}`,
         ...(args.result.requirementAssessment.caveats.length > 0
-            ? ['', ...args.result.requirementAssessment.caveats.map(item => `- ${item}`), '']
+            ? [
+                  '',
+                  ...args.result.requirementAssessment.caveats.map(item => `- ${localizeAssessmentCaveat(args.session.config.language, item)}`),
+                  '',
+              ]
             : ['']),
-        '## Self Review',
+        `## ${sections.selfReview}`,
         '',
         args.selfReview.summary,
         '',
         ...args.selfReview.improvements.map(item => `- ${item}`),
         '',
-        '## User Feedback',
+        `## ${sections.userFeedback}`,
         '',
         args.userFeedback || '(none)',
         '',
-        '## Final Codex Prompt Summary',
+        `## ${sections.finalPromptSummary}`,
         '',
         args.codexPrompt.summary,
         '',

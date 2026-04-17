@@ -45,6 +45,9 @@ describe('FlowDesignProduct', () => {
                 summary: expect.any(String),
             }),
         );
+        if (result.requirementAssessment.fulfillmentLevel !== 'fulfilled') {
+            expect(result.summary).toContain('Current requirement assessment');
+        }
         expect(result.flowDesign.designPassCount).toBe(3);
         expect(result.nodeConfiguration.configuredNodeCount).toBeGreaterThanOrEqual(3);
         expect(result.finalFlow?.nodes.some(node => node.blockId === 'ai-generate')).toBe(true);

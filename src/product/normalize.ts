@@ -80,6 +80,31 @@ function collectRequirementAssessment(args: {
     };
 }
 
+function composeProductSummary(args: {
+    rawSummary?: string;
+    requirementAssessment: RequirementAssessment;
+}): string | undefined {
+    if (!args.rawSummary) {
+        return args.rawSummary;
+    }
+
+    const caveatSuffix =
+        args.requirementAssessment.caveats.length > 0
+            ? ` Caveats: ${args.requirementAssessment.caveats.join(' ')}`
+            : '';
+
+    switch (args.requirementAssessment.fulfillmentLevel) {
+        case 'fulfilled':
+            return args.rawSummary;
+        case 'uncertain':
+            return `${args.rawSummary} Current requirement assessment: ${args.requirementAssessment.summary}${caveatSuffix}`.trim();
+        case 'partial':
+            return `${args.rawSummary} Current requirement assessment: ${args.requirementAssessment.summary}${caveatSuffix}`.trim();
+        case 'not-fulfilled':
+            return `${args.rawSummary} Current requirement assessment: ${args.requirementAssessment.summary}${caveatSuffix}`.trim();
+    }
+}
+
 /** Converts a runtime result into the product-facing normalized response shape. */
 export function normalizeProductDesignRunResult(
     skillName: ProductFlowSkill,
@@ -97,7 +122,10 @@ export function normalizeProductDesignRunResult(
         skillName,
         runId: result.runId,
         status: result.status,
-        summary: finalResult?.summary,
+        summary: composeProductSummary({
+            rawSummary: finalResult?.summary,
+            requirementAssessment,
+        }),
         success: finalResult?.success,
         requirementAssessment,
         nextActions: finalResult?.nextActions ?? [],
