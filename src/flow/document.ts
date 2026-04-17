@@ -1,6 +1,6 @@
 // Flow document creation, connection, and packet helpers.
 import { AgentError } from '../errors/agent-error';
-import { now } from '../time/now';
+import { now } from '../tools/now';
 import type {
     ConnectFlowPortsOptions,
     CreateFlowNodeOptions,

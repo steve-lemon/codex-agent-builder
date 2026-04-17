@@ -1,5 +1,5 @@
 // Structured tracing types and tracer implementation.
-import { now } from '../time/now';
+import { now } from '../tools/now';
 import { FileTraceStore } from './file-trace-store';
 import type { TraceConnection, TraceDocument, TraceEvent, TraceStage, TraceStore } from './types';
 

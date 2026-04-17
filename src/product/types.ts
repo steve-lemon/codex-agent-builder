@@ -1,7 +1,7 @@
 // Product-facing DTOs for the flow design product facade.
 import type { ApprovalDecision, FinalResult, PendingApproval, RuntimeRunResult } from '../agent/types';
 import type { FlowDesignEvent } from '../flow/design-monitor';
-import type { FlowDesignDetailsDto } from '../flow-design/dto';
+import type { FlowDesignDetailsDto } from '../flow/design/dto';
 import type { UnifiedRunEvent } from '../observability/unified-timeline';
 import type {
     FlowDesignerFinalPayload,
@@ -9,7 +9,7 @@ import type {
     NodeConfigDesignerFinalPayload,
 } from '../agent/types';
 import type { TraceEvent } from '../observability/types';
-import type { NodeConfigDesignDetailsDto } from '../node-config-design/dto';
+import type { NodeConfigDesignDetailsDto } from '../flow/node-config/design/dto';
 
 export type ProductFlowSkill = 'flow-preflight-validator' | 'flow-designer' | 'node-config-designer';
 

@@ -1,4 +1,4 @@
-# Mock Core Tool Resources
+# Sample Tool Resources
 
 This folder contains the deterministic sample/mock tool pack.
 

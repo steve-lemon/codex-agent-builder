@@ -1,6 +1,6 @@
 // Deterministic plan builders used by the fake LLM gateway.
 import type { Plan } from '../agent/schemas';
-import { getFlowDesignDefaultModel, getFlowDesignProbeDefaults } from '../flow-design/resources';
+import { getFlowDesignDefaultModel, getFlowDesignProbeDefaults } from '../flow/design/resources';
 import { getFakePlanCopy } from './fake-copy';
 import type { PlannerInput } from './types';
 

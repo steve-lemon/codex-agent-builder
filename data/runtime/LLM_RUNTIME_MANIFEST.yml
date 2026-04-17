@@ -1,3 +1,8 @@
+defaultToolPackIds:
+  - tools.sample-tools.set
+  - tools.flow-design.set
+  - tools.node-config.set
+  - tools.task-graph.set
 structuredTaskPrompts:
   planSystemPrompt: >-
     Return a concise executable plan for an agent runtime. Use only provided tools and generate tool args that satisfy

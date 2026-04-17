@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { Planner } from './planner';
 import type { LlmGateway } from '../llm/types';
-import { defineTool, buildToolManifest } from '../tools/types';
+import { defineTool, buildToolManifest } from '../tools';
 
 describe('Planner', () => {
     const customerTool = defineTool({

@@ -1,7 +1,7 @@
 // Agent runtime flow and data contracts.
 import { PlanSchema, type Plan } from './schemas';
 import type { LlmGateway } from '../llm/types';
-import type { ToolDefinition, ToolManifest } from '../tools/types';
+import type { ToolDefinition, ToolManifest } from '../tools';
 import { AgentError } from '../errors/agent-error';
 import { containsStepReferences, validateStepReferences } from './step-references';
 

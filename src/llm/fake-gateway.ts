@@ -19,8 +19,8 @@ import { buildDeterministicReflectorOutput } from './fake-reflectors';
 import type { LlmGateway, PlannerInput, ReflectorInput, FinalizerInput, StructuredGenerationInput } from './types';
 import type { Plan } from '../agent/schemas';
 import type { FinalResult, StepResult } from '../agent/types';
-import { DeterministicFlowDesignTaskGraphAdvisor, getFlowDesignTaskGraphCatalog } from '../flow-design/task-graphs';
-import { DeterministicFlowDesignTaskTypeAdvisor, getFlowDesignTaskTypeCatalog } from '../flow-design/task-types';
+import { DeterministicFlowDesignTaskGraphAdvisor, getFlowDesignTaskGraphCatalog } from '../flow/design/task-graphs';
+import { DeterministicFlowDesignTaskTypeAdvisor, getFlowDesignTaskTypeCatalog } from '../flow/design/task-types';
 
 /** Deterministic gateway that returns stable plans and summaries for tests and demos. */
 export class FakeLlmGateway implements LlmGateway {

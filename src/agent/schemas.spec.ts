@@ -11,7 +11,7 @@ import {
 } from './schemas';
 import { loadOpenAiZodHelpers } from '../llm/openai-loader';
 import { defineStructuredSchema, deserializeStructuredSchema } from '../llm/structured-schema';
-import { defineTool } from '../tools/types';
+import { defineTool } from '../tools';
 import { validateOpenAiTextFormat } from '../llm/openai-schema-validator';
 
 describe('agent schemas', () => {

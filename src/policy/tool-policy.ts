@@ -1,5 +1,5 @@
 // Tool execution policy rules by risk level.
-import type { ToolDefinition } from '../tools/types';
+import type { ToolDefinition } from '../tools';
 import type { ToolExecutionPolicy } from '../agent/types';
 
 /** Resolves execution policy knobs from tool risk metadata. */

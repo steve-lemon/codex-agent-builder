@@ -1,6 +1,6 @@
 // Agent runtime flow and data contracts.
 import { z } from 'zod';
-import type { ToolDefinition } from '../tools/types';
+import type { ToolDefinition } from '../tools';
 import { AgentError } from '../errors/agent-error';
 
 /** Supported execution modes for a planner-produced step. */

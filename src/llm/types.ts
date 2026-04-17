@@ -2,7 +2,7 @@
 import { z } from 'zod';
 import type { Plan, ReflectorOutput } from '../agent/schemas';
 import type { FinalResult } from '../agent/types';
-import type { ToolDefinition, ToolManifest } from '../tools/types';
+import type { ToolDefinition, ToolManifest } from '../tools';
 import type { StructuredSchema } from './structured-schema';
 
 /** Payload sent to a planner-capable LLM gateway. */

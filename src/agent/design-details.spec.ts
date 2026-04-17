@@ -1,7 +1,7 @@
 // Vitest specs for DTO-first final-result design details helpers.
 import { describe, expect, it } from 'vitest';
-import { createEmptyFlowDesignDetailsDto } from '../flow-design/dto';
-import { createEmptyNodeConfigDesignDetailsDto } from '../node-config-design/dto';
+import { createEmptyFlowDesignDetailsDto } from '../flow/design/dto';
+import { createEmptyNodeConfigDesignDetailsDto } from '../flow/node-config/design/dto';
 import { buildFinalResultDesignDetails, getFlowDesignDetails, getNodeConfigurationDetails } from './design-details';
 
 describe('design-details helpers', () => {

@@ -1,8 +1,8 @@
 // Agent runtime flow and data contracts.
 import { z } from 'zod';
-import type { FlowDesignDetailsDto } from '../flow-design/dto';
-import type { NodeConfigDesignDetailsDto } from '../node-config-design/dto';
-import type { ToolCall, ToolResult, ToolRiskLevel } from '../tools/types';
+import type { FlowDesignDetailsDto } from '../flow/design/dto';
+import type { NodeConfigDesignDetailsDto } from '../flow/node-config/design/dto';
+import type { ToolCall, ToolResult, ToolRiskLevel } from '../tools';
 import type { Plan, PlanStep } from './schemas';
 import type { TraceEvent } from '../observability/types';
 import type { RunStateContext } from '../state/types';

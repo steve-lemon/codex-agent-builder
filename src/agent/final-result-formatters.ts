@@ -1,6 +1,6 @@
 // Skill-specific final-result formatters used by gateway implementations.
-import { createEmptyFlowDesignDetailsDto, toFlowDesignDetailsDto } from '../flow-design/dto';
-import { createEmptyNodeConfigDesignDetailsDto, toNodeConfigDesignDetailsDto } from '../node-config-design/dto';
+import { createEmptyFlowDesignDetailsDto, toFlowDesignDetailsDto } from '../flow/design/dto';
+import { createEmptyNodeConfigDesignDetailsDto, toNodeConfigDesignDetailsDto } from '../flow/node-config/design/dto';
 import { getFakeFinalCopy } from '../llm/fake-copy';
 import { buildFinalResultDesignDetails } from './design-details';
 import {

@@ -28,15 +28,19 @@ Layered structure:
 
 1. `src/agent/*`
    Shared runtime contracts, execution flow, persistence hooks, and final-result assembly helpers.
-2. `src/flow-design/*`
-   Core flow-design logic: intent analysis, task-graph reasoning, draft composition, sample execution, reflection, DTOs, provider boundary, deterministic mocks, and a manifest-backed resource surface.
-3. `src/node-config-design/*`
-   Core node-configuration logic: block-family strategies, validation, DTOs, and a manifest-backed defaults/knowledge surface plus metadata-backed strategy guidance.
-4. `src/tools/*`
-   Thin runtime-facing tool wrappers that delegate into the shared design cores.
-5. `src/flow-agent/*`, `src/node-config-agent/*`
-   Compatibility/wrapper agents that compose the cores for skill-oriented usage.
-6. `src/llm/fake-*.ts`
+2. `src/flow/*`
+   Shared flow core: block pool, block matching, document model, runtime execution, graph conversion, serialization, and live design monitoring.
+3. `src/flow/design/*`
+   Flow-design extension layer: intent analysis, task-graph reasoning, draft composition, sample execution, reflection, DTOs, provider boundary, deterministic mocks, and a manifest-backed resource surface.
+4. `src/flow/node-config/design/*`
+   Node-configuration design core: block-family strategies, validation, DTOs, and a manifest-backed defaults/knowledge surface plus metadata-backed strategy guidance.
+5. `src/tools/*`
+   Shared tool infrastructure only: registry, repository, type contracts, and resource-backed pack loading.
+6. `src/flow/agent/*`, `src/flow/node-config/agent/*`
+   Skill-oriented flow wrappers plus the flow-owned runtime tool implementations.
+7. `src/agent/sample-tools.ts`
+   Sample/demo tool pack implementation kept outside `tools/core` so shared tool infrastructure stays small.
+8. `src/llm/fake-*.ts`
    Deterministic fake planning, reflection, and final formatting helpers used by tests and demos.
 
 Architecture sketch:
@@ -46,11 +50,11 @@ flowchart TD
     A["Agent Runtime"] --> B["Skill Selection"]
     B --> C["Tool Routing"]
     C --> D["Planner Gateway"]
-    D --> E["flow-design core"]
-    D --> F["node-config-design core"]
+    D --> E["flow design extension"]
+    D --> F["node-config design extension"]
     E --> G["Tool wrappers"]
     F --> G
-    G --> H["Flow / Graph execution"]
+    G --> H["flow core / graph execution"]
     H --> I["Reflection"]
     I --> J["Final result formatters"]
     J --> K["FinalResult: designDetails + payload"]
@@ -84,8 +88,8 @@ Use layer-specific barrels when you want tighter boundaries:
 ```ts
 import { buildFlowDesignerPayload } from './src/agent';
 import { buildFlowDesignerPlan } from './src/llm';
-import { designFlowDraft } from './src/flow-design';
-import { NodeConfigDesignService } from './src/node-config-design';
+import { designFlowDraft } from './src/flow/design';
+import { NodeConfigDesignService } from './src/flow/node-config/design';
 import { UnifiedRunEventBus } from './src/observability';
 ```
 
@@ -93,6 +97,7 @@ That split mirrors the current architecture:
 
 - root barrel: convenient app-facing API
 - layer barrels: clearer internal boundaries and lower accidental coupling
+- `src/flow/*`: shared flow surface that now re-exports its nested design, agent, and node-config extensions
 
 Product-facing usage:
 
@@ -134,10 +139,12 @@ const runtime = await createRuntime();
 │  ├─ index.ts
 │  ├─ demo.ts
 │  ├─ agent/
-│  ├─ flow-design/
-│  ├─ node-config-design/
-│  ├─ flow-agent/
-│  ├─ node-config-agent/
+│  ├─ flow/
+│  │  ├─ design/
+│  │  ├─ agent/
+│  │  └─ node-config/
+│  │     ├─ design/
+│  │     └─ agent/
 │  ├─ llm/
 │  ├─ tools/
 │  ├─ policy/
@@ -145,7 +152,10 @@ const runtime = await createRuntime();
 │  ├─ state/
 │  └─ observability/
 ├─ data/
-│  └─ skills/
+│  ├─ flow/
+│  ├─ runtime/
+│  ├─ skills/
+│  └─ tools/
 └─ tests/
 ```
 
@@ -225,26 +235,36 @@ Resource loading notes:
 - The resource boundary is intentionally abstracted so the same modules can later be backed by a remote config service, database, or managed manifest store without rewriting the design cores.
 - The runtime now expects one shared resource root rather than per-file override paths.
 - Each major resource consumer reads through an id-based resource registry and manifest surface:
-  - `flow-design`: `getFlowDesignManifest()`
-  - `node-config-design`: `getNodeConfigDesignManifest()`
+  - `flow/design`: `getFlowDesignManifest()`
+  - `flow/node-config/design`: `getNodeConfigDesignManifest()`
   - `llm/runtime`: `getLlmRuntimeManifest()`
-  - `tools`: resource-backed tool-set packs registered through `buildDefaultToolRegistry()`
+- `tools`: shared tool infrastructure that registers resource-backed tool packs through `buildDefaultToolRegistry()`
 
 Expected resource root structure:
 
 ```text
 <CODEX_RESOURCE_ROOT>/
+├─ flow/
+│  ├─ BLOCK_POOL.yml
+│  └─ RESOURCE.md
 ├─ runtime/
 │  └─ LLM_RUNTIME_MANIFEST.yml
 ├─ skills/
+│  ├─ RESOURCE.md
 │  ├─ flow-designer/
+│  │  ├─ SKILL.md
 │  │  ├─ FLOW_DESIGN_MANIFEST.yml
-│  │  └─ TOOLS.yml
+│  │  ├─ TOOLS.yml
+│  │  └─ RESOURCE.md
 │  ├─ flow-preflight-validator/
-│  │  └─ TOOLS.yml
+│  │  ├─ SKILL.md
+│  │  ├─ TOOLS.yml
+│  │  └─ RESOURCE.md
 │  └─ node-config-designer/
+│     ├─ SKILL.md
 │     ├─ NODE_CONFIG_MANIFEST.yml
-│     └─ TOOLS.yml
+│     ├─ TOOLS.yml
+│     └─ RESOURCE.md
 └─ tools/
    └─ sample-tools/
       └─ TOOLS.yml
@@ -259,6 +279,16 @@ Each resource-owning folder may also include a small `RESOURCE.md` file that exp
 - which changes should stay in shared runtime/common areas
 
 Shared flow resources now live under `data/flow/`. See [`data/flow/RESOURCE.md`](./data/flow/RESOURCE.md) for the block-pool ownership and matching-policy editing guidance.
+Skill-owned extension resources live under `data/skills/`. See [`data/skills/RESOURCE.md`](./data/skills/RESOURCE.md) for the shared-vs-skill-owned split.
+
+The code hierarchy mirrors that split:
+
+- `src/flow/*`: shared flow core
+- `src/flow/design/*`: flow-design extension
+- `src/flow/node-config/design/*`: node-config extension
+- `src/flow/agent/*` and `src/flow/node-config/agent/*`: skill-oriented wrappers and flow-owned tool implementations on top of those cores
+- `src/tools/core/*`: reusable tool infrastructure only
+- `src/agent/sample-tools.ts`: sample/demo tool pack implementation
 
 Each tool set manifest also carries a `version` field so pack-level migration can be introduced later without changing the runtime loading contract.
 Tool sets also carry:

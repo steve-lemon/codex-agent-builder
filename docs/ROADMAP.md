@@ -26,9 +26,9 @@ Planned work:
 ## Flow-Design and Flow-Agent
 
 Files:
-- [`src/flow-design/analysis.ts`](../src/flow-design/analysis.ts)
-- [`src/tools/flow-tools.ts`](../src/tools/flow-tools.ts)
-- [`src/tools/task-graph-tools.ts`](../src/tools/task-graph-tools.ts)
+- [`src/flow/design/analysis.ts`](../src/flow/design/analysis.ts)
+- [`src/flow/agent/tools.ts`](../src/flow/agent/tools.ts)
+- [`src/flow/agent/preflight-tools.ts`](../src/flow/agent/preflight-tools.ts)
 - [`src/llm/fake-plan-builders.ts`](../src/llm/fake-plan-builders.ts)
 - [`src/agent/final-result-formatters.ts`](../src/agent/final-result-formatters.ts)
 
@@ -45,8 +45,9 @@ Planned work:
 ## Node-Config Design
 
 Files:
-- [`src/node-config-design/core.ts`](../src/node-config-design/core.ts)
-- [`src/node-config-agent/strategies/shared.ts`](../src/node-config-agent/strategies/shared.ts)
+- [`src/flow/node-config/design/core.ts`](../src/flow/node-config/design/core.ts)
+- [`src/flow/node-config/agent/tools.ts`](../src/flow/node-config/agent/tools.ts)
+- [`src/flow/node-config/agent/strategies/shared.ts`](../src/flow/node-config/agent/strategies/shared.ts)
 
 Planned work:
 - allow multiple strategies to cooperate on one node

@@ -1,6 +1,6 @@
 // Resilience utilities for timeout, retry, and circuit breaking.
 import type { CircuitBreakerOptions } from './types';
-import { now } from '../time/now';
+import { now } from '../tools/now';
 
 type CircuitState = 'closed' | 'open';
 

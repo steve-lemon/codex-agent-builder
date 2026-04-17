@@ -1,7 +1,7 @@
 // Agent runtime flow and data contracts.
 import type { PlanStep } from './schemas';
 import type { AgentTracer } from '../observability/tracer';
-import type { ToolRegistry } from '../tools/registry';
+import type { ToolRegistry } from '../tools';
 import type { MultiSkillRouter } from './skill-router';
 import { resolveToolExecutionPolicy } from '../policy/tool-policy';
 import { resilientExecute } from '../resilience/resilient-execute';
@@ -9,7 +9,7 @@ import { CircuitBreaker } from '../resilience/circuit-breaker';
 import type { ExecuteStepContext, PendingApproval, StepResult } from './types';
 import { buildPendingApproval } from './approval';
 import { AgentError } from '../errors/agent-error';
-import { now } from '../time/now';
+import { now } from '../tools/now';
 import { resolveStepReferences } from './step-references';
 
 export interface StepExecutorResult {

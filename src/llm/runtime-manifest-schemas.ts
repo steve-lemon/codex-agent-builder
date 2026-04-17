@@ -1,6 +1,8 @@
 // Shared schemas for the aggregated runtime LLM manifest surface.
 import { z } from 'zod';
 
+export const DefaultToolPackIdsSchema = z.array(z.string());
+
 export const StructuredTaskPromptsSchema = z.object({
     planSystemPrompt: z.string(),
     reflectSystemPrompt: z.string(),
@@ -65,10 +67,12 @@ export const FakeCopySchema = z.object({
 });
 
 export const LlmRuntimeManifestSchema = z.object({
+    defaultToolPackIds: DefaultToolPackIdsSchema,
     structuredTaskPrompts: StructuredTaskPromptsSchema,
     fakeCopy: FakeCopySchema,
 });
 
+export type DefaultToolPackIdsRecord = z.infer<typeof DefaultToolPackIdsSchema>;
 export type StructuredTaskPromptsRecord = z.infer<typeof StructuredTaskPromptsSchema>;
 export type FakeCopyRecord = z.infer<typeof FakeCopySchema>;
 export type LlmRuntimeManifestRecord = z.infer<typeof LlmRuntimeManifestSchema>;

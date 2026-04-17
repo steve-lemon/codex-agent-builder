@@ -5,9 +5,9 @@ import { AgentRuntime } from './runtime';
 import { FakeLlmGateway } from '../llm/fake-gateway';
 import { InMemoryRunStateStore } from '../state/memory-store';
 import { buildDefaultToolRegistry } from '../tools';
-import { ToolRegistry } from '../tools/registry';
+import { ToolRegistry } from '../tools';
 import type { LlmGateway } from '../llm/types';
-import { defineTool } from '../tools/types';
+import { defineTool } from '../tools';
 
 describe('approval flow', () => {
     it('suspends run when tool requires approval', async () => {

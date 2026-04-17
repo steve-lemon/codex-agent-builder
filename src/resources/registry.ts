@@ -1,11 +1,11 @@
 import type { ZodType } from 'zod';
-import { type FlowDesignManifestRecord, FlowDesignManifestSchema } from '../flow-design/manifest-schemas';
+import { type FlowDesignManifestRecord, FlowDesignManifestSchema } from '../flow/design/manifest-schemas';
 import {
     type NodeConfigDesignManifestRecord,
     NodeConfigDesignManifestSchema,
-} from '../node-config-design/manifest-schemas';
+} from '../flow/node-config/design/manifest-schemas';
 import { type LlmRuntimeManifestRecord, LlmRuntimeManifestSchema } from '../llm/runtime-manifest-schemas';
-import { type ToolPackResourceRecord, ToolPackResourceSchema } from '../tools/resource-schemas';
+import { type ToolPackResourceRecord, ToolPackResourceSchema } from '../tools/core/resource-schemas';
 import { type FlowBlockPoolRecord, FlowBlockPoolSchema } from '../flow/resource-schemas';
 
 export interface ResourceDefinition<T> {

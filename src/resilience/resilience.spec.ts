@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { AgentRuntime } from '../agent/runtime';
 import { AgentError } from '../errors/agent-error';
 import { InMemoryRunStateStore } from '../state/memory-store';
-import { ToolRegistry } from '../tools/registry';
+import { ToolRegistry } from '../tools';
 import type { LlmGateway } from '../llm/types';
 import { computeBackoffMs, sleep } from './backoff';
 import { CircuitBreaker } from './circuit-breaker';

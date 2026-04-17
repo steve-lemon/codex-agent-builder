@@ -28,16 +28,11 @@ export async function createRuntime(options?: Partial<AgentRuntimeOptions>) {
 
 // Shared runtime and result contracts.
 export * from './agent';
-// Flow graph/document runtime and shared design core.
+// Flow graph/document runtime plus nested flow extensions.
 export * from './flow';
-export * from './flow-design';
-export * from './flow-agent';
 export * from './graph';
 // LLM gateways plus deterministic fake adapters.
 export * from './llm';
-// Node-configuration design core and wrapper agent.
-export * from './node-config-design';
-export * from './node-config-agent';
 // Product-facing facade APIs.
 export * from './product';
 // Observability and live runtime monitoring.

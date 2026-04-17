@@ -20,6 +20,18 @@ and design layers.
 - Skill-specific tuning should stay under `data/skills/<skill>/...`.
 - Generic flow block additions or capability changes should be made here.
 
+## Relationship To Skill Resources
+
+- `data/flow/*`
+  - shared flow core resources
+  - reusable across multiple skills and products
+- `data/skills/flow-designer/*`
+  - flow-design behavior, prompts, catalogs, and tool exposure
+- `data/skills/node-config-designer/*`
+  - node-config defaults, knowledge, and tool exposure
+- `data/skills/flow-preflight-validator/*`
+  - preflight/task-graph-facing tool exposure
+
 ## Editing Guidance
 
 - Add new capabilities before referencing them from a block.

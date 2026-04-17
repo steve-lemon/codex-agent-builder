@@ -1,7 +1,7 @@
 // Real-time monitoring primitives for flow design sessions.
 import { AgentError } from '../errors/agent-error';
 import { renderFlowDesignSnapshotAsReagraph, type FlowDesignReagraphGraph } from '../graph/renderer';
-import { now } from '../time/now';
+import { now } from '../tools/now';
 import { DefaultFlowDocumentController } from './document';
 import type {
     ConnectFlowPortsOptions,
