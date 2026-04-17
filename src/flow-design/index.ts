@@ -1,6 +1,9 @@
 // Public exports for shared flow-design core modules.
 export * from './analysis';
 export * from './catalog';
+export * from './classifier-provider';
+export * from './classifier-requests';
+export * from './classifier-resources';
 export * from './core';
 export * from './dto';
 export * from './knowledge';

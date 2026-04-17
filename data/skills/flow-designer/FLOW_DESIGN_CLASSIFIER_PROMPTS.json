@@ -1,0 +1,4 @@
+{
+    "taskTypeSystemPrompt": "Choose the best flow-design task type for the request. Use only one of the provided taskType ids and explain the choice briefly.",
+    "taskGraphSystemPrompt": "Choose the best flow-design task graph template for the request. Use only one of the provided template ids and explain the choice briefly."
+}

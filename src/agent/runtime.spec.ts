@@ -294,6 +294,9 @@ describe('runtime flow', () => {
             }),
             reflect: async () => ({ isComplete: true, reason: 'ok', missingItems: [] }),
             finalize: async () => ({ summary: 'done', success: true, nextActions: [] }),
+            generateStructured: async () => {
+                throw new Error('unused generateStructured mock');
+            },
         };
 
         const runtime = new AgentRuntime({
@@ -400,6 +403,9 @@ describe('runtime flow', () => {
             }),
             reflect: async () => ({ isComplete: true, reason: 'ok', missingItems: [] }),
             finalize: async () => ({ summary: 'done', success: true, nextActions: [] }),
+            generateStructured: async () => {
+                throw new Error('unused generateStructured mock');
+            },
         };
 
         const runtime = new AgentRuntime({
@@ -424,6 +430,9 @@ describe('runtime flow', () => {
             }),
             reflect: async () => ({ isComplete: true, reason: 'ok', missingItems: [] }),
             finalize: async () => ({ summary: 'done', success: true, nextActions: [] }),
+            generateStructured: async () => {
+                throw new Error('unused generateStructured mock');
+            },
         };
 
         const runtime = new AgentRuntime({
@@ -453,6 +462,9 @@ describe('runtime flow', () => {
             }),
             reflect: async () => ({ isComplete: true, reason: 'ok', missingItems: [] }),
             finalize: async () => ({ summary: 'done', success: true, nextActions: [] }),
+            generateStructured: async () => {
+                throw new Error('unused generateStructured mock');
+            },
         };
 
         const runtime = new AgentRuntime({
@@ -481,6 +493,9 @@ describe('runtime flow', () => {
             }),
             reflect: async () => ({ isComplete: true, reason: 'ok', missingItems: [] }),
             finalize: async () => ({ summary: 'done', success: true, nextActions: [] }),
+            generateStructured: async () => {
+                throw new Error('unused generateStructured mock');
+            },
         };
 
         const runtime = new AgentRuntime({
@@ -515,6 +530,9 @@ describe('runtime flow', () => {
             }),
             reflect: async () => ({ isComplete: true, reason: 'ok', missingItems: [] }),
             finalize: async () => ({ summary: 'done', success: true, nextActions: [] }),
+            generateStructured: async () => {
+                throw new Error('unused generateStructured mock');
+            },
         };
 
         const runtime = new AgentRuntime({

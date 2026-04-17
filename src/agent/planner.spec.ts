@@ -62,6 +62,9 @@ describe('Planner', () => {
             plan: vi.fn(planMock),
             reflect: async () => ({ isComplete: true, reason: 'ok', missingItems: [] }),
             finalize: async () => ({ summary: 'done', success: true, nextActions: [] }),
+            generateStructured: async () => {
+                throw new Error('unused generateStructured mock');
+            },
         };
 
         const planner = new Planner(llm);
@@ -94,6 +97,9 @@ describe('Planner', () => {
             }),
             reflect: async () => ({ isComplete: true, reason: 'ok', missingItems: [] }),
             finalize: async () => ({ summary: 'done', success: true, nextActions: [] }),
+            generateStructured: async () => {
+                throw new Error('unused generateStructured mock');
+            },
         };
 
         const planner = new Planner(llm);
@@ -124,6 +130,9 @@ describe('Planner', () => {
             }),
             reflect: async () => ({ isComplete: true, reason: 'ok', missingItems: [] }),
             finalize: async () => ({ summary: 'done', success: true, nextActions: [] }),
+            generateStructured: async () => {
+                throw new Error('unused generateStructured mock');
+            },
         };
 
         const planner = new Planner(llm);
@@ -168,6 +177,9 @@ describe('Planner', () => {
             }),
             reflect: async () => ({ isComplete: true, reason: 'ok', missingItems: [] }),
             finalize: async () => ({ summary: 'done', success: true, nextActions: [] }),
+            generateStructured: async () => {
+                throw new Error('unused generateStructured mock');
+            },
         };
 
         const planner = new Planner(llm);

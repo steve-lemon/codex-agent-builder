@@ -1,10 +1,8 @@
 // LLM gateway interfaces and implementations.
 import { z } from 'zod';
-import { createOpenAiPlanResponseSchema, parsePlanResponse, ReflectorOutputSchema } from '../agent/schemas';
-import { FinalResultSchema } from '../agent/types';
-import type { LlmGateway, PlannerInput, ReflectorInput, FinalizerInput } from './types';
+import type { LlmGateway, PlannerInput, ReflectorInput, FinalizerInput, StructuredGenerationInput } from './types';
 import { AgentError } from '../errors/agent-error';
-import { defineStructuredSchema, type StructuredSchema } from './structured-schema';
+import type { StructuredSchema } from './structured-schema';
 import {
     loadOpenAiSdk,
     loadOpenAiZodHelpers,
@@ -16,6 +14,12 @@ import {
     ProxyStructuredResponseParser,
     type StructuredResponseParser,
 } from './structured-response-parser';
+import {
+    buildFinalizeStructuredRequest,
+    buildPlanStructuredRequest,
+    buildReflectStructuredRequest,
+    parsePlanStructuredOutput,
+} from './structured-tasks';
 
 /** Configuration used to initialize the OpenAI-backed gateway. */
 export interface OpenAiGatewayOptions {
@@ -50,49 +54,23 @@ export class OpenAiGateway implements LlmGateway {
     }
 
     async plan(input: PlannerInput) {
-        const planResponseSchema = createOpenAiPlanResponseSchema(input.toolDefinitions);
-        const parsed = await this.parseStructuredResponse(
-            [
-                {
-                    role: 'system',
-                    content:
-                        'Return a concise executable plan for an agent runtime. Use only provided tools and generate tool args that satisfy each tool parameter schema.',
-                },
-                {
-                    role: 'user',
-                    content: JSON.stringify({
-                        userInput: input.userInput,
-                        skillName: input.skillName,
-                        skillInstructions: input.skillInstructions,
-                        allowedTools: input.allowedTools,
-                        toolManifests: input.toolManifests,
-                    }),
-                },
-            ],
-            defineStructuredSchema('plan', planResponseSchema),
-        );
+        const parsed = await this.generateStructured(buildPlanStructuredRequest(input));
 
-        return parsePlanResponse(parsed);
+        return parsePlanStructuredOutput(parsed);
     }
 
     async reflect(input: ReflectorInput) {
-        return this.parseStructuredResponse(
-            [
-                { role: 'system', content: 'Decide whether run is complete.' },
-                { role: 'user', content: JSON.stringify(input) },
-            ],
-            defineStructuredSchema('reflector_output', ReflectorOutputSchema),
-        );
+        return this.generateStructured(buildReflectStructuredRequest(input));
     }
 
     async finalize(input: FinalizerInput) {
-        return this.parseStructuredResponse(
-            [
-                { role: 'system', content: 'Return final concise agent result.' },
-                { role: 'user', content: JSON.stringify(input) },
-            ],
-            defineStructuredSchema('final_result', FinalResultSchema),
-        );
+        return this.generateStructured(buildFinalizeStructuredRequest(input));
+    }
+
+    async generateStructured<TSchema extends z.ZodTypeAny>(
+        request: StructuredGenerationInput<TSchema>,
+    ): Promise<z.output<TSchema>> {
+        return this.parseStructuredResponse(request.input, request.schema);
     }
 
     /** Normalizes parser errors and re-validates output against the requested schema. */

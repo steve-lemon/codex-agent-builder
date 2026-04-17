@@ -126,6 +126,9 @@ describe('approval flow', () => {
             }),
             reflect: async () => ({ isComplete: true, reason: 'ok', missingItems: [] }),
             finalize: async () => ({ summary: 'done', success: true, nextActions: [] }),
+            generateStructured: async () => {
+                throw new Error('unused generateStructured mock');
+            },
         };
 
         const runtime = new AgentRuntime({ llm, store, toolRegistry: registry });

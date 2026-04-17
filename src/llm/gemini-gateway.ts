@@ -1,11 +1,15 @@
 // Gemini-backed LLM gateway implementation.
 import { z } from 'zod';
-import { createOpenAiPlanResponseSchema, parsePlanResponse, ReflectorOutputSchema } from '../agent/schemas';
-import { FinalResultSchema } from '../agent/types';
-import type { FinalizerInput, LlmGateway, PlannerInput, ReflectorInput } from './types';
+import type { FinalizerInput, LlmGateway, PlannerInput, ReflectorInput, StructuredGenerationInput } from './types';
 import { AgentError } from '../errors/agent-error';
 import { serializeZodSchema } from '../schema/json-schema';
 import { loadGeminiSdk, type GeminiClientLike, type GeminiSdkLoader } from './gemini-loader';
+import {
+    buildFinalizeStructuredRequest,
+    buildPlanStructuredRequest,
+    buildReflectStructuredRequest,
+    parsePlanStructuredOutput,
+} from './structured-tasks';
 
 /** Configuration used to initialize the Gemini-backed gateway. */
 export interface GeminiGatewayOptions {
@@ -28,38 +32,29 @@ export class GeminiGateway implements LlmGateway {
     }
 
     async plan(input: PlannerInput) {
-        const planResponseSchema = createOpenAiPlanResponseSchema(input.toolDefinitions);
-        const parsed = await this.generateStructuredContent(
-            'Return a concise executable plan for an agent runtime. Use only provided tools and generate tool args that satisfy each tool parameter schema.',
-            {
-                userInput: input.userInput,
-                skillName: input.skillName,
-                skillInstructions: input.skillInstructions,
-                allowedTools: input.allowedTools,
-                toolManifests: input.toolManifests,
-            },
-            planResponseSchema,
-            'plan',
-        );
+        const parsed = await this.generateStructured(buildPlanStructuredRequest(input));
 
-        return parsePlanResponse(parsed);
+        return parsePlanStructuredOutput(parsed);
     }
 
     async reflect(input: ReflectorInput) {
-        return this.generateStructuredContent(
-            'Decide whether run is complete.',
-            input,
-            ReflectorOutputSchema,
-            'reflector_output',
-        );
+        return this.generateStructured(buildReflectStructuredRequest(input));
     }
 
     async finalize(input: FinalizerInput) {
+        return this.generateStructured(buildFinalizeStructuredRequest(input));
+    }
+
+    async generateStructured<TSchema extends z.ZodTypeAny>(
+        request: StructuredGenerationInput<TSchema>,
+    ): Promise<z.output<TSchema>> {
         return this.generateStructuredContent(
-            'Return final concise agent result.',
-            input,
-            FinalResultSchema,
-            'final_result',
+            request.input.find(message => message.role === 'system')?.content ?? '',
+            request.input.find(message => message.role === 'user')?.content
+                ? JSON.parse(request.input.find(message => message.role === 'user')!.content)
+                : {},
+            request.schema.schema,
+            request.schema.name,
         );
     }
 
