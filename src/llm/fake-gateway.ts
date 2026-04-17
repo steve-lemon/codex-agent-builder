@@ -67,13 +67,23 @@ export class FakeLlmGateway implements LlmGateway {
         const userPayload = JSON.parse(request.input.find(message => message.role === 'user')?.content ?? '{}');
 
         if (request.schema.name === 'flow_design_task_type_classification') {
+            const catalog = await getFlowDesignTaskTypeCatalog();
+            const shortlistedTaskTypeIds = Array.isArray(userPayload.taskTypes)
+                ? userPayload.taskTypes
+                      .map((taskType: { id?: unknown }) =>
+                          typeof taskType?.id === 'string' ? taskType.id : undefined,
+                      )
+                      .filter((id: string | undefined): id is string => Boolean(id))
+                : [];
             const recommendation = await new DeterministicFlowDesignTaskTypeAdvisor().recommend({
                 userRequest: String(userPayload.userRequest ?? ''),
                 wantsJson: Boolean(userPayload.wantsJson),
-                taskTypes: userPayload.taskTypes ?? (await getFlowDesignTaskTypeCatalog()),
+                taskTypes:
+                    shortlistedTaskTypeIds.length > 0
+                        ? catalog.filter(taskType => shortlistedTaskTypeIds.includes(taskType.id))
+                        : catalog,
             });
             return request.schema.parse({
-                kind: 'task-type',
                 taskType: recommendation.taskType,
                 confidence: recommendation.confidence,
                 rationale: recommendation.rationale,
@@ -81,12 +91,20 @@ export class FakeLlmGateway implements LlmGateway {
         }
 
         if (request.schema.name === 'flow_design_task_graph_classification') {
+            const catalog = await getFlowDesignTaskGraphCatalog();
+            const shortlistedTemplateIds = Array.isArray(userPayload.templates)
+                ? userPayload.templates
+                      .map((template: { id?: unknown }) => (typeof template?.id === 'string' ? template.id : undefined))
+                      .filter((id: string | undefined): id is string => Boolean(id))
+                : [];
             const recommendation = await new DeterministicFlowDesignTaskGraphAdvisor().recommend({
                 userRequest: String(userPayload.userRequest ?? ''),
-                templates: userPayload.templates ?? (await getFlowDesignTaskGraphCatalog()),
+                templates:
+                    shortlistedTemplateIds.length > 0
+                        ? catalog.filter(template => shortlistedTemplateIds.includes(template.id))
+                        : catalog,
             });
             return request.schema.parse({
-                kind: 'task-graph',
                 templateId: recommendation.templateId,
                 confidence: recommendation.confidence,
                 rationale: recommendation.rationale,
@@ -102,10 +120,9 @@ export class FakeLlmGateway implements LlmGateway {
                 expectedOutputs: userPayload.expectedOutputs ?? [],
             });
             return request.schema.parse({
-                kind: 'flow-ai-delegation',
                 delegable: recommendation.delegable,
-                confidence: recommendation.confidence,
-                rationale: recommendation.rationale,
+                confidence: recommendation.confidence ?? 0.8,
+                rationale: recommendation.rationale ?? 'Delegation decision matched the deterministic fallback heuristic.',
             });
         }
 

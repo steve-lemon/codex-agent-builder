@@ -2,16 +2,19 @@ import type { DiagnosticEvent, DiagnosticLevel } from '../diagnostics/logger';
 import type { ProductDesignRunResult, ProductFlowSkill } from '../product/types';
 import type { UnifiedRunEvent } from '../observability/unified-timeline';
 import type { FlowDesignEvent } from '../flow/design-monitor';
+import type { AdvisorEvaluationReport } from '../flow/design/advisor-evaluation';
 
 export type PromptLabProvider = 'openai' | 'gemini' | 'fake';
 export type PromptLabLanguage = 'ko' | 'en';
+export type PromptLabMode = 'run' | 'advisor-eval';
 
 export interface PromptLabSessionConfig {
+    mode: PromptLabMode;
     provider: PromptLabProvider;
     mainModel: string;
     liteModel: string;
     language: PromptLabLanguage;
-    skillName: ProductFlowSkill;
+    skillName?: ProductFlowSkill;
     outputRoot?: string;
 }
 
@@ -31,11 +34,14 @@ export interface PromptLabArtifactPaths {
     designedFlowPath: string;
     designedFlowYamlPath: string;
     designedFlowGraphPath: string;
+    advisorEvaluationJsonPath: string;
+    advisorEvaluationMarkdownPath: string;
     selfReviewPath: string;
     feedbackPath: string;
     promptJsonPath: string;
     promptMarkdownPath: string;
     summaryPath: string;
+    executionTimingJsonPath: string;
     artifactsPath: string;
     failureJsonPath: string;
     failureTextPath: string;
@@ -56,12 +62,35 @@ export interface PromptLabCodexPrompt {
     usageNotes: string[];
 }
 
+export interface PromptLabAdvisorTimingDetail {
+    advisorId: string;
+    callCount: number;
+    totalDurationMs: number;
+    averageDurationMs: number;
+    maxDurationMs: number;
+}
+
+export interface PromptLabExecutionTimingSummary {
+    totalDurationMs: number;
+    advisorCallCount: number;
+    advisorTotalDurationMs: number;
+    advisorTimeShare: number;
+    advisors: PromptLabAdvisorTimingDetail[];
+}
+
 export interface PromptLabRunArtifacts {
     session: PromptLabSessionRecord;
     result: ProductDesignRunResult;
+    advisorEvaluation?: AdvisorEvaluationReport;
+    executionTiming?: PromptLabExecutionTimingSummary;
     selfReview: PromptLabSelfReview;
     userFeedback: string;
     codexPrompt: PromptLabCodexPrompt;
+}
+
+export interface PromptLabAdvisorEvalArtifacts {
+    session: PromptLabSessionRecord;
+    advisorEvaluation: AdvisorEvaluationReport;
 }
 
 export interface PromptLabDiagnosticEntry {

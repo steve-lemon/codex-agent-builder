@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { emitKeypressEvents } from 'node:readline';
 import { stdin as input, stdout as output } from 'node:process';
@@ -5,7 +6,11 @@ import { ensureProjectEnvLoaded } from '../env/project-env';
 import { getPromptLabLanguageCopy, getPromptLabManifest, getPromptLabModelOptions } from './manifest';
 import { PromptLabProduct, PromptLabRunError } from './product';
 import type {
+    PromptLabRunArtifacts,
+    PromptLabMode,
     PromptLabArtifactPaths,
+    PromptLabDiagnosticEntry,
+    PromptLabExecutionTimingSummary,
     PromptLabLanguage,
     PromptLabProvider,
     PromptLabSelectableModelOption,
@@ -14,18 +19,12 @@ import type {
 import type { ProductFlowSkill } from '../product/types';
 import type { FlowDesignEvent } from '../flow/design-monitor';
 import type { UnifiedRunEvent } from '../observability/unified-timeline';
-import { writeText } from './files';
-
-function normalizeLanguage(value: string, fallback: PromptLabLanguage): PromptLabLanguage {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === 'en' || normalized === 'en-us') {
-        return 'en';
-    }
-    if (normalized === 'ko' || normalized === 'ko-kr' || normalized === '') {
-        return fallback;
-    }
-    return fallback;
-}
+import {
+    cachePromptLabRequirement,
+    getPromptLabAdvisorEvaluationHistoryPath,
+    readPromptLabRequirementHistory,
+    writeText,
+} from './files';
 
 function resolveDefaultProvider(providerOrder: PromptLabProvider[]): PromptLabProvider {
     if (process.env.OPENAI_API_KEY) {
@@ -89,16 +88,27 @@ function normalizeSkill(value: string, fallback: ProductFlowSkill): ProductFlowS
 function printSessionHeader(
     sessionDir: string,
     paths: PromptLabArtifactPaths,
-    options: { includeFailureArtifacts?: boolean } = {},
+    options: {
+        includeFailureArtifacts?: boolean;
+        includeAdvisorArtifacts?: boolean;
+        includeFlowArtifacts?: boolean;
+    } = {},
 ): void {
     output.write('\n=== Prompt Lab Session ===\n');
     output.write(`session: ${sessionDir}\n`);
     output.write(`timeline: ${paths.timelinePath}\n`);
     output.write(`design: ${paths.designPath}\n`);
     output.write(`diagnostics: ${paths.diagnosticsPath}\n`);
-    output.write(`designed flow: ${paths.designedFlowPath}\n`);
-    output.write(`designed flow yaml: ${paths.designedFlowYamlPath}\n`);
-    output.write(`designed flow graph: ${paths.designedFlowGraphPath}\n`);
+    output.write(`execution timing: ${paths.executionTimingJsonPath}\n`);
+    if (options.includeFlowArtifacts !== false) {
+        output.write(`designed flow: ${paths.designedFlowPath}\n`);
+        output.write(`designed flow yaml: ${paths.designedFlowYamlPath}\n`);
+        output.write(`designed flow graph: ${paths.designedFlowGraphPath}\n`);
+    }
+    if (options.includeAdvisorArtifacts) {
+        output.write(`advisor evaluation: ${paths.advisorEvaluationMarkdownPath}\n`);
+        output.write(`advisor evaluation json: ${paths.advisorEvaluationJsonPath}\n`);
+    }
     if (options.includeFailureArtifacts) {
         output.write(`failure text: ${paths.failureTextPath}\n`);
         output.write(`failure json: ${paths.failureJsonPath}\n`);
@@ -106,6 +116,218 @@ function printSessionHeader(
         output.write('failure artifacts: generated only on failure\n');
     }
     output.write('==========================\n\n');
+}
+
+function printAdvisorEvaluationSummary(args: {
+    language: PromptLabLanguage;
+    advisorEvaluation: NonNullable<PromptLabRunArtifacts['advisorEvaluation']>;
+    advisorHistoryPath?: string;
+}): void {
+    const isKorean = args.language === 'ko';
+    const localizeSuitability = (value: string) =>
+        isKorean
+            ? {
+                  suitable: '적합',
+                  borderline: '경계',
+                  'not-suitable': '부적합',
+                  inconclusive: '판단 불가',
+              }[value] ?? value
+            : value;
+    const localizeLatencyRisk = (value: string) =>
+        isKorean
+            ? {
+                  acceptable: '양호',
+                  warning: '주의',
+                  high: '높음',
+              }[value] ?? value
+            : value;
+    const localizeStatus = (value: string) =>
+        isKorean
+            ? {
+                  passed: '통과',
+                  failed: '실패',
+                  inconclusive: '판단 불가',
+              }[value] ?? value
+            : value;
+    output.write(`${isKorean ? '=== Advisor 평가 ===' : '=== Advisor Evaluation ==='}\n`);
+    output.write(
+        `${isKorean ? 'Lite 모델 적합' : 'Suitable for lite usage'}: ${String(
+            args.advisorEvaluation.suitableForLiteUsage,
+        )}\n`,
+    );
+    output.write(
+        `${isKorean ? '품질 적합도' : 'Quality suitability'}: ${localizeSuitability(
+            args.advisorEvaluation.qualitySuitability,
+        )}\n`,
+    );
+    output.write(
+        `${isKorean ? '지연 리스크' : 'Latency risk'}: ${localizeLatencyRisk(args.advisorEvaluation.latencyRisk)}\n`,
+    );
+    output.write(
+        `${isKorean ? '전체 시나리오 통과율' : 'Overall scenario pass rate'}: ${
+            args.advisorEvaluation.overallPassRate
+        }\n`,
+    );
+    output.write(
+        `${isKorean ? 'Lite 직접 판정 비율' : 'Lite decision rate'}: ${
+            args.advisorEvaluation.overallLiteDecisionRate
+        }\n`,
+    );
+    output.write(
+        `${isKorean ? 'Lite 직접 판정 정답률' : 'Lite pass rate'}: ${args.advisorEvaluation.overallLitePassRate}\n`,
+    );
+    output.write(
+        `${isKorean ? '전체 fallback 비율' : 'Overall fallback rate'}: ${args.advisorEvaluation.overallFallbackRate}\n`,
+    );
+    output.write(
+        `${isKorean ? '평균 Lite 응답 시간(ms)' : 'Average lite latency (ms)'}: ${
+            args.advisorEvaluation.overallTiming.averageMs ?? 'n/a'
+        }\n`,
+    );
+    output.write(
+        `${isKorean ? 'P95 Lite 응답 시간(ms)' : 'P95 lite latency (ms)'}: ${
+            args.advisorEvaluation.overallTiming.p95Ms ?? 'n/a'
+        }\n`,
+    );
+    output.write(
+        `${isKorean ? '최대 Lite 응답 시간(ms)' : 'Max lite latency (ms)'}: ${
+            args.advisorEvaluation.overallTiming.maxMs ?? 'n/a'
+        }\n`,
+    );
+    output.write(`${args.advisorEvaluation.summary}\n`);
+    if (args.advisorEvaluation.comparison) {
+        output.write(
+            `${isKorean ? '이전 비교' : 'Compared to previous run'}: decisionRate ${
+                args.advisorEvaluation.comparison.deltaLiteDecisionRate >= 0 ? '+' : ''
+            }${args.advisorEvaluation.comparison.deltaLiteDecisionRate}, litePassRate ${
+                args.advisorEvaluation.comparison.deltaLitePassRate >= 0 ? '+' : ''
+            }${args.advisorEvaluation.comparison.deltaLitePassRate}, fallbackRate ${
+                args.advisorEvaluation.comparison.deltaFallbackRate >= 0 ? '+' : ''
+            }${args.advisorEvaluation.comparison.deltaFallbackRate}, avgLatencyMs ${
+                args.advisorEvaluation.comparison.deltaAverageLiteDurationMs === null
+                    ? 'n/a'
+                    : `${args.advisorEvaluation.comparison.deltaAverageLiteDurationMs >= 0 ? '+' : ''}${
+                          args.advisorEvaluation.comparison.deltaAverageLiteDurationMs
+                      }`
+            }\n`,
+        );
+    }
+    if (args.advisorHistoryPath) {
+        output.write(`${isKorean ? '평가 히스토리' : 'Evaluation history'}: ${args.advisorHistoryPath}\n`);
+    }
+    for (const suite of args.advisorEvaluation.suites) {
+        output.write(
+            `- ${suite.label}: liteDecisionRate=${suite.liteDecisionRate}, litePassRate=${
+                suite.litePassRate
+            }, fallbackRate=${suite.fallbackRate}, avgLatencyMs=${
+                suite.timing.averageMs ?? 'n/a'
+            }, status=${localizeStatus(suite.evaluationStatus)}, suitability=${localizeSuitability(
+                suite.suitability,
+            )}, latencyRisk=${localizeLatencyRisk(suite.latencyRisk)}\n`,
+        );
+    }
+    output.write(`${isKorean ? '===================' : '========================'}\n\n`);
+}
+
+function summarizeExecutionTiming(args: {
+    startedAt: string;
+    diagnostics: PromptLabDiagnosticEntry[];
+    completedAt?: string;
+}): PromptLabExecutionTimingSummary {
+    const totalDurationMs = Math.max(
+        0,
+        new Date(args.completedAt ?? new Date().toISOString()).getTime() - new Date(args.startedAt).getTime(),
+    );
+    const advisorBuckets = new Map<
+        string,
+        {
+            callCount: number;
+            totalDurationMs: number;
+            maxDurationMs: number;
+        }
+    >();
+
+    for (const entry of args.diagnostics) {
+        const event = entry.event;
+        if (event.scope !== 'flow-design') {
+            continue;
+        }
+        if (
+            event.action !== 'lite_advisor_selected' &&
+            event.action !== 'lite_advisor_low_confidence_fallback' &&
+            event.action !== 'lite_advisor_fallback'
+        ) {
+            continue;
+        }
+
+        const advisorId = typeof event.data?.advisorId === 'string' ? event.data.advisorId : undefined;
+        const durationMs = typeof event.data?.durationMs === 'number' ? event.data.durationMs : undefined;
+        if (!advisorId || durationMs === undefined || Number.isNaN(durationMs)) {
+            continue;
+        }
+
+        const bucket = advisorBuckets.get(advisorId) ?? {
+            callCount: 0,
+            totalDurationMs: 0,
+            maxDurationMs: 0,
+        };
+        bucket.callCount += 1;
+        bucket.totalDurationMs += durationMs;
+        bucket.maxDurationMs = Math.max(bucket.maxDurationMs, durationMs);
+        advisorBuckets.set(advisorId, bucket);
+    }
+
+    const advisors = [...advisorBuckets.entries()]
+        .map(([advisorId, bucket]) => ({
+            advisorId,
+            callCount: bucket.callCount,
+            totalDurationMs: Number(bucket.totalDurationMs.toFixed(3)),
+            averageDurationMs: Number((bucket.totalDurationMs / bucket.callCount).toFixed(3)),
+            maxDurationMs: Number(bucket.maxDurationMs.toFixed(3)),
+        }))
+        .sort((left, right) => right.totalDurationMs - left.totalDurationMs);
+    const advisorCallCount = advisors.reduce((sum, advisor) => sum + advisor.callCount, 0);
+    const advisorTotalDurationMs = Number(
+        advisors.reduce((sum, advisor) => sum + advisor.totalDurationMs, 0).toFixed(3),
+    );
+    const advisorTimeShare =
+        totalDurationMs > 0 ? Number((advisorTotalDurationMs / totalDurationMs).toFixed(3)) : 0;
+
+    return {
+        totalDurationMs,
+        advisorCallCount,
+        advisorTotalDurationMs,
+        advisorTimeShare,
+        advisors,
+    };
+}
+
+function printExecutionTimingSummary(args: {
+    language: PromptLabLanguage;
+    executionTiming: PromptLabExecutionTimingSummary;
+}): void {
+    const isKorean = args.language === 'ko';
+    output.write(`${isKorean ? '=== 실행 시간 ===' : '=== Execution Timing ==='}\n`);
+    output.write(
+        `${isKorean ? '전체 실행 시간(ms)' : 'Total run duration (ms)'}: ${args.executionTiming.totalDurationMs}\n`,
+    );
+    output.write(
+        `${isKorean ? 'Advisor 호출 수' : 'Advisor call count'}: ${args.executionTiming.advisorCallCount}\n`,
+    );
+    output.write(
+        `${isKorean ? 'Advisor 총 시간(ms)' : 'Advisor total duration (ms)'}: ${
+            args.executionTiming.advisorTotalDurationMs
+        }\n`,
+    );
+    output.write(
+        `${isKorean ? 'Advisor 시간 비중' : 'Advisor time share'}: ${args.executionTiming.advisorTimeShare}\n`,
+    );
+    for (const advisor of args.executionTiming.advisors) {
+        output.write(
+            `- ${advisor.advisorId}: callCount=${advisor.callCount}, totalDurationMs=${advisor.totalDurationMs}, averageDurationMs=${advisor.averageDurationMs}, maxDurationMs=${advisor.maxDurationMs}\n`,
+        );
+    }
+    output.write(`${isKorean ? '=================' : '======================='}\n\n`);
 }
 
 function printFailureClipboard(error: PromptLabRunError): void {
@@ -210,6 +432,7 @@ async function selectWithArrows<TValue extends string>(args: {
         args.defaultValue ? options.findIndex(option => option.value === args.defaultValue) : 0,
     );
     let selectedIndex = defaultIndex >= 0 ? defaultIndex : 0;
+    let hasRendered = false;
 
     if (!input.isTTY || !output.isTTY) {
         output.write(`${args.prompt}\n`);
@@ -224,12 +447,18 @@ async function selectWithArrows<TValue extends string>(args: {
     input.setRawMode?.(true);
 
     const render = () => {
-        output.write(`\n${args.prompt}\n`);
+        if (!hasRendered) {
+            output.write('\n');
+        } else {
+            output.write(`\x1B[${options.length + 1}A`);
+            output.write('\r');
+        }
+        output.write('\x1B[0J');
+        output.write(`${args.prompt}\n`);
         options.forEach((option, index) => {
             output.write(`${index === selectedIndex ? '❯' : ' '} ${option.label}\n`);
         });
-        output.write('\x1B[0J');
-        output.write(`\x1B[${options.length + 1}A`);
+        hasRendered = true;
     };
 
     render();
@@ -294,6 +523,68 @@ async function selectModelWithCursor(args: {
     }
 
     return (await args.rl.question(`${args.prompt} > `)).trim() || args.defaultValue;
+}
+
+function printSelectedDefaults(args: {
+    language: PromptLabLanguage;
+    mode: PromptLabMode;
+    provider: PromptLabProvider;
+    mainModel: string;
+    liteModel: string;
+    skillName?: ProductFlowSkill;
+}): void {
+    const isKorean = args.language === 'ko';
+    output.write(`${isKorean ? '기본 설정' : 'Default settings'}:\n`);
+    output.write(`- ${isKorean ? '모드' : 'Mode'}: ${args.mode}\n`);
+    output.write(`- ${isKorean ? 'Provider' : 'Provider'}: ${args.provider}\n`);
+    if (args.skillName) {
+        output.write(`- ${isKorean ? '스킬' : 'Skill'}: ${args.skillName}\n`);
+    }
+    output.write(`- ${isKorean ? '메인 모델' : 'Main model'}: ${args.mainModel}\n`);
+    output.write(`- ${isKorean ? 'Lite 모델' : 'Lite model'}: ${args.liteModel}\n\n`);
+}
+
+function truncateRequirementLabel(requirement: string, maxLength = 72): string {
+    if (requirement.length <= maxLength) {
+        return requirement;
+    }
+    return `${requirement.slice(0, maxLength - 1)}…`;
+}
+
+async function selectRequirementWithHistory(args: {
+    prompt: string;
+    historyPrompt: string;
+    newRequirementOptionLabel: string;
+    outputRoot?: string;
+    rl: ReturnType<typeof createInterface>;
+}): Promise<string> {
+    const history = await readPromptLabRequirementHistory({ outputRoot: args.outputRoot });
+    if (history.length === 0) {
+        return (await args.rl.question(`${args.prompt}\n> `)).trim();
+    }
+
+    const newValue = '__new_requirement__';
+    const selected = await selectWithArrows({
+        prompt: `${args.historyPrompt} (↑/↓ 후 Enter)`,
+        options: [
+            ...history.map((entry, index) => ({
+                value: `history:${index}`,
+                label: truncateRequirementLabel(entry.requirement),
+            })),
+            {
+                value: newValue,
+                label: args.newRequirementOptionLabel,
+            },
+        ],
+        defaultValue: history[0] ? 'history:0' : newValue,
+    });
+
+    if (selected === newValue) {
+        return (await args.rl.question(`${args.prompt}\n> `)).trim();
+    }
+
+    const selectedIndex = Number.parseInt(selected.replace('history:', ''), 10);
+    return history[selectedIndex]?.requirement ?? '';
 }
 
 function renderFlowSnapshotMarkdown(event: FlowDesignEvent | undefined): string {
@@ -609,36 +900,88 @@ async function main() {
         const copy = await getPromptLabLanguageCopy(language);
 
         output.write(`${copy.welcome}\n`);
-        const defaultProvider = resolveDefaultProvider(manifest.defaults.providerOrder);
-        const provider = await selectWithArrows({
-            prompt: `${copy.providerPrompt} (↑/↓ 후 Enter)`,
-            options: manifest.defaults.providerOrder.map(value => ({ value, label: value })),
-            defaultValue: defaultProvider,
+        const mode = await selectWithArrows({
+            prompt: `${copy.modePrompt} (↑/↓ 후 Enter)`,
+            options: [
+                { value: 'run', label: language === 'ko' ? '일반 실행' : 'Run session' },
+                { value: 'advisor-eval', label: language === 'ko' ? 'Advisor 평가 전용' : 'Advisor evaluation only' },
+            ],
+            defaultValue: manifest.defaults.mode as PromptLabMode,
         });
         const defaultSkill = manifest.defaults.skillName;
-        const skillName = await selectWithArrows({
-            prompt: `${copy.skillPrompt} (↑/↓ 후 Enter)`,
-            options: manifest.defaults.skillOrder.map(value => ({ value, label: value })),
-            defaultValue: defaultSkill,
+        const defaultProvider = resolveDefaultProvider(manifest.defaults.providerOrder);
+        let provider = defaultProvider;
+        let skillName = mode === 'run' ? defaultSkill : undefined;
+        let mainModel = defaultMainModel(provider);
+        let liteModel = defaultLiteModel(provider, mainModel);
+
+        printSelectedDefaults({
+            language,
+            mode,
+            provider,
+            skillName,
+            mainModel,
+            liteModel,
         });
-        const mainModelDefault = defaultMainModel(provider);
-        const modelOptions = await getPromptLabModelOptions(provider);
-        const mainModel = await selectModelWithCursor({
-            prompt: copy.mainModelPrompt,
-            options: modelOptions.main,
-            defaultValue: mainModelDefault,
-            rl,
+
+        const useDefaultSettings = await selectWithArrows({
+            prompt: `${copy.settingsPrompt} (↑/↓ 후 Enter)`,
+            options: [
+                {
+                    value: 'default',
+                    label: language === 'ko' ? '기본 설정으로 계속 (권장)' : 'Continue with defaults (Recommended)',
+                },
+                {
+                    value: 'customize',
+                    label: language === 'ko' ? '설정 변경' : 'Customize settings',
+                },
+            ],
+            defaultValue: 'default',
         });
-        const liteModelDefault = defaultLiteModel(provider, mainModel);
-        const liteModel = await selectModelWithCursor({
-            prompt: copy.liteModelPrompt,
-            options: modelOptions.lite,
-            defaultValue: liteModelDefault,
-            rl,
-        });
-        const requirement = (await rl.question(`${copy.requirementPrompt}\n> `)).trim();
-        if (!requirement) {
+
+        if (useDefaultSettings === 'customize') {
+            provider = await selectWithArrows({
+                prompt: `${copy.providerPrompt} (↑/↓ 후 Enter)`,
+                options: manifest.defaults.providerOrder.map(value => ({ value, label: value })),
+                defaultValue: defaultProvider,
+            });
+            skillName =
+                mode === 'run'
+                    ? await selectWithArrows({
+                          prompt: `${copy.skillPrompt} (↑/↓ 후 Enter)`,
+                          options: manifest.defaults.skillOrder.map(value => ({ value, label: value })),
+                          defaultValue: defaultSkill,
+                      })
+                    : undefined;
+            const modelOptions = await getPromptLabModelOptions(provider);
+            mainModel = await selectModelWithCursor({
+                prompt: copy.mainModelPrompt,
+                options: modelOptions.main,
+                defaultValue: defaultMainModel(provider),
+                rl,
+            });
+            liteModel = await selectModelWithCursor({
+                prompt: copy.liteModelPrompt,
+                options: modelOptions.lite,
+                defaultValue: defaultLiteModel(provider, mainModel),
+                rl,
+            });
+        }
+        const requirement =
+            mode === 'run'
+                ? await selectRequirementWithHistory({
+                      prompt: copy.requirementPrompt,
+                      historyPrompt: copy.recentRequirementsPrompt,
+                      newRequirementOptionLabel: copy.newRequirementOptionLabel,
+                      outputRoot: manifest.defaults.outputRoot,
+                      rl,
+                  })
+                : 'advisor-evaluation';
+        if (mode === 'run' && !requirement) {
             throw new Error('Requirement is required.');
+        }
+        if (mode === 'run') {
+            await cachePromptLabRequirement({ outputRoot: manifest.defaults.outputRoot }, requirement);
         }
 
         output.write(`${copy.startMessage}\n`);
@@ -646,7 +989,9 @@ async function main() {
         const status = createLiveStatusPrinter();
         let latestDesignEvent: FlowDesignEvent | undefined;
         let latestPaths: PromptLabArtifactPaths | undefined;
+        const diagnosticEntries: PromptLabDiagnosticEntry[] = [];
         const config: PromptLabSessionConfig = {
+            mode,
             provider,
             mainModel,
             liteModel,
@@ -654,6 +999,41 @@ async function main() {
             skillName,
             outputRoot: manifest.defaults.outputRoot,
         };
+
+        if (mode === 'advisor-eval') {
+            const artifacts = await product.runAdvisorEvaluation({ config });
+            printSessionHeader(
+                artifacts.session.sessionDir,
+                {
+                    timelinePath: join(artifacts.session.sessionDir, 'timeline.ndjson'),
+                    designPath: join(artifacts.session.sessionDir, 'design-events.ndjson'),
+                    diagnosticsPath: join(artifacts.session.sessionDir, 'diagnostics.ndjson'),
+                    resultPath: join(artifacts.session.sessionDir, 'result.json'),
+                    designedFlowPath: join(artifacts.session.sessionDir, 'designed-flow.md'),
+                    designedFlowYamlPath: join(artifacts.session.sessionDir, 'designed-flow.yml'),
+                    designedFlowGraphPath: join(artifacts.session.sessionDir, 'designed-flow.reagraph.html'),
+                    advisorEvaluationJsonPath: join(artifacts.session.sessionDir, 'advisor-evaluation.json'),
+                    advisorEvaluationMarkdownPath: join(artifacts.session.sessionDir, 'advisor-evaluation.md'),
+                    selfReviewPath: join(artifacts.session.sessionDir, 'self-review.json'),
+                    feedbackPath: join(artifacts.session.sessionDir, 'user-feedback.txt'),
+                    promptJsonPath: join(artifacts.session.sessionDir, 'codex-prompt.json'),
+                    promptMarkdownPath: join(artifacts.session.sessionDir, 'codex-prompt.md'),
+                    summaryPath: join(artifacts.session.sessionDir, 'summary.md'),
+                    executionTimingJsonPath: join(artifacts.session.sessionDir, 'execution-timing.json'),
+                    artifactsPath: join(artifacts.session.sessionDir, 'artifacts.json'),
+                    failureJsonPath: join(artifacts.session.sessionDir, 'failure.json'),
+                    failureTextPath: join(artifacts.session.sessionDir, 'failure.txt'),
+                },
+                { includeAdvisorArtifacts: true, includeFlowArtifacts: false },
+            );
+            printAdvisorEvaluationSummary({
+                language,
+                advisorEvaluation: artifacts.advisorEvaluation,
+                advisorHistoryPath: getPromptLabAdvisorEvaluationHistoryPath(config),
+            });
+            output.write(`${copy.completionMessage} ${artifacts.session.sessionDir}\n`);
+            return;
+        }
 
         const { session, result, gateway } = await product.runRequirement({
             config,
@@ -672,11 +1052,17 @@ async function main() {
                     status.updateActivity(summarizeDesignEvent(event), event.message);
                 },
                 onDiagnosticEvent: entry => {
+                    diagnosticEntries.push(entry);
                     status.updateLog(entry.event.message);
                 },
             },
         });
         status.finish('agent execution completed');
+        const executionTiming = summarizeExecutionTiming({
+            startedAt: session.startedAt,
+            completedAt: new Date().toISOString(),
+            diagnostics: diagnosticEntries,
+        });
 
         if (latestPaths) {
             await writeText(latestPaths.designedFlowPath, renderFlowSnapshotMarkdown(latestDesignEvent));
@@ -688,6 +1074,10 @@ async function main() {
         printRequirementAssessment({
             language,
             ...result.requirementAssessment,
+        });
+        printExecutionTimingSummary({
+            language,
+            executionTiming,
         });
 
         const selfReview = await product.createSelfReview({ session, result, gateway });
@@ -701,6 +1091,7 @@ async function main() {
             result,
             selfReview,
             userFeedback: feedback,
+            executionTiming,
             gateway,
         });
 

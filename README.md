@@ -191,11 +191,13 @@ npm run prompt-lab
 
 `prompt-lab` starts an interactive CLI that:
 
+- chooses an execution mode: normal run or advisor-evaluation-only
 - chooses provider plus `main` and `lite` models
 - uses cursor-driven selection menus for language, provider, skill, and recommended model choices
-- chooses which flow skill to validate (`flow-preflight-validator`, `flow-designer`, or `node-config-designer`)
+- chooses which flow skill to validate (`flow-preflight-validator`, `flow-designer`, or `node-config-designer`) in normal run mode
 - follows Korean by default, with English selectable
 - runs the real agent flow and records artifacts under `output/labs/`
+- can evaluate advisor quality against resource-backed scenario suites in advisor-evaluation mode and summarize whether the current lite model is suitable
 - shows a one-line live execution status while the agent is running
 - prints a final flow summary when a design snapshot is available
 - generates a self-review
@@ -211,6 +213,9 @@ Typical prompt-lab artifacts:
 - `designed-flow.yml`: final `FlowDocument` artifact with blocks, nodes, node config, ports, edges, and related flow metadata
 - `designed-flow.reagraph.html`: Reagraph-based interactive graph view for the final captured flow snapshot
 - `result.json`: normalized product result
+- `execution-timing.json`: end-to-end run timing summary plus advisor timing contribution for normal run mode
+- `advisor-evaluation.json`: structured advisor quality report with suite/scenario pass and fallback rates, generated in advisor-evaluation mode
+- `advisor-evaluation.md`: readable advisor quality summary for the current lite model, generated in advisor-evaluation mode
 - `self-review.json`: structured self-review
 - `codex-prompt.md`: final synthesized Codex prompt
 

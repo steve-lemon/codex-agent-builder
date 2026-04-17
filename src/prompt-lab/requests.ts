@@ -1,11 +1,16 @@
 import type { StructuredGenerationInput } from '../llm/types';
 import { defineStructuredSchema } from '../llm/structured-schema';
 import type { ProductDesignRunResult } from '../product/types';
+import type { AdvisorEvaluationReport } from '../flow/design/advisor-evaluation';
 import { getPromptLabManifest } from './manifest';
 import { PromptLabCodexPromptSchema, PromptLabSelfReviewSchema } from './schemas';
 import type { PromptLabLanguage, PromptLabSelfReview, PromptLabSessionRecord } from './types';
 
-function buildRunSnapshot(session: PromptLabSessionRecord, result: ProductDesignRunResult) {
+function buildRunSnapshot(
+    session: PromptLabSessionRecord,
+    result: ProductDesignRunResult,
+    advisorEvaluation?: AdvisorEvaluationReport,
+) {
     return {
         sessionId: session.sessionId,
         requirement: session.requirement,
@@ -23,6 +28,20 @@ function buildRunSnapshot(session: PromptLabSessionRecord, result: ProductDesign
         outputContract: result.outputContract,
         payload: result.finalResult?.payload,
         trace: result.trace.slice(-20),
+        advisorEvaluation: advisorEvaluation
+            ? {
+                  summary: advisorEvaluation.summary,
+                  suitableForLiteUsage: advisorEvaluation.suitableForLiteUsage,
+                  overallPassRate: advisorEvaluation.overallPassRate,
+                  overallFallbackRate: advisorEvaluation.overallFallbackRate,
+                  suites: advisorEvaluation.suites.map(item => ({
+                      advisorId: item.advisorId,
+                      passRate: item.passRate,
+                      fallbackRate: item.fallbackRate,
+                      suitability: item.suitability,
+                  })),
+              }
+            : undefined,
     };
 }
 
@@ -41,6 +60,7 @@ function derivePromptGuardrails(requirement: string, userFeedback: string) {
 export async function buildPromptLabSelfReviewRequest(args: {
     session: PromptLabSessionRecord;
     result: ProductDesignRunResult;
+    advisorEvaluation?: AdvisorEvaluationReport;
     language: PromptLabLanguage;
 }): Promise<StructuredGenerationInput<typeof PromptLabSelfReviewSchema>> {
     const manifest = await getPromptLabManifest();
@@ -56,7 +76,7 @@ export async function buildPromptLabSelfReviewRequest(args: {
                 role: 'user',
                 content: JSON.stringify({
                     language: args.language,
-                    run: buildRunSnapshot(args.session, args.result),
+                    run: buildRunSnapshot(args.session, args.result, args.advisorEvaluation),
                 }),
             },
         ],
@@ -67,6 +87,7 @@ export async function buildPromptLabSelfReviewRequest(args: {
 export async function buildPromptLabCodexPromptRequest(args: {
     session: PromptLabSessionRecord;
     result: ProductDesignRunResult;
+    advisorEvaluation?: AdvisorEvaluationReport;
     selfReview: PromptLabSelfReview;
     userFeedback: string;
     language: PromptLabLanguage;
@@ -84,7 +105,7 @@ export async function buildPromptLabCodexPromptRequest(args: {
                 role: 'user',
                 content: JSON.stringify({
                     language: args.language,
-                    run: buildRunSnapshot(args.session, args.result),
+                    run: buildRunSnapshot(args.session, args.result, args.advisorEvaluation),
                     selfReview: args.selfReview,
                     userFeedback: args.userFeedback,
                     guardrails: derivePromptGuardrails(args.session.requirement, args.userFeedback),
@@ -99,6 +120,7 @@ export async function buildPromptLabCodexPromptRequest(args: {
 export async function buildPromptLabCodexPromptRewriteRequest(args: {
     session: PromptLabSessionRecord;
     result: ProductDesignRunResult;
+    advisorEvaluation?: AdvisorEvaluationReport;
     selfReview: PromptLabSelfReview;
     userFeedback: string;
     language: PromptLabLanguage;
@@ -118,7 +140,7 @@ export async function buildPromptLabCodexPromptRewriteRequest(args: {
                 content: JSON.stringify({
                     language: args.language,
                     requirement: args.session.requirement,
-                    run: buildRunSnapshot(args.session, args.result),
+                    run: buildRunSnapshot(args.session, args.result, args.advisorEvaluation),
                     selfReview: args.selfReview,
                     userFeedback: args.userFeedback,
                     draftPrompt: args.draftPrompt,

@@ -5,24 +5,29 @@ advisors:
     description: Selects the best flow-design task type for the request.
     fallbackNote: Fall back to deterministic catalog scoring when the lite model is unavailable or uncertain.
     confidenceThreshold: 0.55
+    includeRationale: false
+    candidateLimit: 3
     systemPrompt: >-
       Choose the best flow-design task type for the request. Use only one of the provided taskType ids.
       Prefer the most specific task type that matches the user's requested output shape and intent.
-      If uncertain, still choose the closest taskType and explain briefly.
+      If uncertain, still choose the closest taskType.
   - id: flow-design.task-graph
     label: Flow Task Graph
     description: Selects the best flow-design task-graph template for the request.
     fallbackNote: Fall back to deterministic template scoring when the lite model is unavailable or uncertain.
     confidenceThreshold: 0.55
+    includeRationale: false
+    candidateLimit: 3
     systemPrompt: >-
       Choose the best flow-design task graph template for the request. Use only one of the provided template ids.
       Prefer the most specific workflow that matches the requested task instead of defaulting to generic generation.
-      If uncertain, still choose the closest template and explain briefly.
+      If uncertain, still choose the closest template.
   - id: flow-design.ai-delegation
     label: AI Delegation
     description: Judges whether ai-generate can absorb a task node without a specialized block.
     fallbackNote: Fall back to deterministic AI-delegation heuristics when the lite model is unavailable or uncertain.
     confidenceThreshold: 0.6
+    includeRationale: false
     systemPrompt: >-
       Decide whether the ai-generate block can reasonably handle the described task node without requiring a specialized
       external-system block. Return delegable=true only for text-centric reasoning, transformation, extraction,

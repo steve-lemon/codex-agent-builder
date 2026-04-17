@@ -22,12 +22,13 @@ export interface FlowAiDelegationAdvisor {
     }): Promise<FlowAiDelegationRecommendation>;
 }
 
-const FlowAiDelegationSchema = z.object({
-    kind: z.literal('flow-ai-delegation'),
-    delegable: z.boolean(),
-    confidence: z.number().min(0).max(1).optional(),
-    rationale: z.string().optional(),
-});
+function createFlowAiDelegationSchema(includeRationale: boolean) {
+    return z.object({
+        delegable: z.boolean(),
+        confidence: z.number().min(0).max(1),
+        ...(includeRationale ? { rationale: z.string() } : {}),
+    });
+}
 
 function isTaskNodeAiDelegableDeterministically(
     operation: string,
@@ -78,7 +79,17 @@ export const defaultFlowAiDelegationAdvisor: FlowAiDelegationAdvisor = {
 };
 
 export class LlmGatewayFlowAiDelegationAdvisor implements FlowAiDelegationAdvisor {
-    constructor(private readonly gateway: LlmGateway) {}
+    constructor(
+        private readonly gateway: LlmGateway,
+        private readonly options: {
+            emitLogs?: boolean;
+            onDecision?: (event: {
+                type: 'model' | 'fallback-no-gateway' | 'fallback-threshold' | 'fallback-error';
+                error?: unknown;
+                durationMs?: number;
+            }) => void;
+        } = {},
+    ) {}
 
     async recommend(args: {
         userRequest: string;
@@ -88,14 +99,20 @@ export class LlmGatewayFlowAiDelegationAdvisor implements FlowAiDelegationAdviso
         expectedOutputs: string[];
     }): Promise<FlowAiDelegationRecommendation> {
         const advisor = await getLiteAdvisorDefinition('flow-design.advisors', 'flow-design.ai-delegation');
+        const includeRationale = advisor.includeRationale === true;
         return await runLiteAdvisor({
             advisorId: advisor.id,
             scope: 'flow-design',
             gateway: this.gateway,
             systemPrompt: advisor.systemPrompt,
             fallbackNote: advisor.fallbackNote,
-            schema: defineStructuredSchema('flow_ai_delegation_classification', FlowAiDelegationSchema),
+            schema: defineStructuredSchema(
+                'flow_ai_delegation_classification',
+                createFlowAiDelegationSchema(includeRationale),
+            ),
             input: args,
+            emitLogs: this.options.emitLogs,
+            onDecision: this.options.onDecision,
             shouldFallback: result =>
                 typeof advisor.confidenceThreshold === 'number' &&
                 typeof result.confidence === 'number' &&
@@ -103,7 +120,7 @@ export class LlmGatewayFlowAiDelegationAdvisor implements FlowAiDelegationAdviso
             mapResult: result => ({
                 delegable: result.delegable,
                 confidence: result.confidence,
-                rationale: result.rationale,
+                rationale: typeof result.rationale === 'string' ? result.rationale : undefined,
                 source: 'model',
             }),
             fallback: () => defaultFlowAiDelegationAdvisor.recommend(args),

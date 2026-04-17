@@ -1,11 +1,18 @@
 import { join } from 'node:path';
 import { addDiagnosticListener, removeDiagnosticListener, type DiagnosticListener } from '../diagnostics/logger';
 import { AgentError } from '../errors/agent-error';
-import { renderFlowDesignSnapshotAsReagraph } from '../graph/renderer';
+import { evaluateFlowDesignAdvisors, type AdvisorEvaluationReport } from '../flow/design/advisor-evaluation';
 import { FlowDesignProduct } from '../product';
 import type { ProductDesignRunResult, ProductFlowSkill } from '../product/types';
 import { FakeLlmGateway, GeminiGateway, OpenAiGateway, type LlmGateway } from '../llm';
-import { appendNdjson, createPromptLabSession, writeJson, writeText } from './files';
+import {
+    appendNdjson,
+    appendPromptLabAdvisorEvaluationHistory,
+    createPromptLabSession,
+    readPromptLabAdvisorEvaluationHistory,
+    writeJson,
+    writeText,
+} from './files';
 import { getPromptLabManifest } from './manifest';
 import {
     buildPromptLabCodexPromptRequest,
@@ -13,8 +20,10 @@ import {
     buildPromptLabSelfReviewRequest,
 } from './requests';
 import type {
+    PromptLabAdvisorEvalArtifacts,
     PromptLabArtifactPaths,
     PromptLabCodexPrompt,
+    PromptLabExecutionTimingSummary,
     PromptLabEventHooks,
     PromptLabRunArtifacts,
     PromptLabSelfReview,
@@ -114,6 +123,98 @@ function renderCodexPromptMarkdown(prompt: PromptLabCodexPrompt): string {
         ...prompt.usageNotes.map(note => `- ${note}`),
         '',
     ].join('\n');
+}
+
+function renderAdvisorEvaluationMarkdown(report: AdvisorEvaluationReport): string {
+    return [
+        '# Advisor Evaluation',
+        '',
+        `- Provider: ${report.provider}`,
+        `- Lite Model: ${report.liteModel}`,
+        `- Recorded At: ${report.recordedAt}`,
+        `- Overall Scenario Pass Rate: ${report.overallPassRate}`,
+        `- Overall Lite Decision Rate: ${report.overallLiteDecisionRate}`,
+        `- Overall Lite Pass Rate: ${report.overallLitePassRate}`,
+        `- Overall Fallback Rate: ${report.overallFallbackRate}`,
+        `- Average Lite Latency (ms): ${report.overallTiming.averageMs ?? 'n/a'}`,
+        `- P95 Lite Latency (ms): ${report.overallTiming.p95Ms ?? 'n/a'}`,
+        `- Max Lite Latency (ms): ${report.overallTiming.maxMs ?? 'n/a'}`,
+        `- Suitable For Lite Usage: ${String(report.suitableForLiteUsage)}`,
+        `- Quality Suitability: ${report.qualitySuitability}`,
+        `- Latency Risk: ${report.latencyRisk}`,
+        '',
+        report.summary,
+        '',
+        ...(report.comparison
+            ? [
+                  '## Previous Run Comparison',
+                  '',
+                  `- Previous Recorded At: ${report.comparison.previousRecordedAt}`,
+                  `- Previous Session ID: ${report.comparison.previousSessionId}`,
+                  `- Delta Lite Decision Rate: ${report.comparison.deltaLiteDecisionRate}`,
+                  `- Delta Lite Pass Rate: ${report.comparison.deltaLitePassRate}`,
+                  `- Delta Fallback Rate: ${report.comparison.deltaFallbackRate}`,
+                  `- Delta Average Lite Latency (ms): ${report.comparison.deltaAverageLiteDurationMs ?? 'n/a'}`,
+                  '',
+              ]
+            : []),
+        ...report.suites.flatMap(suite => [
+            `## ${suite.label}`,
+            '',
+            `- Advisor ID: ${suite.advisorId}`,
+            `- Scenario Pass Rate: ${suite.passRate}`,
+            `- Lite Decision Rate: ${suite.liteDecisionRate}`,
+            `- Lite Pass Rate: ${suite.litePassRate}`,
+            `- Fallback Rate: ${suite.fallbackRate}`,
+            `- Average Lite Latency (ms): ${suite.timing.averageMs ?? 'n/a'}`,
+            `- P95 Lite Latency (ms): ${suite.timing.p95Ms ?? 'n/a'}`,
+            `- Max Lite Latency (ms): ${suite.timing.maxMs ?? 'n/a'}`,
+            `- Evaluation Status: ${suite.evaluationStatus}`,
+            `- Suitability: ${suite.suitability}`,
+            `- Latency Risk: ${suite.latencyRisk}`,
+            `- Accepted Lite Model: ${String(suite.acceptedLiteModel)}`,
+            '',
+            suite.summary,
+            '',
+            '### Scenarios',
+            '',
+            ...suite.scenarios.map(
+                scenario =>
+                    `- ${scenario.label ?? scenario.scenarioId}: ${scenario.passed ? 'pass' : 'fail'} (${
+                        scenario.source
+                    })`,
+            ),
+            '',
+        ]),
+    ].join('\n');
+}
+
+function buildAdvisorEvaluationComparison(args: {
+    currentProvider: string;
+    currentLiteModel: string;
+    history: Awaited<ReturnType<typeof readPromptLabAdvisorEvaluationHistory>>;
+}): {
+    previousEntry?: (typeof args.history)[number];
+    comparison?: AdvisorEvaluationReport['comparison'];
+} {
+    const previous = args.history.find(
+        entry => entry.provider === args.currentProvider && entry.liteModel === args.currentLiteModel,
+    );
+    if (!previous) {
+        return {};
+    }
+
+    return {
+        previousEntry: previous,
+        comparison: {
+            previousRecordedAt: previous.recordedAt,
+            previousSessionId: previous.sessionId,
+            deltaLiteDecisionRate: 0,
+            deltaLitePassRate: 0,
+            deltaFallbackRate: 0,
+            deltaAverageLiteDurationMs: 0,
+        },
+    };
 }
 
 function looksCodeLikeCodexPrompt(prompt: string): boolean {
@@ -313,6 +414,8 @@ function dedupeLocalizedAssessmentCaveats(args: {
 function renderSummaryMarkdown(args: {
     session: PromptLabSessionRecord;
     result: ProductDesignRunResult;
+    advisorEvaluation?: AdvisorEvaluationReport;
+    executionTiming?: PromptLabExecutionTimingSummary;
     selfReview: PromptLabSelfReview;
     userFeedback: string;
     codexPrompt: PromptLabCodexPrompt;
@@ -325,6 +428,8 @@ function renderSummaryMarkdown(args: {
               agentResult: '에이전트 결과',
               requirementAssessment: '요구 충족도 평가',
               selfReview: '자가 평가',
+              advisorEvaluation: 'Advisor 평가',
+              executionTiming: '실행 시간',
               userFeedback: '사용자 피드백',
               finalPromptSummary: '최종 Codex 프롬프트 요약',
               sessionId: '세션 ID',
@@ -346,6 +451,8 @@ function renderSummaryMarkdown(args: {
               agentResult: 'Agent Result',
               requirementAssessment: 'Requirement Assessment',
               selfReview: 'Self Review',
+              advisorEvaluation: 'Advisor Evaluation',
+              executionTiming: 'Execution Timing',
               userFeedback: 'User Feedback',
               finalPromptSummary: 'Final Codex Prompt Summary',
               sessionId: 'Session ID',
@@ -423,6 +530,92 @@ function renderSummaryMarkdown(args: {
                   '',
               ]
             : ['']),
+        ...(args.advisorEvaluation
+            ? [
+                  `## ${sections.advisorEvaluation}`,
+                  '',
+                  `- ${sections.summary}: ${args.advisorEvaluation.summary}`,
+                  `- ${isKorean ? 'Lite 모델 적합' : 'Suitable For Lite Usage'}: ${String(
+                      args.advisorEvaluation.suitableForLiteUsage,
+                  )}`,
+                  `- ${isKorean ? '품질 적합도' : 'Quality Suitability'}: ${args.advisorEvaluation.qualitySuitability}`,
+                  `- ${isKorean ? '지연 리스크' : 'Latency Risk'}: ${args.advisorEvaluation.latencyRisk}`,
+                  `- ${isKorean ? '전체 시나리오 통과율' : 'Overall Scenario Pass Rate'}: ${
+                      args.advisorEvaluation.overallPassRate
+                  }`,
+                  `- ${isKorean ? 'Lite 직접 판정 비율' : 'Overall Lite Decision Rate'}: ${
+                      args.advisorEvaluation.overallLiteDecisionRate
+                  }`,
+                  `- ${isKorean ? 'Lite 직접 판정 정답률' : 'Overall Lite Pass Rate'}: ${
+                      args.advisorEvaluation.overallLitePassRate
+                  }`,
+                  `- ${isKorean ? '전체 fallback 비율' : 'Overall Fallback Rate'}: ${
+                      args.advisorEvaluation.overallFallbackRate
+                  }`,
+                  `- ${isKorean ? '평균 Lite 응답 시간(ms)' : 'Average Lite Latency (ms)'}: ${
+                      args.advisorEvaluation.overallTiming.averageMs ?? 'n/a'
+                  }`,
+                  `- ${isKorean ? 'P95 Lite 응답 시간(ms)' : 'P95 Lite Latency (ms)'}: ${
+                      args.advisorEvaluation.overallTiming.p95Ms ?? 'n/a'
+                  }`,
+                  `- ${isKorean ? '최대 Lite 응답 시간(ms)' : 'Max Lite Latency (ms)'}: ${
+                      args.advisorEvaluation.overallTiming.maxMs ?? 'n/a'
+                  }`,
+                  ...(args.advisorEvaluation.comparison
+                      ? [
+                            `- ${isKorean ? '이전 실행 시각' : 'Previous Recorded At'}: ${
+                                args.advisorEvaluation.comparison.previousRecordedAt
+                            }`,
+                            `- ${isKorean ? 'Lite 직접 판정 비율 변화' : 'Delta Lite Decision Rate'}: ${
+                                args.advisorEvaluation.comparison.deltaLiteDecisionRate
+                            }`,
+                            `- ${isKorean ? 'Lite 직접 판정 정답률 변화' : 'Delta Lite Pass Rate'}: ${
+                                args.advisorEvaluation.comparison.deltaLitePassRate
+                            }`,
+                            `- ${isKorean ? 'fallback 비율 변화' : 'Delta Fallback Rate'}: ${
+                                args.advisorEvaluation.comparison.deltaFallbackRate
+                            }`,
+                            `- ${isKorean ? '평균 Lite 응답 시간 변화(ms)' : 'Delta Average Lite Latency (ms)'}: ${
+                                args.advisorEvaluation.comparison.deltaAverageLiteDurationMs ?? 'n/a'
+                            }`,
+                        ]
+                      : []),
+                  '',
+                  ...args.advisorEvaluation.suites.map(
+                      suite =>
+                          `- ${suite.label}: liteDecisionRate=${suite.liteDecisionRate}, litePassRate=${
+                              suite.litePassRate
+                          }, fallbackRate=${suite.fallbackRate}, avgLatencyMs=${
+                              suite.timing.averageMs ?? 'n/a'
+                          }, status=${suite.evaluationStatus}, suitability=${suite.suitability}, latencyRisk=${
+                              suite.latencyRisk
+                          }`,
+                  ),
+                  '',
+              ]
+            : []),
+        ...(args.executionTiming
+            ? [
+                  `## ${sections.executionTiming}`,
+                  '',
+                  `- ${isKorean ? '전체 실행 시간(ms)' : 'Total Run Duration (ms)'}: ${
+                      args.executionTiming.totalDurationMs
+                  }`,
+                  `- ${isKorean ? 'Advisor 호출 수' : 'Advisor Call Count'}: ${args.executionTiming.advisorCallCount}`,
+                  `- ${isKorean ? 'Advisor 총 시간(ms)' : 'Advisor Total Duration (ms)'}: ${
+                      args.executionTiming.advisorTotalDurationMs
+                  }`,
+                  `- ${isKorean ? 'Advisor 시간 비중' : 'Advisor Time Share'}: ${
+                      args.executionTiming.advisorTimeShare
+                  }`,
+                  '',
+                  ...args.executionTiming.advisors.map(
+                      advisor =>
+                          `- ${advisor.advisorId}: callCount=${advisor.callCount}, totalDurationMs=${advisor.totalDurationMs}, averageDurationMs=${advisor.averageDurationMs}, maxDurationMs=${advisor.maxDurationMs}`,
+                  ),
+                  '',
+              ]
+            : []),
         `## ${sections.selfReview}`,
         '',
         args.selfReview.summary,
@@ -449,11 +642,14 @@ function buildArtifactPaths(sessionDir: string): PromptLabArtifactPaths {
         designedFlowPath: join(sessionDir, 'designed-flow.md'),
         designedFlowYamlPath: join(sessionDir, 'designed-flow.yml'),
         designedFlowGraphPath: join(sessionDir, 'designed-flow.reagraph.html'),
+        advisorEvaluationJsonPath: join(sessionDir, 'advisor-evaluation.json'),
+        advisorEvaluationMarkdownPath: join(sessionDir, 'advisor-evaluation.md'),
         selfReviewPath: join(sessionDir, 'self-review.json'),
         feedbackPath: join(sessionDir, 'user-feedback.txt'),
         promptJsonPath: join(sessionDir, 'codex-prompt.json'),
         promptMarkdownPath: join(sessionDir, 'codex-prompt.md'),
         summaryPath: join(sessionDir, 'summary.md'),
+        executionTimingJsonPath: join(sessionDir, 'execution-timing.json'),
         artifactsPath: join(sessionDir, 'artifacts.json'),
         failureJsonPath: join(sessionDir, 'failure.json'),
         failureTextPath: join(sessionDir, 'failure.txt'),
@@ -532,8 +728,14 @@ export class PromptLabProduct {
         const previousRuntimeProvider = process.env.FLOW_RUNTIME_PROVIDER;
         const previousRuntimeMainModel = process.env.FLOW_RUNTIME_MAIN_MODEL;
         const previousRuntimeLiteModel = process.env.FLOW_RUNTIME_LITE_MODEL;
+        const skillName = args.config.skillName;
 
         try {
+            if (!skillName) {
+                throw new AgentError('Prompt Lab run mode requires a skillName.', {
+                    code: 'PROMPT_LAB_SKILL_REQUIRED',
+                });
+            }
             process.env.FLOW_RUNTIME_PROVIDER = args.config.provider;
             process.env.FLOW_RUNTIME_MAIN_MODEL = args.config.mainModel;
             process.env.FLOW_RUNTIME_LITE_MODEL = args.config.liteModel;
@@ -552,7 +754,7 @@ export class PromptLabProduct {
             };
             addDiagnosticListener(diagnosticListener);
 
-            const result = await runFlowSkill(product, args.config.skillName, args.requirement, {
+            const result = await runFlowSkill(product, skillName, args.requirement, {
                 onTimelineEvent: event => {
                     void appendNdjson(paths.timelinePath, event);
                     args.hooks?.onTimelineEvent?.(event);
@@ -605,12 +807,14 @@ export class PromptLabProduct {
     async createSelfReview(args: {
         session: PromptLabSessionRecord;
         result: ProductDesignRunResult;
+        advisorEvaluation?: AdvisorEvaluationReport;
         gateway: LlmGateway;
     }): Promise<PromptLabSelfReview> {
         const selfReview = await args.gateway.generateStructured(
             await buildPromptLabSelfReviewRequest({
                 session: args.session,
                 result: args.result,
+                advisorEvaluation: args.advisorEvaluation,
                 language: args.session.config.language,
             }),
         );
@@ -618,20 +822,104 @@ export class PromptLabProduct {
         return selfReview;
     }
 
+    async evaluateAdvisors(args: {
+        session: PromptLabSessionRecord;
+        gateway: LlmGateway;
+    }): Promise<AdvisorEvaluationReport> {
+        const previousHistory = await readPromptLabAdvisorEvaluationHistory(args.session.config);
+        const { previousEntry, comparison } = buildAdvisorEvaluationComparison({
+            currentProvider: args.session.config.provider,
+            currentLiteModel: args.session.config.liteModel,
+            history: previousHistory,
+        });
+        const report = await evaluateFlowDesignAdvisors({
+            gateway: args.gateway,
+            provider: args.session.config.provider,
+            liteModel: args.session.config.liteModel,
+            comparison,
+        });
+        if (report.comparison && previousEntry) {
+            report.comparison = {
+                ...report.comparison,
+                deltaLiteDecisionRate: Number(
+                    (report.overallLiteDecisionRate - previousEntry.overallLiteDecisionRate).toFixed(3),
+                ),
+                deltaLitePassRate: Number((report.overallLitePassRate - previousEntry.overallLitePassRate).toFixed(3)),
+                deltaFallbackRate: Number((report.overallFallbackRate - previousEntry.overallFallbackRate).toFixed(3)),
+                deltaAverageLiteDurationMs:
+                    report.overallTiming.averageMs === null || previousEntry.overallAverageLiteDurationMs === null
+                        ? null
+                        : Number(
+                              (report.overallTiming.averageMs - previousEntry.overallAverageLiteDurationMs).toFixed(3),
+                          ),
+            };
+        }
+        const paths = buildArtifactPaths(args.session.sessionDir);
+        await writeJson(paths.advisorEvaluationJsonPath, report);
+        await writeText(paths.advisorEvaluationMarkdownPath, renderAdvisorEvaluationMarkdown(report));
+        await appendPromptLabAdvisorEvaluationHistory({
+            config: args.session.config,
+            session: args.session,
+            report,
+        });
+        return report;
+    }
+
+    async runAdvisorEvaluation(args: { config: PromptLabSessionConfig }): Promise<PromptLabAdvisorEvalArtifacts> {
+        const session = await createPromptLabSession(args.config, 'advisor-evaluation');
+        const paths = buildArtifactPaths(session.sessionDir);
+
+        try {
+            const gateway = createGateway(args.config);
+            const advisorEvaluation = await this.evaluateAdvisors({ session, gateway });
+            await writeJson(paths.artifactsPath, paths);
+            return {
+                session,
+                advisorEvaluation,
+            };
+        } catch (error) {
+            const clipboardText = formatFailureClipboard({ session, paths, error });
+            await writeJson(paths.failureJsonPath, {
+                error: serializeError(error),
+                session,
+                paths,
+            });
+            await writeText(paths.failureTextPath, `${clipboardText}\n`);
+            await writeJson(paths.artifactsPath, paths);
+            throw new PromptLabRunError('Prompt Lab advisor evaluation failed.', session, paths, clipboardText, {
+                cause: error,
+                code: error instanceof AgentError ? error.code : 'PROMPT_LAB_ADVISOR_EVAL_FAILED',
+            });
+        }
+    }
+
     async finalizeSession(args: {
         session: PromptLabSessionRecord;
         result: ProductDesignRunResult;
+        advisorEvaluation?: AdvisorEvaluationReport;
+        executionTiming?: PromptLabExecutionTimingSummary;
         selfReview: PromptLabSelfReview;
         userFeedback: string;
         gateway: LlmGateway;
     }): Promise<PromptLabRunArtifacts> {
         const paths = buildArtifactPaths(args.session.sessionDir);
         await writeText(paths.feedbackPath, `${args.userFeedback}\n`);
+        if (args.advisorEvaluation) {
+            await writeJson(paths.advisorEvaluationJsonPath, args.advisorEvaluation);
+            await writeText(
+                paths.advisorEvaluationMarkdownPath,
+                renderAdvisorEvaluationMarkdown(args.advisorEvaluation),
+            );
+        }
+        if (args.executionTiming) {
+            await writeJson(paths.executionTimingJsonPath, args.executionTiming);
+        }
 
         const codexPrompt = await args.gateway.generateStructured(
             await buildPromptLabCodexPromptRequest({
                 session: args.session,
                 result: args.result,
+                advisorEvaluation: args.advisorEvaluation,
                 selfReview: args.selfReview,
                 userFeedback: args.userFeedback,
                 language: args.session.config.language,
@@ -642,6 +930,7 @@ export class PromptLabProduct {
                   await buildPromptLabCodexPromptRewriteRequest({
                       session: args.session,
                       result: args.result,
+                      advisorEvaluation: args.advisorEvaluation,
                       selfReview: args.selfReview,
                       userFeedback: args.userFeedback,
                       language: args.session.config.language,
@@ -666,6 +955,8 @@ export class PromptLabProduct {
             renderSummaryMarkdown({
                 session: args.session,
                 result: args.result,
+                advisorEvaluation: args.advisorEvaluation,
+                executionTiming: args.executionTiming,
                 selfReview: args.selfReview,
                 userFeedback: args.userFeedback,
                 codexPrompt: normalizedCodexPrompt,
@@ -676,6 +967,8 @@ export class PromptLabProduct {
         return {
             session: args.session,
             result: args.result,
+            advisorEvaluation: args.advisorEvaluation,
+            executionTiming: args.executionTiming,
             selfReview: args.selfReview,
             userFeedback: args.userFeedback,
             codexPrompt: normalizedCodexPrompt,

@@ -4,23 +4,16 @@ import type { StructuredGenerationInput } from '../../llm/types';
 import { defineStructuredSchema } from '../../llm/structured-schema';
 import type { FlowDesignTaskGraphTemplate } from './task-graphs';
 import type { FlowDesignTaskTypeDefinition } from './task-types';
-import {
-    getFlowDesignTaskGraphClassifierPrompt,
-    getFlowDesignTaskTypeClassifierPrompt,
-} from './classifier-resources';
+import { getFlowDesignTaskGraphClassifierPrompt, getFlowDesignTaskTypeClassifierPrompt } from './classifier-resources';
 
 const FlowDesignTaskTypeClassificationSchema = z.object({
-    kind: z.literal('task-type'),
     taskType: z.string(),
-    confidence: z.number().min(0).max(1).optional(),
-    rationale: z.string().optional(),
+    confidence: z.number().min(0).max(1),
 });
 
 const FlowDesignTaskGraphClassificationSchema = z.object({
-    kind: z.literal('task-graph'),
     templateId: z.string(),
-    confidence: z.number().min(0).max(1).optional(),
-    rationale: z.string().optional(),
+    confidence: z.number().min(0).max(1),
 });
 
 /** Builds the generic structured-generation request for task-type classification. */
@@ -79,6 +72,9 @@ export async function buildTaskGraphClassificationRequest(args: {
                 }),
             },
         ],
-        schema: defineStructuredSchema('flow_design_task_graph_classification', FlowDesignTaskGraphClassificationSchema),
+        schema: defineStructuredSchema(
+            'flow_design_task_graph_classification',
+            FlowDesignTaskGraphClassificationSchema,
+        ),
     };
 }

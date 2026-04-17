@@ -64,7 +64,7 @@ export async function inferFlowDesignTaskType(args: {
 }): Promise<{
     taskType: FlowDesignTaskType;
     confidence: number;
-    rationale: string;
+    rationale?: string;
     source: 'deterministic' | 'model';
 }> {
     const taskTypes = args.taskTypes ?? (await getFlowDesignTaskTypeCatalog());

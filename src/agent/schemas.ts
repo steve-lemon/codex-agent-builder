@@ -109,10 +109,13 @@ function safeParsePlannerArgs(argsJson: string): Record<string, unknown> {
         }
         throw new Error('Planner args must decode to an object');
     } catch (error) {
-        throw new AgentError(`Planner returned invalid tool args JSON (preview: ${JSON.stringify(argsJson.slice(0, 120))})`, {
-            cause: AgentError.rootCause(error),
-            code: 'PLAN_ARGS_JSON_INVALID',
-        });
+        throw new AgentError(
+            `Planner returned invalid tool args JSON (preview: ${JSON.stringify(argsJson.slice(0, 120))})`,
+            {
+                cause: AgentError.rootCause(error),
+                code: 'PLAN_ARGS_JSON_INVALID',
+            },
+        );
     }
 }
 

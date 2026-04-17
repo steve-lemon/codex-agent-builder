@@ -15,7 +15,7 @@ export type FlowDesignTaskTypeDefinition = FlowDesignTaskTypeDefinitionRecord;
 export interface FlowDesignTaskTypeRecommendation {
     taskType: FlowDesignTaskType;
     confidence: number;
-    rationale: string;
+    rationale?: string;
     source: 'deterministic' | 'model';
 }
 
@@ -28,12 +28,13 @@ export interface FlowDesignTaskTypeAdvisor {
     }): Promise<FlowDesignTaskTypeRecommendation>;
 }
 
-const FlowDesignTaskTypeClassificationSchema = z.object({
-    kind: z.literal('task-type'),
-    taskType: z.string(),
-    confidence: z.number().min(0).max(1).optional(),
-    rationale: z.string().optional(),
-});
+function createFlowDesignTaskTypeClassificationSchema(includeRationale: boolean) {
+    return z.object({
+        taskType: z.string(),
+        confidence: z.number().min(0).max(1),
+        ...(includeRationale ? { rationale: z.string() } : {}),
+    });
+}
 
 /** Returns the configured task-type catalog used by flow-design analysis. */
 export async function getFlowDesignTaskTypeCatalog(): Promise<FlowDesignTaskTypeDefinition[]> {
@@ -75,6 +76,23 @@ function scoreTaskType(args: {
     return score;
 }
 
+function rankTaskTypes(args: {
+    userRequest: string;
+    wantsJson: boolean;
+    taskTypes: FlowDesignTaskTypeDefinition[];
+}) {
+    return args.taskTypes
+        .map(taskType => ({
+            taskType,
+            score: scoreTaskType({
+                userRequest: args.userRequest,
+                wantsJson: args.wantsJson,
+                taskType,
+            }),
+        }))
+        .sort((left, right) => right.score - left.score);
+}
+
 /** Default advisor that scores task types against the internal task-type catalog. */
 export class DeterministicFlowDesignTaskTypeAdvisor implements FlowDesignTaskTypeAdvisor {
     async recommend(args: {
@@ -83,16 +101,7 @@ export class DeterministicFlowDesignTaskTypeAdvisor implements FlowDesignTaskTyp
         taskTypes: FlowDesignTaskTypeDefinition[];
     }): Promise<FlowDesignTaskTypeRecommendation> {
         const manifest = await getFlowDesignManifest();
-        const ranked = args.taskTypes
-            .map(taskType => ({
-                taskType,
-                score: scoreTaskType({
-                    userRequest: args.userRequest,
-                    wantsJson: args.wantsJson,
-                    taskType,
-                }),
-            }))
-            .sort((left, right) => right.score - left.score);
+        const ranked = rankTaskTypes(args);
 
         const best = ranked[0];
         if (!best || best.score <= 0) {
@@ -142,6 +151,14 @@ export class LlmBackedFlowDesignTaskTypeAdvisor implements FlowDesignTaskTypeAdv
     constructor(
         private readonly gateway: LlmGateway,
         private readonly fallback: FlowDesignTaskTypeAdvisor = new DeterministicFlowDesignTaskTypeAdvisor(),
+        private readonly options: {
+            emitLogs?: boolean;
+            onDecision?: (event: {
+                type: 'model' | 'fallback-no-gateway' | 'fallback-threshold' | 'fallback-error';
+                error?: unknown;
+                durationMs?: number;
+            }) => void;
+        } = {},
     ) {}
 
     async recommend(args: {
@@ -150,24 +167,33 @@ export class LlmBackedFlowDesignTaskTypeAdvisor implements FlowDesignTaskTypeAdv
         taskTypes: FlowDesignTaskTypeDefinition[];
     }): Promise<FlowDesignTaskTypeRecommendation> {
         const advisor = await getLiteAdvisorDefinition('flow-design.advisors', 'flow-design.task-type');
+        const includeRationale = advisor.includeRationale === true;
+        const ranked = rankTaskTypes(args);
+        const candidateLimit = advisor.candidateLimit ?? 3;
+        const shortlisted = ranked.slice(0, Math.max(1, Math.min(candidateLimit, ranked.length)));
         return await runLiteAdvisor({
             advisorId: advisor.id,
             scope: 'flow-design',
             gateway: this.gateway,
             systemPrompt: advisor.systemPrompt,
             fallbackNote: advisor.fallbackNote,
-            schema: defineStructuredSchema('flow_design_task_type_classification', FlowDesignTaskTypeClassificationSchema),
+            schema: defineStructuredSchema(
+                'flow_design_task_type_classification',
+                createFlowDesignTaskTypeClassificationSchema(includeRationale),
+            ),
             input: {
                 userRequest: args.userRequest,
                 wantsJson: args.wantsJson,
-                taskTypes: args.taskTypes.map(taskType => ({
+                taskTypes: shortlisted.map(({ taskType, score }) => ({
                     id: taskType.id,
                     label: taskType.label,
-                    description: taskType.description,
-                    examples: taskType.examples,
-                    signals: taskType.signals,
+                    scoreHint: score,
+                    jsonPreferred: Boolean(taskType.hints?.preferredWhenJson),
+                    plainTextFallback: Boolean(taskType.hints?.fallbackWhenPlainText),
                 })),
             },
+            emitLogs: this.options.emitLogs,
+            onDecision: this.options.onDecision,
             shouldFallback: result =>
                 typeof advisor.confidenceThreshold === 'number' &&
                 typeof result.confidence === 'number' &&
@@ -180,9 +206,7 @@ export class LlmBackedFlowDesignTaskTypeAdvisor implements FlowDesignTaskTypeAdv
                 return {
                     taskType: matchedTaskType.id,
                     confidence: result.confidence ?? 0.7,
-                    rationale:
-                        result.rationale ??
-                        `Selected '${matchedTaskType.label}' using the configured lite-model task-type advisor.`,
+                    rationale: typeof result.rationale === 'string' ? result.rationale : undefined,
                     source: 'model',
                 };
             },

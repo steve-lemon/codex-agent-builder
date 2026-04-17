@@ -16,6 +16,7 @@ describe('PromptLabProduct', () => {
 
         const artifacts = await product.run({
             config: {
+                mode: 'run',
                 provider: 'fake',
                 mainModel: 'fake-main',
                 liteModel: 'fake-lite',
@@ -28,6 +29,7 @@ describe('PromptLabProduct', () => {
         });
 
         expect(artifacts.result.runId).toBeTruthy();
+        expect(artifacts.advisorEvaluation).toBeUndefined();
         expect(artifacts.selfReview.improvements.length).toBeGreaterThan(0);
         expect(artifacts.codexPrompt.codexPrompt).toContain('Codex');
 
@@ -68,6 +70,7 @@ describe('PromptLabProduct', () => {
 
         const artifacts = await product.run({
             config: {
+                mode: 'run',
                 provider: 'fake',
                 mainModel: 'fake-main',
                 liteModel: 'fake-lite',
@@ -93,6 +96,7 @@ describe('PromptLabProduct', () => {
         await expect(
             product.runRequirement({
                 config: {
+                    mode: 'run',
                     provider: 'openai',
                     mainModel: 'gpt-4.1-mini',
                     liteModel: 'gpt-4.1-mini',
@@ -107,6 +111,7 @@ describe('PromptLabProduct', () => {
         try {
             await product.runRequirement({
                 config: {
+                    mode: 'run',
                     provider: 'openai',
                     mainModel: 'gpt-4.1-mini',
                     liteModel: 'gpt-4.1-mini',
@@ -201,5 +206,60 @@ describe('PromptLabProduct', () => {
         expect(sanitized).toContain('JSON 객체 하나로만 반환');
         expect(sanitized).toContain('{"consonants": 정수, "vowels": 정수}');
         expect(sanitized).toContain('설명이나 추가 텍스트는 포함하지 마세요');
+    });
+
+    it('can run advisor evaluation as a separate prompt-lab mode', async () => {
+        const outputRoot = await mkdtemp(join(tmpdir(), 'prompt-lab-'));
+        const product = new PromptLabProduct();
+
+        const artifacts = await product.runAdvisorEvaluation({
+            config: {
+                mode: 'advisor-eval',
+                provider: 'fake',
+                mainModel: 'fake-main',
+                liteModel: 'fake-lite',
+                language: 'ko',
+                outputRoot,
+            },
+        });
+
+        expect(artifacts.advisorEvaluation.suiteCount).toBeGreaterThan(0);
+        const advisorEvalMarkdown = await readFile(join(artifacts.session.sessionDir, 'advisor-evaluation.md'), 'utf8');
+        const advisorEvalJson = JSON.parse(
+            await readFile(join(artifacts.session.sessionDir, 'advisor-evaluation.json'), 'utf8'),
+        );
+        expect(advisorEvalMarkdown).toContain('# Advisor Evaluation');
+        expect(advisorEvalJson.suites.length).toBeGreaterThan(0);
+        expect(advisorEvalJson.overallTiming).toEqual(
+            expect.objectContaining({
+                sampleCount: expect.any(Number),
+                averageMs: expect.anything(),
+                p95Ms: expect.anything(),
+                maxMs: expect.anything(),
+            }),
+        );
+        expect(advisorEvalJson).toEqual(
+            expect.objectContaining({
+                qualitySuitability: expect.any(String),
+                latencyRisk: expect.any(String),
+            }),
+        );
+        expect(
+            advisorEvalJson.suites.every(
+                (suite: { evaluationStatus: string; suitability: string; latencyRisk: string }) =>
+                    (suite.evaluationStatus === 'inconclusive' ? suite.suitability === 'inconclusive' : true) &&
+                    typeof suite.latencyRisk === 'string',
+            ),
+        ).toBe(true);
+        const historyJson = JSON.parse(await readFile(join(outputRoot, 'advisor-evaluation-history.json'), 'utf8'));
+        expect(Array.isArray(historyJson)).toBe(true);
+        expect(historyJson[0]).toEqual(
+            expect.objectContaining({
+                sessionId: artifacts.session.sessionId,
+                provider: 'fake',
+                liteModel: 'fake-lite',
+                overallAverageLiteDurationMs: expect.anything(),
+            }),
+        );
     });
 });

@@ -1,6 +1,7 @@
 version: 1
 defaults:
   language: ko
+  mode: run
   skillName: flow-designer
   outputRoot: output/labs
   providerOrder:
@@ -17,12 +18,16 @@ cli:
       locale: ko-KR
       displayName: 한국어
       welcome: "Prompt Lab을 시작합니다. 실제 실행 결과를 바탕으로 Codex 프롬프트를 개선합니다."
+      modePrompt: "실행 모드를 선택하세요 (run/advisor-eval)"
+      settingsPrompt: "기본 설정으로 바로 실행할까요?"
       providerPrompt: "사용할 LLM provider를 선택하세요 (openai/gemini/fake)"
       skillPrompt: "검증할 skill을 선택하세요 (flow-preflight-validator/flow-designer/node-config-designer)"
       mainModelPrompt: "에이전트 메인 모델을 입력하세요"
       liteModelPrompt: "lite 모델을 입력하세요"
       languagePrompt: "세션 언어를 선택하세요 (ko/en)"
       requirementPrompt: "요구사항을 입력하세요"
+      recentRequirementsPrompt: "이전 요구사항을 선택하거나 새로 입력하세요"
+      newRequirementOptionLabel: "새 요구사항 입력"
       feedbackPrompt: "전체적인 피드백을 입력하세요. 빈 줄을 입력하면 종료합니다."
       feedbackDoneHint: "피드백 입력을 끝내려면 빈 줄을 입력하세요."
       startMessage: "에이전트 실행을 시작하고 로그를 기록합니다..."
@@ -33,12 +38,16 @@ cli:
       locale: en-US
       displayName: English
       welcome: "Starting Prompt Lab. We will improve the Codex prompt from a real execution run."
+      modePrompt: "Choose the execution mode (run/advisor-eval)"
+      settingsPrompt: "Continue with the current default settings?"
       providerPrompt: "Choose the LLM provider (openai/gemini/fake)"
       skillPrompt: "Choose the skill to validate (flow-preflight-validator/flow-designer/node-config-designer)"
       mainModelPrompt: "Enter the agent main model"
       liteModelPrompt: "Enter the lite model"
       languagePrompt: "Choose the session language (ko/en)"
       requirementPrompt: "Enter the requirement"
+      recentRequirementsPrompt: "Choose a previous requirement or enter a new one"
+      newRequirementOptionLabel: "Enter a new requirement"
       feedbackPrompt: "Add your feedback. Submit an empty line to finish."
       feedbackDoneHint: "Press Enter on an empty line when you are done."
       startMessage: "Starting the agent run and recording logs..."

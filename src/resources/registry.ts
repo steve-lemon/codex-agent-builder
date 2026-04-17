@@ -8,7 +8,12 @@ import { type LlmRuntimeManifestRecord, LlmRuntimeManifestSchema } from '../llm/
 import { type ToolPackResourceRecord, ToolPackResourceSchema } from '../tools/core/resource-schemas';
 import { type FlowBlockPoolRecord, FlowBlockPoolSchema } from '../flow/resource-schemas';
 import { type PromptLabManifestRecord, PromptLabManifestSchema } from '../prompt-lab/manifest-schemas';
-import { type LiteAdvisorResourceRecord, LiteAdvisorResourceSchema } from '../advisors/resource-schemas';
+import {
+    type LiteAdvisorEvaluationResourceRecord,
+    LiteAdvisorEvaluationResourceSchema,
+    type LiteAdvisorResourceRecord,
+    LiteAdvisorResourceSchema,
+} from '../advisors/resource-schemas';
 
 export interface ResourceDefinition<T> {
     id: string;
@@ -23,6 +28,7 @@ export interface ResourceSchemaMap {
     'prompt-lab.manifest': PromptLabManifestRecord;
     'flow.block-pool': FlowBlockPoolRecord;
     'flow-design.advisors': LiteAdvisorResourceRecord;
+    'flow-design.advisor-evals': LiteAdvisorEvaluationResourceRecord;
     'tools.sample-tools.set': ToolPackResourceRecord;
     'tools.flow-design.set': ToolPackResourceRecord;
     'tools.node-config.set': ToolPackResourceRecord;
@@ -63,6 +69,11 @@ export const RESOURCE_DEFINITIONS: {
         id: 'flow-design.advisors',
         relativePath: 'skills/flow-designer/ADVISORS.yml',
         schema: LiteAdvisorResourceSchema,
+    },
+    'flow-design.advisor-evals': {
+        id: 'flow-design.advisor-evals',
+        relativePath: 'skills/flow-designer/ADVISOR_EVALS.yml',
+        schema: LiteAdvisorEvaluationResourceSchema,
     },
     'tools.sample-tools.set': {
         id: 'tools.sample-tools.set',

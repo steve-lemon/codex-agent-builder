@@ -1,0 +1,108 @@
+version: 1
+suites:
+  - advisorId: flow-design.task-type
+    label: Flow Task Type Advisor
+    description: Checks whether the lite advisor selects the correct task-type intent.
+    acceptance:
+      minPassRate: 0.8
+      maxFallbackRate: 0.25
+      maxAverageLatencyMs: 1500
+      maxP95LatencyMs: 2500
+    scenarios:
+      - id: blog-title-json
+        label: Blog title generation
+        input:
+          userRequest: 키워드를 줄테니 블로그 타이틀 여러 개 추천해줘
+          wantsJson: false
+        expected:
+          taskType: blog-title-generation
+      - id: structured-json
+        label: JSON generation
+        input:
+          userRequest: 입력 데이터를 JSON으로 정리해줘
+          wantsJson: true
+        expected:
+          taskType: json-generation
+      - id: general-copy
+        label: General text generation
+        input:
+          userRequest: 짧은 소개 문구를 만들어줘
+          wantsJson: false
+        expected:
+          taskType: text-generation
+  - advisorId: flow-design.task-graph
+    label: Flow Task Graph Advisor
+    description: Checks whether the lite advisor selects the right workflow template.
+    acceptance:
+      minPassRate: 0.8
+      maxFallbackRate: 0.25
+      maxAverageLatencyMs: 1500
+      maxP95LatencyMs: 2500
+    scenarios:
+      - id: email-reply
+        label: Email reply workflow
+        input:
+          userRequest: 이메일을 확인해서 답장해줘
+        expected:
+          templateId: email-reply
+      - id: blog-title-graph
+        label: Blog title workflow
+        input:
+          userRequest: 키워드를 줄테니 블로그 타이틀 여러 개 추천해줘
+        expected:
+          templateId: blog-title-generation
+      - id: generic-generation
+        label: Generic generation workflow
+        input:
+          userRequest: 짧은 소개 문구를 만들어줘
+        expected:
+          templateId: generic-generation
+  - advisorId: flow-design.ai-delegation
+    label: Flow AI Delegation Advisor
+    description: Checks whether lite advisor delegates text-centric tasks to ai-generate appropriately.
+    acceptance:
+      minPassRate: 0.8
+      maxFallbackRate: 0.25
+      maxAverageLatencyMs: 1500
+      maxP95LatencyMs: 2500
+    scenarios:
+      - id: text-counting
+        label: Text counting can be delegated
+        input:
+          userRequest: 자음과 모음의 개수를 세어줘
+          operation: count-text
+          requiredCapabilities:
+            - hangul-decomposition
+          expectedInputs:
+            - user text
+          expectedOutputs:
+            - count summary
+        expected:
+          delegable: true
+      - id: email-read
+        label: Email read should not be delegated
+        input:
+          userRequest: 이메일을 읽어서 분석해줘
+          operation: analyze-email
+          requiredCapabilities:
+            - email-read
+          expectedInputs:
+            - mailbox connection
+          expectedOutputs:
+            - email body
+        expected:
+          delegable: false
+      - id: browser-automation
+        label: Browser tasks should not be delegated
+        input:
+          userRequest: 웹 페이지를 열고 버튼을 클릭해줘
+          operation: browse-and-click
+          requiredCapabilities:
+            - browser-open
+            - browser-click
+          expectedInputs:
+            - target page
+          expectedOutputs:
+            - click confirmation
+        expected:
+          delegable: false
