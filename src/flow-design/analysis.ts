@@ -1,6 +1,12 @@
 // Shared flow-analysis helpers used by flow design core and skill/tool wrappers.
 import type { DirectedGraph } from '../graph/types';
 import { availableFlowBlocks, availableFlowCapabilities, flowBlockCapabilityMap } from './catalog';
+import {
+    defaultFlowDesignTaskGraphAdvisor,
+    getFlowDesignTaskGraphCatalog,
+    type FlowDesignTaskGraphAdvisor,
+    type FlowDesignTaskGraphTemplate,
+} from './task-graphs';
 
 /** Per-task-node analysis used by feasibility and preflight validation. */
 export interface TaskNodeAnalysis {
@@ -43,178 +49,34 @@ export interface TaskGraphRefinementInput {
     improvementNotes: string[];
 }
 
-/** Parses a user request into required capabilities at a coarse level. */
-export function inferRequiredCapabilities(userRequest: string): string[] {
-    const lowered = userRequest.toLowerCase();
+/** Derives graph-level required capabilities from the inferred task graph itself. */
+export function deriveRequiredCapabilitiesFromTaskGraph(taskGraph: DirectedGraph): string[] {
     const required = new Set<string>();
 
-    if (lowered.includes('email') || lowered.includes('mail') || userRequest.includes('이메일')) {
-        required.add('email-read');
-    }
-    if (
-        lowered.includes('reply') ||
-        lowered.includes('respond') ||
-        lowered.includes('send email') ||
-        userRequest.includes('답장') ||
-        userRequest.includes('회신')
-    ) {
-        required.add('email-reply');
-    }
-    if (lowered.includes('slack')) {
-        required.add('slack-send');
-    }
-    if (lowered.includes('calendar') || userRequest.includes('캘린더')) {
-        required.add('calendar-read');
-    }
-    if (
-        lowered.includes('blog') ||
-        lowered.includes('title') ||
-        userRequest.includes('타이틀') ||
-        userRequest.includes('제목')
-    ) {
-        required.add('mock-ai-generation');
-        required.add('text-input');
-        required.add('text-output');
-    }
-    if (lowered.includes('json') || userRequest.includes('구조화')) {
-        required.add('structured-output');
+    for (const node of taskGraph.nodes) {
+        for (const capability of (node.data?.requiredCapabilities as string[] | undefined) ?? []) {
+            required.add(capability);
+        }
     }
 
     return [...required];
 }
 
 /** Builds an inferred task graph from the user's natural-language request. */
-export function inferTaskGraph(userRequest: string): DirectedGraph {
-    // TODO(flow-agent): Replace these deterministic heuristics with a block-aware
-    // task decomposition model once we have enough grounded examples to infer
-    // richer operations without overfitting to a few prompts.
-    const lowered = userRequest.toLowerCase();
+export async function inferTaskGraph(
+    userRequest: string,
+    options: {
+        taskGraphAdvisor?: FlowDesignTaskGraphAdvisor;
+        taskGraphTemplates?: FlowDesignTaskGraphTemplate[];
+    } = {},
+): Promise<DirectedGraph> {
+    const templates = options.taskGraphTemplates ?? (await getFlowDesignTaskGraphCatalog());
+    const recommendation = await (options.taskGraphAdvisor ?? defaultFlowDesignTaskGraphAdvisor).recommend({
+        userRequest,
+        templates,
+    });
 
-    if (lowered.includes('email') || lowered.includes('mail') || userRequest.includes('이메일')) {
-        return {
-            nodes: [
-                {
-                    id: 'email-read',
-                    label: 'Read Email',
-                    data: {
-                        operation: 'read-email',
-                        expectedInputs: ['mailbox connection', 'message selector'],
-                        expectedOutputs: ['email thread text', 'message metadata'],
-                        requiredCapabilities: ['email-read'],
-                    },
-                },
-                {
-                    id: 'draft-reply',
-                    label: 'Draft Reply',
-                    data: {
-                        operation: 'draft-reply',
-                        expectedInputs: ['email thread text', 'response policy'],
-                        expectedOutputs: ['reply body text'],
-                        requiredCapabilities: ['mock-ai-generation', 'text-output'],
-                    },
-                },
-                {
-                    id: 'send-reply',
-                    label: 'Send Reply',
-                    data: {
-                        operation: 'send-email-reply',
-                        expectedInputs: ['reply body text', 'recipient metadata'],
-                        expectedOutputs: ['delivery confirmation'],
-                        requiredCapabilities: ['email-reply'],
-                    },
-                },
-            ],
-            edges: [
-                { source: 'email-read', target: 'draft-reply', label: 'thread text' },
-                { source: 'draft-reply', target: 'send-reply', label: 'reply draft' },
-            ],
-        };
-    }
-
-    if (
-        lowered.includes('blog') ||
-        lowered.includes('title') ||
-        userRequest.includes('타이틀') ||
-        userRequest.includes('제목')
-    ) {
-        return {
-            nodes: [
-                {
-                    id: 'capture-request',
-                    label: 'Capture Request',
-                    data: {
-                        operation: 'capture-text',
-                        expectedInputs: ['user request'],
-                        expectedOutputs: ['prompt text'],
-                        requiredCapabilities: ['text-input'],
-                    },
-                },
-                {
-                    id: 'generate-titles',
-                    label: 'Generate Titles',
-                    data: {
-                        operation: 'generate-text',
-                        expectedInputs: ['prompt text', 'system instruction'],
-                        expectedOutputs: ['title suggestions'],
-                        requiredCapabilities: ['mock-ai-generation', 'text-output'],
-                    },
-                },
-                {
-                    id: 'review-output',
-                    label: 'Review Output',
-                    data: {
-                        operation: 'log-output',
-                        expectedInputs: ['title suggestions'],
-                        expectedOutputs: ['execution log'],
-                        requiredCapabilities: ['view-log'],
-                    },
-                },
-            ],
-            edges: [
-                { source: 'capture-request', target: 'generate-titles', label: 'prompt text' },
-                { source: 'generate-titles', target: 'review-output', label: 'generated titles' },
-            ],
-        };
-    }
-
-    return {
-        nodes: [
-            {
-                id: 'capture-request',
-                label: 'Capture Request',
-                data: {
-                    operation: 'capture-text',
-                    expectedInputs: ['user request'],
-                    expectedOutputs: ['prompt text'],
-                    requiredCapabilities: ['text-input'],
-                },
-            },
-            {
-                id: 'generate-output',
-                label: 'Generate Output',
-                data: {
-                    operation: 'generate-text',
-                    expectedInputs: ['prompt text'],
-                    expectedOutputs: ['response text'],
-                    requiredCapabilities: ['mock-ai-generation', 'text-output'],
-                },
-            },
-            {
-                id: 'review-output',
-                label: 'Review Output',
-                data: {
-                    operation: 'log-output',
-                    expectedInputs: ['response text'],
-                    expectedOutputs: ['execution log'],
-                    requiredCapabilities: ['view-log'],
-                },
-            },
-        ],
-        edges: [
-            { source: 'capture-request', target: 'generate-output', label: 'prompt text' },
-            { source: 'generate-output', target: 'review-output', label: 'generated response' },
-        ],
-    };
+    return recommendation.graph;
 }
 
 /** Refines an inferred task graph using reflection output from an earlier design pass. */
@@ -327,16 +189,16 @@ export function buildProposedBlocks(nodeAnalyses: TaskNodeAnalysis[]): ProposedB
 }
 
 /** Performs a full graph-based feasibility pass over the user request. */
-export function assessFlowFeasibility(userRequest: string): FlowFeasibilityAssessment {
-    return assessTaskGraphFeasibility(userRequest, inferTaskGraph(userRequest));
+export async function assessFlowFeasibility(userRequest: string): Promise<FlowFeasibilityAssessment> {
+    return assessTaskGraphFeasibility(userRequest, await inferTaskGraph(userRequest));
 }
 
 /** Performs a feasibility pass against a caller-provided task graph. */
-export function assessTaskGraphFeasibility(userRequest: string, taskGraph: DirectedGraph): FlowFeasibilityAssessment {
+export function assessTaskGraphFeasibility(_userRequest: string, taskGraph: DirectedGraph): FlowFeasibilityAssessment {
     // TODO(flow-agent): Introduce a first-class capability taxonomy instead of
     // string matching so block proposals and feasibility checks share one model.
     const nodeAnalyses = analyzeTaskGraph(taskGraph);
-    const requiredCapabilities = inferRequiredCapabilities(userRequest);
+    const requiredCapabilities = deriveRequiredCapabilitiesFromTaskGraph(taskGraph);
     const missingCapabilities = requiredCapabilities.filter(
         capability => !availableFlowCapabilities.includes(capability),
     );

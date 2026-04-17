@@ -1,0 +1,167 @@
+{
+    "templates": [
+        {
+            "id": "email-reply",
+            "label": "Email Reply Workflow",
+            "description": "Read an inbound email, draft a reply, and send it back.",
+            "examples": [
+                "이메일을 확인해서 답장 해줘",
+                "read the latest email and reply"
+            ],
+            "signals": [
+                "email",
+                "mail",
+                "reply",
+                "답장",
+                "회신",
+                "이메일"
+            ],
+            "graph": {
+                "nodes": [
+                    {
+                        "id": "email-read",
+                        "label": "Read Email",
+                        "data": {
+                            "operation": "read-email",
+                            "expectedInputs": ["mailbox connection", "message selector"],
+                            "expectedOutputs": ["email thread text", "message metadata"],
+                            "requiredCapabilities": ["email-read"]
+                        }
+                    },
+                    {
+                        "id": "draft-reply",
+                        "label": "Draft Reply",
+                        "data": {
+                            "operation": "draft-reply",
+                            "expectedInputs": ["email thread text", "response policy"],
+                            "expectedOutputs": ["reply body text"],
+                            "requiredCapabilities": ["mock-ai-generation", "text-output"]
+                        }
+                    },
+                    {
+                        "id": "send-reply",
+                        "label": "Send Reply",
+                        "data": {
+                            "operation": "send-email-reply",
+                            "expectedInputs": ["reply body text", "recipient metadata"],
+                            "expectedOutputs": ["delivery confirmation"],
+                            "requiredCapabilities": ["email-reply"]
+                        }
+                    }
+                ],
+                "edges": [
+                    { "source": "email-read", "target": "draft-reply", "label": "thread text" },
+                    { "source": "draft-reply", "target": "send-reply", "label": "reply draft" }
+                ]
+            }
+        },
+        {
+            "id": "blog-title-generation",
+            "label": "Blog Title Generation Workflow",
+            "description": "Capture a topic, generate title candidates, and review the output.",
+            "examples": [
+                "키워드를 줄테니 블로그 타이틀 여러개 만들기",
+                "generate blog title ideas from a keyword"
+            ],
+            "signals": [
+                "blog",
+                "title",
+                "headline",
+                "타이틀",
+                "제목"
+            ],
+            "graph": {
+                "nodes": [
+                    {
+                        "id": "capture-request",
+                        "label": "Capture Request",
+                        "data": {
+                            "operation": "capture-text",
+                            "expectedInputs": ["user request"],
+                            "expectedOutputs": ["prompt text"],
+                            "requiredCapabilities": ["text-input"]
+                        }
+                    },
+                    {
+                        "id": "generate-titles",
+                        "label": "Generate Titles",
+                        "data": {
+                            "operation": "generate-text",
+                            "expectedInputs": ["prompt text", "system instruction"],
+                            "expectedOutputs": ["title suggestions"],
+                            "requiredCapabilities": ["mock-ai-generation", "text-output"]
+                        }
+                    },
+                    {
+                        "id": "review-output",
+                        "label": "Review Output",
+                        "data": {
+                            "operation": "log-output",
+                            "expectedInputs": ["title suggestions"],
+                            "expectedOutputs": ["execution log"],
+                            "requiredCapabilities": ["view-log"]
+                        }
+                    }
+                ],
+                "edges": [
+                    { "source": "capture-request", "target": "generate-titles", "label": "prompt text" },
+                    { "source": "generate-titles", "target": "review-output", "label": "generated titles" }
+                ]
+            }
+        },
+        {
+            "id": "generic-generation",
+            "label": "Generic Generation Workflow",
+            "description": "Capture a request, generate a response, and review the output.",
+            "examples": [
+                "짧은 소개 문구 만들어줘",
+                "generate a plain response"
+            ],
+            "signals": [
+                "generate",
+                "response",
+                "summary",
+                "문구",
+                "소개"
+            ],
+            "graph": {
+                "nodes": [
+                    {
+                        "id": "capture-request",
+                        "label": "Capture Request",
+                        "data": {
+                            "operation": "capture-text",
+                            "expectedInputs": ["user request"],
+                            "expectedOutputs": ["prompt text"],
+                            "requiredCapabilities": ["text-input"]
+                        }
+                    },
+                    {
+                        "id": "generate-output",
+                        "label": "Generate Output",
+                        "data": {
+                            "operation": "generate-text",
+                            "expectedInputs": ["prompt text"],
+                            "expectedOutputs": ["response text"],
+                            "requiredCapabilities": ["mock-ai-generation", "text-output"]
+                        }
+                    },
+                    {
+                        "id": "review-output",
+                        "label": "Review Output",
+                        "data": {
+                            "operation": "log-output",
+                            "expectedInputs": ["response text"],
+                            "expectedOutputs": ["execution log"],
+                            "requiredCapabilities": ["view-log"]
+                        }
+                    }
+                ],
+                "edges": [
+                    { "source": "capture-request", "target": "generate-output", "label": "prompt text" },
+                    { "source": "generate-output", "target": "review-output", "label": "generated response" }
+                ]
+            }
+        }
+    ]
+}

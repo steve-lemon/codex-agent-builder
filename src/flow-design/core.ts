@@ -33,6 +33,12 @@ import type {
 } from './types';
 import type { FlowFeasibilityAssessment } from './analysis';
 import { assessFlowFeasibility } from './analysis';
+import {
+    defaultFlowDesignTaskTypeAdvisor,
+    getFlowDesignTaskTypeCatalog,
+    type FlowDesignTaskTypeAdvisor,
+    type FlowDesignTaskTypeDefinition,
+} from './task-types';
 
 interface TaskGraphNode {
     id: string;
@@ -73,24 +79,23 @@ export function parseDesiredCount(userRequest: string): number {
 }
 
 /** Infers a coarse task type for flow-design decisions. */
-export function inferFlowDesignTaskType(userRequest: string, wantsJson: boolean): FlowDesignTaskType {
-    const lowered = userRequest.toLowerCase();
-    if (
-        lowered.includes('blog') ||
-        lowered.includes('title') ||
-        lowered.includes('타이틀') ||
-        lowered.includes('제목')
-    ) {
-        return 'blog-title-generation';
-    }
-    if (wantsJson) {
-        return 'json-generation';
-    }
-    if (lowered.trim()) {
-        return 'text-generation';
-    }
-
-    return 'unknown';
+export async function inferFlowDesignTaskType(args: {
+    userRequest: string;
+    wantsJson: boolean;
+    taskTypeAdvisor?: FlowDesignTaskTypeAdvisor;
+    taskTypes?: FlowDesignTaskTypeDefinition[];
+}): Promise<{
+    taskType: FlowDesignTaskType;
+    confidence: number;
+    rationale: string;
+    source: 'deterministic' | 'model';
+}> {
+    const taskTypes = args.taskTypes ?? (await getFlowDesignTaskTypeCatalog());
+    return await (args.taskTypeAdvisor ?? defaultFlowDesignTaskTypeAdvisor).recommend({
+        userRequest: args.userRequest,
+        wantsJson: args.wantsJson,
+        taskTypes,
+    });
 }
 
 /** Builds the deterministic sample input used to probe a designed flow. */
@@ -99,7 +104,13 @@ export async function buildFlowDesignSampleInput(taskType: FlowDesignTaskType, u
 }
 
 /** Produces a normalized intent object from a raw user request. */
-export async function analyzeFlowRequest(userRequest: string): Promise<FlowDesignIntent> {
+export async function analyzeFlowRequest(
+    userRequest: string,
+    options: {
+        taskTypeAdvisor?: FlowDesignTaskTypeAdvisor;
+        taskTypes?: FlowDesignTaskTypeDefinition[];
+    } = {},
+): Promise<FlowDesignIntent> {
     const lowered = userRequest.toLowerCase();
     const wantsJson =
         lowered.includes('json') ||
@@ -107,23 +118,34 @@ export async function analyzeFlowRequest(userRequest: string): Promise<FlowDesig
         lowered.includes('객체') ||
         lowered.includes('구조화');
     const desiredCount = parseDesiredCount(userRequest);
-    const taskType = inferFlowDesignTaskType(userRequest, wantsJson);
+    const taskTypeRecommendation = await inferFlowDesignTaskType({
+        userRequest,
+        wantsJson,
+        taskTypeAdvisor: options.taskTypeAdvisor,
+        taskTypes: options.taskTypes,
+    });
 
     return {
         userRequest,
-        taskType,
+        taskType: taskTypeRecommendation.taskType,
+        taskTypeConfidence: taskTypeRecommendation.confidence,
+        taskTypeRationale: taskTypeRecommendation.rationale,
+        taskTypeSource: taskTypeRecommendation.source,
         wantsJson,
         wantsMultiple: desiredCount > 1,
         desiredCount,
-        sampleInput: await buildFlowDesignSampleInput(taskType, userRequest),
+        sampleInput: await buildFlowDesignSampleInput(taskTypeRecommendation.taskType, userRequest),
     };
 }
 
 /** Builds the system prompt used by the default AI generation node. */
 export async function buildFlowDesignSystemPrompt(userRequest: string, improvementNotes: string[]): Promise<string> {
     const lowered = userRequest.toLowerCase();
-    const taskType = inferFlowDesignTaskType(userRequest, lowered.includes('json'));
-    const basePrompt = await getFlowDesignSystemPromptDefault(taskType);
+    const taskTypeRecommendation = await inferFlowDesignTaskType({
+        userRequest,
+        wantsJson: lowered.includes('json'),
+    });
+    const basePrompt = await getFlowDesignSystemPromptDefault(taskTypeRecommendation.taskType);
 
     return improvementNotes.length > 0
         ? `${basePrompt} Improvements to apply: ${improvementNotes.join(' | ')}`
@@ -204,7 +226,7 @@ export async function designFlowDraft(args: {
     const improvementNotes = [...(args.guidanceNotes ?? []), ...(args.improvementNotes ?? [])];
     ensureRequiredFlowBlocks(availableBlocks, [InputBlock.id, AiGenerateBlock.id, ViewBlock.id]);
 
-    const feasibility = args.preflight ?? assessFlowFeasibility(args.userRequest);
+    const feasibility = args.preflight ?? (await assessFlowFeasibility(args.userRequest));
     if (!feasibility.feasible) {
         throw new AgentError(
             `Flow design is not feasible with current blocks. Missing capabilities: ${feasibility.missingCapabilities.join(

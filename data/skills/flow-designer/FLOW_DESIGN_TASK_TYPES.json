@@ -1,0 +1,52 @@
+{
+    "taskTypes": [
+        {
+            "id": "blog-title-generation",
+            "label": "Blog Title Generation",
+            "description": "Generate publishable blog titles, headlines, or naming-style variants from a topic or keyword.",
+            "examples": [
+                "키워드를 줄테니 블로그 타이틀 여러개 만들기",
+                "blog title ideas from a keyword",
+                "headline suggestions for a productivity article"
+            ],
+            "signals": [
+                "blog",
+                "title",
+                "headline",
+                "타이틀",
+                "제목"
+            ]
+        },
+        {
+            "id": "json-generation",
+            "label": "Structured JSON Generation",
+            "description": "Generate machine-readable structured output such as JSON objects or item arrays.",
+            "examples": [
+                "상품 소개 문구를 JSON 형태로 여러개 만들어줘",
+                "return a structured list of items as json"
+            ],
+            "signals": [
+                "json",
+                "structured",
+                "object",
+                "구조화",
+                "객체"
+            ]
+        },
+        {
+            "id": "text-generation",
+            "label": "General Text Generation",
+            "description": "Generate plain text responses when no specialized structured or title-oriented task type is a better fit.",
+            "examples": [
+                "summarize this topic in plain text",
+                "짧은 소개 문구 만들어줘"
+            ],
+            "signals": [
+                "text",
+                "plain text",
+                "문구",
+                "소개"
+            ]
+        }
+    ]
+}

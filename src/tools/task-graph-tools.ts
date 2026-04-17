@@ -27,7 +27,7 @@ export function createTaskGraphTools(): ToolDefinition[] {
             parallelSafe: true,
             execute: async ({ userRequest }) => {
                 return {
-                    taskGraph: inferTaskGraph(userRequest),
+                    taskGraph: await inferTaskGraph(userRequest),
                 };
             },
         }),
@@ -172,7 +172,7 @@ export function createTaskGraphTools(): ToolDefinition[] {
                 // and task-graph hash once real providers make this path costlier.
                 return taskGraph
                     ? assessTaskGraphFeasibility(userRequest, taskGraph)
-                    : assessFlowFeasibility(userRequest);
+                    : await assessFlowFeasibility(userRequest);
             },
         }),
     ];

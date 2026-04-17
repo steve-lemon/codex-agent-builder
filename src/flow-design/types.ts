@@ -10,6 +10,9 @@ export type FlowDesignTaskType = 'blog-title-generation' | 'json-generation' | '
 export interface FlowDesignIntent {
     userRequest: string;
     taskType: FlowDesignTaskType;
+    taskTypeConfidence?: number;
+    taskTypeRationale?: string;
+    taskTypeSource?: 'deterministic' | 'model';
     wantsJson: boolean;
     wantsMultiple: boolean;
     desiredCount: number;

@@ -302,7 +302,7 @@ export function createFlowDesignTools(options: { provider?: FlowDesignProvider }
             requiresConfirmation: false,
             parallelSafe: true,
             execute: async ({ userRequest }) => {
-                return assessFlowFeasibility(userRequest);
+                return await assessFlowFeasibility(userRequest);
             },
         }),
         defineTool({
@@ -348,7 +348,7 @@ export function createFlowDesignTools(options: { provider?: FlowDesignProvider }
                 context,
             ) => {
                 const feasibility =
-                    (preflight as FlowFeasibilityAssessment | undefined) ?? assessFlowFeasibility(userRequest);
+                    (preflight as FlowFeasibilityAssessment | undefined) ?? (await assessFlowFeasibility(userRequest));
                 return await Promise.resolve(
                     provider.composeDraft({
                         userRequest,

@@ -16,6 +16,9 @@ describe('flow-design core', () => {
         expect(intent).toEqual({
             userRequest: '키워드를 줄테니 블로그 타이틀 여러개 만들기',
             taskType: 'blog-title-generation',
+            taskTypeConfidence: expect.any(Number),
+            taskTypeRationale: expect.any(String),
+            taskTypeSource: 'deterministic',
             wantsJson: false,
             wantsMultiple: true,
             desiredCount: 5,

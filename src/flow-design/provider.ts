@@ -5,6 +5,11 @@ import type { FlowFeasibilityAssessment } from './analysis';
 import { analyzeFlowRequest, designFlowDraft, reflectFlowExecution } from './core';
 import { defaultFlowDesignKnowledgeSource, type FlowDesignKnowledgeSource } from './knowledge';
 import { createDefaultFlowDesignKnowledgeSource } from './knowledge-sources';
+import {
+    defaultFlowDesignTaskTypeAdvisor,
+    getFlowDesignTaskTypeCatalog,
+    type FlowDesignTaskTypeAdvisor,
+} from './task-types';
 import type { FlowDesignDraftResult, FlowDesignIntent, FlowDesignReflection } from './types';
 
 /** Provider contract for higher-level flow-design reasoning steps. */
@@ -39,14 +44,19 @@ export interface FlowDesignProvider {
 export class DeterministicFlowDesignProvider implements FlowDesignProvider {
     constructor(
         private readonly knowledgeSource: FlowDesignKnowledgeSource = createDefaultFlowDesignKnowledgeSource(),
+        private readonly taskTypeAdvisor: FlowDesignTaskTypeAdvisor = defaultFlowDesignTaskTypeAdvisor,
     ) {}
 
     async analyzeRequest(userRequest: string): Promise<FlowDesignIntent> {
-        return await analyzeFlowRequest(userRequest);
+        const taskTypes = await getFlowDesignTaskTypeCatalog();
+        return await analyzeFlowRequest(userRequest, {
+            taskTypeAdvisor: this.taskTypeAdvisor,
+            taskTypes,
+        });
     }
 
     async composeDraft(args: Parameters<FlowDesignProvider['composeDraft']>[0]): Promise<FlowDesignDraftResult> {
-        const intent = await analyzeFlowRequest(args.userRequest);
+        const intent = await this.analyzeRequest(args.userRequest);
         const guidanceNotes = await Promise.resolve(this.knowledgeSource.getDraftNotes(intent));
         return await designFlowDraft({
             ...args,
@@ -55,7 +65,7 @@ export class DeterministicFlowDesignProvider implements FlowDesignProvider {
     }
 
     async reflectExecution(args: Parameters<FlowDesignProvider['reflectExecution']>[0]): Promise<FlowDesignReflection> {
-        const intent = await analyzeFlowRequest(args.userRequest);
+        const intent = await this.analyzeRequest(args.userRequest);
         const baseReflection = reflectFlowExecution(args);
         const reflectionNotes = await Promise.resolve(
             this.knowledgeSource.getReflectionNotes({
