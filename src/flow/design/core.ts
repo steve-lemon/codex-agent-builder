@@ -251,6 +251,7 @@ export async function designFlowDraft(args: {
         wantsJson: args.wantsJson,
         improvementNotes,
     });
+    const outputSchema = '';
     let flow = createFlowDocument(availableBlocks);
 
     const monitor = args.designSession
@@ -307,6 +308,7 @@ export async function designFlowDraft(args: {
             model: await getFlowDesignDefaultModel(),
             systemPrompt,
             promptTemplate: userPrompt,
+            outputSchema,
             jsonOutput: String(args.wantsJson),
         },
     });
@@ -380,6 +382,7 @@ export async function designFlowDraft(args: {
                 model: await getFlowDesignDefaultModel(),
                 systemPrompt,
                 promptTemplate: userPrompt,
+                outputSchema,
                 jsonOutput: String(args.wantsJson),
             },
         }).flow;

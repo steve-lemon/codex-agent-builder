@@ -235,7 +235,7 @@ describe('flow runtime', () => {
         await expect(factory.create(flow, 'input-1').execute(flow)).rejects.toThrow(/invalid and cannot execute/);
         await expect(factory.create(flow, 'buffer-1').execute(flow)).rejects.toThrow(/non-negative number/);
         await expect(factory.create(flow, 'view-1').execute(flow)).rejects.toThrow(/Input packet is missing/);
-        await expect(factory.create(flow, 'ai-1').execute(flow)).rejects.toThrow(/Input packet is missing/);
+        await expect(factory.create(flow, 'ai-1').execute(flow)).rejects.toThrow(/prompt text is missing/);
     });
 
     it('executes the ai generate block with mocked text output', async () => {
@@ -307,6 +307,7 @@ describe('flow runtime', () => {
             nodeId: 'ai-1',
             config: {
                 model: 'mock-json-model',
+                outputSchema: '{"type":"object","properties":{"ok":{"type":"boolean"},"prompt":{"type":"string"},"model":{"type":"string"}},"required":["ok","prompt","model"]}',
                 jsonOutput: 'true',
             },
         }).flow;
@@ -335,5 +336,90 @@ describe('flow runtime', () => {
             ok: true,
             prompt: 'Return a JSON object.',
         });
+    });
+
+    it('prefers schema input over config and validates json output', async () => {
+        const [InputBlock, AiGenerateBlock] = await Promise.all([
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.input),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.aiGenerate),
+        ]);
+        let flow = createFlowDocument([InputBlock, AiGenerateBlock]);
+        flow = createFlowNode(flow, 'input', {
+            nodeId: 'prompt-1',
+            config: {
+                input: 'Return structured JSON.',
+            },
+        }).flow;
+        flow = createFlowNode(flow, 'input', {
+            nodeId: 'schema-1',
+            config: {
+                input: '{"type":"object","properties":{"count":{"type":"integer"}},"required":["count"]}',
+            },
+        }).flow;
+        flow = createFlowNode(flow, 'ai-generate', {
+            nodeId: 'ai-1',
+            config: {
+                model: 'mock-json-model',
+                outputSchema: '{"type":"object","properties":{"ignored":{"type":"string"}},"required":["ignored"]}',
+                jsonOutput: 'true',
+            },
+        }).flow;
+        flow = connectFlowPorts(flow, {
+            sourceNodeId: 'prompt-1',
+            sourcePort: 'output',
+            targetNodeId: 'ai-1',
+            targetPort: 'prompt',
+        }).flow;
+        flow = connectFlowPorts(flow, {
+            sourceNodeId: 'schema-1',
+            sourcePort: 'output',
+            targetNodeId: 'ai-1',
+            targetPort: 'schema',
+        }).flow;
+
+        const factory = new DefaultExecutableFlowNodeFactory({
+            aiGenerate: async () => '{"count": 3}',
+        });
+
+        flow = await factory.create(flow, 'prompt-1').execute(flow);
+        flow = await factory.create(flow, 'schema-1').execute(flow);
+        flow = await factory.create(flow, 'ai-1').execute(flow);
+
+        expect(getFlowPortById(flow, 'ai-1:output')?.packet?.value).toEqual({ count: 3 });
+    });
+
+    it('fails when json output does not match the configured schema', async () => {
+        const [InputBlock, AiGenerateBlock] = await Promise.all([
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.input),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.aiGenerate),
+        ]);
+        let flow = createFlowDocument([InputBlock, AiGenerateBlock]);
+        flow = createFlowNode(flow, 'input', {
+            nodeId: 'prompt-1',
+            config: {
+                input: 'Return structured JSON.',
+            },
+        }).flow;
+        flow = createFlowNode(flow, 'ai-generate', {
+            nodeId: 'ai-1',
+            config: {
+                model: 'mock-json-model',
+                outputSchema: '{"type":"object","properties":{"count":{"type":"integer"}},"required":["count"]}',
+                jsonOutput: 'true',
+            },
+        }).flow;
+        flow = connectFlowPorts(flow, {
+            sourceNodeId: 'prompt-1',
+            sourcePort: 'output',
+            targetNodeId: 'ai-1',
+            targetPort: 'prompt',
+        }).flow;
+
+        const factory = new DefaultExecutableFlowNodeFactory({
+            aiGenerate: async () => ({ count: 'three' }),
+        });
+
+        flow = await factory.create(flow, 'prompt-1').execute(flow);
+        await expect(factory.create(flow, 'ai-1').execute(flow)).rejects.toThrow(/configured schema/);
     });
 });

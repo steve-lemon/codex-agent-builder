@@ -55,7 +55,10 @@ describe('ai node strategy', () => {
                 model: 'mock-structured-gpt',
                 jsonOutput: 'true',
                 systemPrompt: expect.stringContaining('JSON'),
-                promptTemplate: expect.stringContaining('User request: 입력한 텍스트에서 자음 개수를 찾아서 JSON으로 보여줘'),
+                promptTemplate: expect.stringContaining(
+                    'User request: 입력한 텍스트에서 자음 개수를 찾아서 JSON으로 보여줘',
+                ),
+                outputSchema: '',
             }),
         );
     });

@@ -172,6 +172,10 @@ blocks:
         label: Prompt Template
         hint: text
         defaultValue: ""
+      - id: outputSchema
+        label: Output Schema
+        hint: text
+        defaultValue: ""
       - id: jsonOutput
         label: JSON Output
         hint: checkbox
@@ -183,6 +187,10 @@ blocks:
         dataType: text
       - localId: prompt
         label: Prompt
+        direction: input
+        dataType: text
+      - localId: schema
+        label: Schema
         direction: input
         dataType: text
     outputs:

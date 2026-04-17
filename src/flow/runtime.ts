@@ -1,5 +1,6 @@
 // Executable flow node runtime classes for sample blocks.
 import { AgentError } from '../errors/agent-error';
+import { validateOutputAgainstSchema } from './output-schema';
 import { BuiltinFlowBlockIds } from './block-pool';
 import { DefaultFlowDocumentController, FlowDocumentController } from './document';
 import type { FlowBlockDefinition, FlowDocument, FlowNode, FlowPacket, FlowPort } from './types';
@@ -17,6 +18,9 @@ export interface FlowAiGenerateRequest {
 
     /** Whether the caller expects a JSON-shaped response. */
     jsonOutput: boolean;
+
+    /** Optional JSON schema text used to constrain and validate structured output. */
+    outputSchema?: string;
 }
 
 /** Runtime services shared by executable flow nodes. */
@@ -48,12 +52,13 @@ export const defaultFlowNodeExecutionServices: Required<FlowNodeExecutionService
     },
     aiGenerate: async request => {
         if (request.jsonOutput) {
-            return {
+            const baseResult = {
                 model: request.model,
                 system: request.system,
                 prompt: request.prompt,
                 output: `mocked response for: ${request.prompt}`,
             };
+            return request.outputSchema ? validateOutputAgainstSchema(baseResult, request.outputSchema) : baseResult;
         }
 
         return `[${request.model}] mocked response for: ${request.prompt}`;
@@ -202,6 +207,8 @@ export class AiGenerateExecutableFlowNode extends ExecutableFlowNode {
         const systemPacket = this.controller.getPortById(flow, this.getInputPort('system').id)?.packet;
         const configuredSystemPrompt = this.node.config?.systemPrompt?.trim() ?? '';
         const configuredPromptTemplate = this.node.config?.promptTemplate?.trim() ?? '';
+        const configuredOutputSchema = this.node.config?.outputSchema?.trim() ?? '';
+        const schemaPacket = this.controller.getPortById(flow, this.getInputPort('schema').id)?.packet;
 
         if (
             promptPacket?.value !== undefined &&
@@ -217,6 +224,13 @@ export class AiGenerateExecutableFlowNode extends ExecutableFlowNode {
         ) {
             throw new AgentError(`AI generate system packet must be text on node ${this.node.id}`);
         }
+        if (
+            schemaPacket?.value !== undefined &&
+            schemaPacket.value !== null &&
+            typeof schemaPacket.value !== 'string'
+        ) {
+            throw new AgentError(`AI generate schema packet must be text on node ${this.node.id}`);
+        }
 
         const prompt =
             typeof promptPacket?.value === 'string' && promptPacket.value.trim().length > 0
@@ -226,6 +240,10 @@ export class AiGenerateExecutableFlowNode extends ExecutableFlowNode {
             typeof systemPacket?.value === 'string' && systemPacket.value.trim().length > 0
                 ? systemPacket.value
                 : configuredSystemPrompt;
+        const outputSchema =
+            typeof schemaPacket?.value === 'string' && schemaPacket.value.trim().length > 0
+                ? schemaPacket.value
+                : configuredOutputSchema;
 
         if (!prompt.trim()) {
             throw new AgentError(`AI generate prompt text is missing on node ${this.node.id}`);
@@ -236,11 +254,14 @@ export class AiGenerateExecutableFlowNode extends ExecutableFlowNode {
             system,
             prompt,
             jsonOutput,
+            outputSchema: outputSchema.trim() || undefined,
         });
+        const validatedResult =
+            jsonOutput && outputSchema.trim() ? validateOutputAgainstSchema(result, outputSchema) : result;
 
         // TODO(flow): Replace the mock hook with a provider abstraction that can
         // support streaming tokens, tool calls, and schema-constrained outputs.
-        return this.writeOutputPacket(flow, 'output', this.controller.createPacket(result));
+        return this.writeOutputPacket(flow, 'output', this.controller.createPacket(validatedResult));
     }
 }
 

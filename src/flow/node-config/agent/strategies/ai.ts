@@ -23,6 +23,7 @@ async function selectModel(input: NodeConfigurationDesignInput): Promise<string>
 async function buildAiDefaults(input: NodeConfigurationDesignInput): Promise<{
     systemPrompt: string;
     promptTemplate: string;
+    outputSchema: string;
 }> {
     const taskType = await inferTaskType(input.userRequest, input.wantsJson);
     const systemPrompt = await getNodeConfigSystemPromptDefault(taskType);
@@ -32,6 +33,7 @@ async function buildAiDefaults(input: NodeConfigurationDesignInput): Promise<{
     return {
         systemPrompt,
         promptTemplate: `User request: ${input.userRequest}. ${countInstruction} ${outputInstruction}`,
+        outputSchema: '',
     };
 }
 
@@ -57,6 +59,7 @@ export class AiGenerateNodeStrategy implements NodeBlockConfigStrategy {
             model: await selectModel(context.input),
             systemPrompt: aiDefaults.systemPrompt,
             promptTemplate: aiDefaults.promptTemplate,
+            outputSchema: aiDefaults.outputSchema,
             jsonOutput: String(context.input.wantsJson),
         };
 
@@ -70,6 +73,9 @@ export class AiGenerateNodeStrategy implements NodeBlockConfigStrategy {
                 rationale: [
                     'Choose an AI model profile that matches the requested output style.',
                     'Populate fallback system/prompt settings so the AI node remains understandable in the editor and can execute with config defaults.',
+                    ...(context.input.wantsJson
+                        ? ['If a JSON schema is available, keep it aligned with the expected structured output.']
+                        : []),
                     'Keep jsonOutput aligned with the request so downstream parsing expectations stay stable.',
                     ...(context.probeInsightsApplied.length > 0
                         ? ['Use the probe result to keep model and prompt assumptions aligned with observed behavior.']
