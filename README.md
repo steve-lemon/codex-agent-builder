@@ -76,17 +76,17 @@ import {
     buildDefaultToolRegistry,
     InMemoryRunStateStore,
     createRuntime,
-} from '/Users/dujung/Documents/Codex/src';
+} from './src';
 ```
 
 Use layer-specific barrels when you want tighter boundaries:
 
 ```ts
-import { buildFlowDesignerPayload } from '/Users/dujung/Documents/Codex/src/agent';
-import { buildFlowDesignerPlan } from '/Users/dujung/Documents/Codex/src/llm';
-import { designFlowDraft } from '/Users/dujung/Documents/Codex/src/flow-design';
-import { NodeConfigDesignService } from '/Users/dujung/Documents/Codex/src/node-config-design';
-import { UnifiedRunEventBus } from '/Users/dujung/Documents/Codex/src/observability';
+import { buildFlowDesignerPayload } from './src/agent';
+import { buildFlowDesignerPlan } from './src/llm';
+import { designFlowDraft } from './src/flow-design';
+import { NodeConfigDesignService } from './src/node-config-design';
+import { UnifiedRunEventBus } from './src/observability';
 ```
 
 That split mirrors the current architecture:
@@ -97,7 +97,7 @@ That split mirrors the current architecture:
 Product-facing usage:
 
 ```ts
-import { FlowDesignProduct } from '/Users/dujung/Documents/Codex/src';
+import { FlowDesignProduct } from './src';
 
 const product = new FlowDesignProduct();
 
@@ -116,7 +116,7 @@ Use `AgentRuntime` directly when the application wants lower-level skill/runtime
 Runtime factory usage:
 
 ```ts
-import { createRuntime } from '/Users/dujung/Documents/Codex/src';
+import { createRuntime } from './src';
 
 const runtime = await createRuntime();
 ```
@@ -168,7 +168,7 @@ npm test
 npm run demo
 ```
 
-All npm scripts are wrapped through [`scripts/with-project-node.sh`](/Users/dujung/Documents/Codex/scripts/with-project-node.sh), which sources `nvm` and uses the version from [.nvmrc](/Users/dujung/Documents/Codex/.nvmrc).
+All npm scripts are wrapped through [`scripts/with-project-node.sh`](./scripts/with-project-node.sh), which sources `nvm` and uses the version from [`.nvmrc`](./.nvmrc).
 The project targets Node.js `22.15.1` or newer and is intended to remain compatible with later major versions.
 
 Demo shows:
@@ -214,7 +214,7 @@ The Gemini SDK requires Node.js 20 or newer for real API execution, and this pro
 - `LLM_PROVIDER`: `fake`, `openai`, or `gemini`
 - `USE_REAL_GEMINI`: `true` or `false`
 - `USE_REAL_OPENAI`: `true` or `false`
-- `CODEX_RESOURCE_ROOT`: optional shared resource root; defaults to `/Users/dujung/Documents/Codex/data`
+- `CODEX_RESOURCE_ROOT`: optional shared resource root; defaults to `./data`
 - `CODEX_RESOURCE_PROFILE`: optional resource profile suffix; if set to `staging`, the loader will prefer files such as `FLOW_DESIGN_MANIFEST.staging.yml` when they exist inside the resource root
 - `CODEX_DEBUG_LOGS=1`: enables additional diagnostic logs for resource loading, task-type/task-graph selection, and key node-config decisions. Warnings and errors are still logged without this flag.
 
@@ -253,12 +253,16 @@ Expected resource root structure:
 Agent-owned tool sets now live alongside each agent's skill/manifest resources. Sample/demo packs that are reused across tests or local flows, such as `sample-tools`, remain in the top-level `tools/` area until a real shared/common resource surface is introduced.
 
 Each resource-owning folder may also include a small `RESOURCE.md` file that explains:
+
 - which files in that folder are owned by the skill or shared pack
 - which tuning changes belong there
 - which changes should stay in shared runtime/common areas
 
+Shared flow resources now live under `data/flow/`. See [`data/flow/RESOURCE.md`](./data/flow/RESOURCE.md) for the block-pool ownership and matching-policy editing guidance.
+
 Each tool set manifest also carries a `version` field so pack-level migration can be introduced later without changing the runtime loading contract.
 Tool sets also carry:
+
 - `owner`: the skill or area that owns the pack
 - `scope`: one of `agent-owned`, `sample-only`, or `shared`
 
@@ -280,4 +284,4 @@ Profile-specific variants follow the same layout by inserting the profile name b
 - Add distributed tracing / metrics sink
 - Expand skill packs and external tool adapters
 
-See [docs/ROADMAP.md](/Users/dujung/Documents/Codex/docs/ROADMAP.md) for the current TODOs grouped by layer.
+See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for the current TODOs grouped by layer.

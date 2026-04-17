@@ -6,7 +6,7 @@ import {
     proposeBlockSpecUpdate,
     validateDesignedFlow,
 } from '../flow-design/core';
-import { availableFlowBlocks } from '../flow-design/catalog';
+import { getCatalogAvailableFlowBlocks } from '../flow-design/catalog';
 import { defaultFlowDesignProvider, type FlowDesignProvider } from '../flow-design/provider';
 import type { FlowDocument } from '../flow/types';
 import { buildToolPackFromResource, loadToolPackResource } from './resources';
@@ -149,7 +149,8 @@ const PreflightSummarySchema = z.object({
     ),
 });
 
-function hydrateFlowDocument(flow: FlowDocument): FlowDocument {
+async function hydrateFlowDocument(flow: FlowDocument): Promise<FlowDocument> {
+    const availableFlowBlocks = await getCatalogAvailableFlowBlocks();
     return {
         ...flow,
         blocks: flow.blocks.length > 0 ? flow.blocks : availableFlowBlocks,
@@ -434,6 +435,7 @@ export async function createFlowDesignToolBundle(
         ),
         [FLOW_DESIGN_EXECUTE_IDS.listAvailableFlowBlocks]: defineFlowToolExecutor<{ includeIds?: string[] }>(
             async ({ includeIds }) => {
+                const availableFlowBlocks = await getCatalogAvailableFlowBlocks();
                 const ids = includeIds ? new Set(includeIds as string[]) : undefined;
                 return availableFlowBlocks
                     .filter(block => !ids || ids.has(block.id))
@@ -461,7 +463,7 @@ export async function createFlowDesignToolBundle(
                 blockId: blockId as string,
                 sampleConfig: sampleConfig as Record<string, string> | undefined,
                 sampleInputs: sampleInputs as Record<string, unknown> | undefined,
-                availableBlocks: availableFlowBlocks,
+                availableBlocks: await getCatalogAvailableFlowBlocks(),
             });
         }),
         [FLOW_DESIGN_EXECUTE_IDS.designFlowDraft]: defineFlowToolExecutor<{
@@ -483,7 +485,7 @@ export async function createFlowDesignToolBundle(
                     wantsJson: wantsJson as boolean,
                     improvementNotes: improvementNotes as string[],
                     preflight: feasibility,
-                    availableBlocks: availableFlowBlocks,
+                    availableBlocks: await getCatalogAvailableFlowBlocks(),
                     designConnection: context.designConnection,
                     designSessionId: `${context.runId}:designFlowDraft`,
                     toolName: 'designFlowDraft',
@@ -492,7 +494,7 @@ export async function createFlowDesignToolBundle(
         }),
         [FLOW_DESIGN_EXECUTE_IDS.validateFlowDraft]: defineFlowToolExecutor<{ flow: FlowDocument }>(
             async ({ flow }) => {
-                const validation = validateDesignedFlow(hydrateFlowDocument(flow as FlowDocument));
+                const validation = validateDesignedFlow(await hydrateFlowDocument(flow as FlowDocument));
                 return {
                     isValid: validation.isValid,
                     issues: validation.issues,
@@ -522,7 +524,7 @@ export async function createFlowDesignToolBundle(
                     observedOutputs?: Record<string, unknown>;
                     observedLogs?: string[];
                 },
-                availableBlocks: availableFlowBlocks,
+                availableBlocks: await getCatalogAvailableFlowBlocks(),
             });
         }),
         [FLOW_DESIGN_EXECUTE_IDS.runFlowSample]: defineFlowToolExecutor<{
@@ -531,7 +533,7 @@ export async function createFlowDesignToolBundle(
             improvementNotes?: string[];
         }>(async ({ userRequest, flow, improvementNotes = [] }) => {
             const execution = await executeFlowDesignSample({
-                flow: hydrateFlowDocument(flow as FlowDocument),
+                flow: await hydrateFlowDocument(flow as FlowDocument),
                 userRequest: userRequest as string,
                 improvementNotes: improvementNotes as string[],
             });

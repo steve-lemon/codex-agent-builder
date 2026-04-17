@@ -1,7 +1,7 @@
 // Vitest specs for manifest-backed flow-design knowledge sources.
 import { describe, expect, it } from 'vitest';
 import { analyzeFlowRequest, designFlowDraft, reflectFlowExecution } from './core';
-import { availableFlowBlocks } from './catalog';
+import { getCatalogAvailableFlowBlocks } from './catalog';
 import { ManifestFlowDesignKnowledgeSource, createDefaultFlowDesignKnowledgeSource } from './knowledge-sources';
 import { DeterministicFlowDesignProvider } from './provider';
 
@@ -75,6 +75,7 @@ describe('flow-design knowledge sources', () => {
     });
 
     it('default provider feeds manifest guidance into draft composition and reflection', async () => {
+        const availableFlowBlocks = await getCatalogAvailableFlowBlocks();
         const provider = new DeterministicFlowDesignProvider(createDefaultFlowDesignKnowledgeSource());
         const intent = await provider.analyzeRequest('키워드를 줄테니 블로그 타이틀 여러개 만들기');
         const draft = await provider.composeDraft({
@@ -103,6 +104,7 @@ describe('flow-design knowledge sources', () => {
     });
 
     it('core still accepts explicit guidance notes for direct callers', async () => {
+        const availableFlowBlocks = await getCatalogAvailableFlowBlocks();
         const draft = await designFlowDraft({
             userRequest: '키워드를 줄테니 블로그 타이틀 여러개 만들기',
             sampleInput: '생산성 향상',

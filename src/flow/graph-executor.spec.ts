@@ -1,7 +1,7 @@
 // Vitest specs for executing flow runtimes through the shared graph executor.
 import { describe, expect, it } from 'vitest';
 import { GraphExecutionEngine } from '../graph/executor';
-import { BufferBlock, InputBlock, ViewBlock } from './blocks';
+import { BuiltinFlowBlockIds, getBuiltinFlowBlock } from './block-pool';
 import { connectFlowPorts, createFlowDocument, createFlowNode, getFlowPortById } from './document';
 import { planFlowGraph } from './graph';
 import { DefaultExecutableFlowNodeFactory } from './runtime';
@@ -9,6 +9,11 @@ import type { FlowDocument } from './types';
 
 describe('flow graph executor integration', () => {
     it('executes a flow graph end-to-end through the graph executor', async () => {
+        const [InputBlock, BufferBlock, ViewBlock] = await Promise.all([
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.input),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.buffer),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.view),
+        ]);
         const logs: string[] = [];
         const sleeps: number[] = [];
         let flow = createFlowDocument([InputBlock, BufferBlock, ViewBlock]);
@@ -69,6 +74,10 @@ describe('flow graph executor integration', () => {
     });
 
     it('returns a failed graph run when a flow node is invalid for execution', async () => {
+        const [InputBlock, ViewBlock] = await Promise.all([
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.input),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.view),
+        ]);
         let flow = createFlowDocument([InputBlock, ViewBlock]);
         flow = createFlowNode(flow, 'input', {
             nodeId: 'input-1',

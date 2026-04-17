@@ -1,6 +1,6 @@
 // Shared flow-design core used by skill wrappers, tools, and mock/example agents.
 import { AgentError } from '../errors/agent-error';
-import { AiGenerateBlock, InputBlock, ViewBlock } from '../flow/blocks';
+import { BuiltinFlowBlockIds } from '../flow/block-pool';
 import { FlowDesignSession, type FlowDesignConnection } from '../flow/design-monitor';
 import {
     connectFlowPorts,
@@ -15,7 +15,7 @@ import { planFlowGraph } from '../flow/graph';
 import { DefaultExecutableFlowNodeFactory, type FlowAiGenerateRequest } from '../flow/runtime';
 import type { FlowBlockDefinition, FlowDocument } from '../flow/types';
 import { GraphExecutionEngine } from '../graph/executor';
-import { availableFlowBlocks } from './catalog';
+import { getCatalogAvailableFlowBlocks } from './catalog';
 import { defaultMockFlowDesignGenerate } from './mocks';
 import {
     getFlowDesignDefaultModel,
@@ -223,9 +223,13 @@ export async function designFlowDraft(args: {
     designSessionId?: string;
     toolName?: string;
 }): Promise<FlowDesignDraftResult> {
-    const availableBlocks = args.availableBlocks ?? availableFlowBlocks;
+    const availableBlocks = args.availableBlocks ?? (await getCatalogAvailableFlowBlocks());
     const improvementNotes = [...(args.guidanceNotes ?? []), ...(args.improvementNotes ?? [])];
-    ensureRequiredFlowBlocks(availableBlocks, [InputBlock.id, AiGenerateBlock.id, ViewBlock.id]);
+    ensureRequiredFlowBlocks(availableBlocks, [
+        BuiltinFlowBlockIds.input,
+        BuiltinFlowBlockIds.aiGenerate,
+        BuiltinFlowBlockIds.view,
+    ]);
 
     const feasibility = args.preflight ?? (await assessFlowFeasibility(args.userRequest));
     if (!feasibility.feasible) {
@@ -257,10 +261,10 @@ export async function designFlowDraft(args: {
     });
     monitor?.stageNode('system-input', {
         label: 'System Input',
-        blockId: InputBlock.id,
+        blockId: BuiltinFlowBlockIds.input,
         state: 'building-system-prompt',
     });
-    monitor?.createNode(InputBlock.id, {
+    monitor?.createNode(BuiltinFlowBlockIds.input, {
         nodeId: 'system-input',
         label: 'System Input',
         config: {
@@ -271,10 +275,10 @@ export async function designFlowDraft(args: {
 
     monitor?.stageNode('prompt-input', {
         label: mapping.promptInput?.label ?? 'Prompt Input',
-        blockId: InputBlock.id,
+        blockId: BuiltinFlowBlockIds.input,
         state: 'building-user-prompt',
     });
-    monitor?.createNode(InputBlock.id, {
+    monitor?.createNode(BuiltinFlowBlockIds.input, {
         nodeId: 'prompt-input',
         label: mapping.promptInput?.label ?? 'Prompt Input',
         config: {
@@ -291,10 +295,10 @@ export async function designFlowDraft(args: {
 
     monitor?.stageNode('ai-node', {
         label: mapping.generate?.label ?? 'AI Generate',
-        blockId: AiGenerateBlock.id,
+        blockId: BuiltinFlowBlockIds.aiGenerate,
         state: 'configuring-generation',
     });
-    monitor?.createNode(AiGenerateBlock.id, {
+    monitor?.createNode(BuiltinFlowBlockIds.aiGenerate, {
         nodeId: 'ai-node',
         label: mapping.generate?.label ?? 'AI Generate',
         config: {
@@ -306,10 +310,10 @@ export async function designFlowDraft(args: {
 
     monitor?.stageNode('view-output', {
         label: mapping.review?.label ?? 'View Output',
-        blockId: ViewBlock.id,
+        blockId: BuiltinFlowBlockIds.view,
         state: 'creating-output-review',
     });
-    monitor?.createNode(ViewBlock.id, {
+    monitor?.createNode(BuiltinFlowBlockIds.view, {
         nodeId: 'view-output',
         label: mapping.review?.label ?? 'View Output',
     });
@@ -351,14 +355,14 @@ export async function designFlowDraft(args: {
         });
         flow = monitor.getFlow();
     } else {
-        flow = createFlowNode(flow, InputBlock.id, {
+        flow = createFlowNode(flow, BuiltinFlowBlockIds.input, {
             nodeId: 'system-input',
             label: 'System Input',
             config: {
                 input: await buildFlowDesignSystemPrompt(args.userRequest, improvementNotes),
             },
         }).flow;
-        flow = createFlowNode(flow, InputBlock.id, {
+        flow = createFlowNode(flow, BuiltinFlowBlockIds.input, {
             nodeId: 'prompt-input',
             label: mapping.promptInput?.label ?? 'Prompt Input',
             config: {
@@ -371,7 +375,7 @@ export async function designFlowDraft(args: {
                 }),
             },
         }).flow;
-        flow = createFlowNode(flow, AiGenerateBlock.id, {
+        flow = createFlowNode(flow, BuiltinFlowBlockIds.aiGenerate, {
             nodeId: 'ai-node',
             label: mapping.generate?.label ?? 'AI Generate',
             config: {
@@ -379,7 +383,7 @@ export async function designFlowDraft(args: {
                 jsonOutput: String(args.wantsJson),
             },
         }).flow;
-        flow = createFlowNode(flow, ViewBlock.id, {
+        flow = createFlowNode(flow, BuiltinFlowBlockIds.view, {
             nodeId: 'view-output',
             label: mapping.review?.label ?? 'View Output',
         }).flow;
@@ -622,7 +626,7 @@ export async function probeFlowBlockRuntime(args: {
     behaviorNotes: string[];
     mismatchesFromSpec: string[];
 }> {
-    const availableBlocks = args.availableBlocks ?? availableFlowBlocks;
+    const availableBlocks = args.availableBlocks ?? (await getCatalogAvailableFlowBlocks());
     const block = availableBlocks.find(candidate => candidate.id === args.blockId);
     if (!block) {
         throw new AgentError(`Flow block not found: ${args.blockId}`);
@@ -683,7 +687,7 @@ export async function probeFlowBlockRuntime(args: {
 }
 
 /** Creates a documentation patch proposal from probe findings. */
-export function proposeBlockSpecUpdate(args: {
+export async function proposeBlockSpecUpdate(args: {
     blockId: string;
     probeResult: {
         behaviorNotes: string[];
@@ -691,7 +695,7 @@ export function proposeBlockSpecUpdate(args: {
     };
     availableBlocks?: FlowBlockDefinition[];
 }) {
-    const availableBlocks = args.availableBlocks ?? availableFlowBlocks;
+    const availableBlocks = args.availableBlocks ?? (await getCatalogAvailableFlowBlocks());
     const block = availableBlocks.find(candidate => candidate.id === args.blockId);
     if (!block) {
         throw new AgentError(`Flow block not found: ${args.blockId}`);

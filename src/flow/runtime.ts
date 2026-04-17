@@ -1,5 +1,6 @@
 // Executable flow node runtime classes for sample blocks.
 import { AgentError } from '../errors/agent-error';
+import { BuiltinFlowBlockIds } from './block-pool';
 import { DefaultFlowDocumentController, FlowDocumentController } from './document';
 import type { FlowBlockDefinition, FlowDocument, FlowNode, FlowPacket, FlowPort } from './types';
 
@@ -272,13 +273,13 @@ export class DefaultExecutableFlowNodeFactory extends ExecutableFlowNodeFactory 
         };
 
         switch (block.id) {
-            case 'input':
+            case BuiltinFlowBlockIds.input:
                 return new InputExecutableFlowNode(node, block, services);
-            case 'buffer':
+            case BuiltinFlowBlockIds.buffer:
                 return new BufferExecutableFlowNode(node, block, services);
-            case 'view':
+            case BuiltinFlowBlockIds.view:
                 return new ViewExecutableFlowNode(node, block, services);
-            case 'ai-generate':
+            case BuiltinFlowBlockIds.aiGenerate:
                 return new AiGenerateExecutableFlowNode(node, block, services);
             default:
                 throw new AgentError(`No executable flow node runtime is registered for block: ${block.id}`);

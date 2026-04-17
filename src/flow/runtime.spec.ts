@@ -1,11 +1,12 @@
 // Vitest specs for executable flow node runtimes.
 import { describe, expect, it } from 'vitest';
-import { AiGenerateBlock, BufferBlock, InputBlock, ViewBlock } from './blocks';
+import { BuiltinFlowBlockIds, getBuiltinFlowBlock } from './block-pool';
 import { connectFlowPorts, createFlowDocument, createFlowNode, getFlowPortById, setFlowPortPacket } from './document';
 import { DefaultExecutableFlowNodeFactory } from './runtime';
 
 describe('flow runtime', () => {
     it('executes the input block by writing config input into the output packet', async () => {
+        const InputBlock = await getBuiltinFlowBlock(BuiltinFlowBlockIds.input);
         let flow = createFlowDocument([InputBlock]);
         flow = createFlowNode(flow, 'input', {
             nodeId: 'input-1',
@@ -21,6 +22,10 @@ describe('flow runtime', () => {
     });
 
     it('executes the buffer block by waiting and forwarding the input packet', async () => {
+        const [InputBlock, BufferBlock] = await Promise.all([
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.input),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.buffer),
+        ]);
         let flow = createFlowDocument([InputBlock, BufferBlock]);
         flow = createFlowNode(flow, 'input', {
             nodeId: 'input-1',
@@ -53,6 +58,10 @@ describe('flow runtime', () => {
     });
 
     it('executes the view block by logging the input packet value', async () => {
+        const [InputBlock, ViewBlock] = await Promise.all([
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.input),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.view),
+        ]);
         const logs: string[] = [];
         let flow = createFlowDocument([InputBlock, ViewBlock]);
         flow = createFlowNode(flow, 'input', {
@@ -84,6 +93,11 @@ describe('flow runtime', () => {
     });
 
     it('executes an input -> buffer -> view chain end-to-end with packet propagation', async () => {
+        const [InputBlock, BufferBlock, ViewBlock] = await Promise.all([
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.input),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.buffer),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.view),
+        ]);
         const logs: string[] = [];
         const sleeps: number[] = [];
         let flow = createFlowDocument([InputBlock, BufferBlock, ViewBlock]);
@@ -139,6 +153,10 @@ describe('flow runtime', () => {
     });
 
     it('preserves null packets through buffer and logs them as null in the view block', async () => {
+        const [BufferBlock, ViewBlock] = await Promise.all([
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.buffer),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.view),
+        ]);
         const logs: string[] = [];
         let flow = createFlowDocument([BufferBlock, ViewBlock]);
         flow = createFlowNode(flow, 'buffer', {
@@ -186,6 +204,12 @@ describe('flow runtime', () => {
     });
 
     it('fails execution when required config is missing or invalid', async () => {
+        const [InputBlock, BufferBlock, ViewBlock, AiGenerateBlock] = await Promise.all([
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.input),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.buffer),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.view),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.aiGenerate),
+        ]);
         let flow = createFlowDocument([InputBlock, BufferBlock, ViewBlock, AiGenerateBlock]);
         flow = createFlowNode(flow, 'input', {
             nodeId: 'input-1',
@@ -215,6 +239,10 @@ describe('flow runtime', () => {
     });
 
     it('executes the ai generate block with mocked text output', async () => {
+        const [InputBlock, AiGenerateBlock] = await Promise.all([
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.input),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.aiGenerate),
+        ]);
         let flow = createFlowDocument([InputBlock, AiGenerateBlock]);
         flow = createFlowNode(flow, 'input', {
             nodeId: 'system-1',
@@ -264,6 +292,10 @@ describe('flow runtime', () => {
     });
 
     it('executes the ai generate block with mocked json output', async () => {
+        const [InputBlock, AiGenerateBlock] = await Promise.all([
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.input),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.aiGenerate),
+        ]);
         let flow = createFlowDocument([InputBlock, AiGenerateBlock]);
         flow = createFlowNode(flow, 'input', {
             nodeId: 'prompt-1',

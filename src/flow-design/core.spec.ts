@@ -1,6 +1,6 @@
 // Vitest specs for the shared flow-design core.
 import { describe, expect, it } from 'vitest';
-import { availableFlowBlocks } from './catalog';
+import { getCatalogAvailableFlowBlocks } from './catalog';
 import {
     analyzeFlowRequest,
     designFlowDraft,
@@ -27,6 +27,7 @@ describe('flow-design core', () => {
     });
 
     it('creates and validates a deterministic draft flow from preflight-backed inputs', async () => {
+        const availableFlowBlocks = await getCatalogAvailableFlowBlocks();
         const draft = await designFlowDraft({
             userRequest: '키워드를 줄테니 블로그 타이틀 여러개 만들기',
             sampleInput: '생산성 향상',
@@ -53,6 +54,7 @@ describe('flow-design core', () => {
     });
 
     it('executes and reflects on the shared draft flow without depending on tool wrappers', async () => {
+        const availableFlowBlocks = await getCatalogAvailableFlowBlocks();
         const draft = await designFlowDraft({
             userRequest: '상품 소개 문구를 JSON 형태로 여러개 만들어줘',
             sampleInput: '샘플 입력',

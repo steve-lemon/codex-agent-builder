@@ -1,6 +1,6 @@
 // Vitest specs for the skill-based flow design agent.
 import { describe, expect, it } from 'vitest';
-import { AiGenerateBlock, InputBlock, ViewBlock } from '../flow/blocks';
+import { BuiltinFlowBlockIds, getBuiltinFlowBlock } from '../flow/block-pool';
 import { CallbackFlowDesignConnection, type FlowDesignEvent } from '../flow/design-monitor';
 import { FlowDesignAgent } from './agent';
 
@@ -76,6 +76,10 @@ describe('flow design agent', () => {
     });
 
     it('fails clearly when required blocks are unavailable', async () => {
+        const [InputBlock, ViewBlock] = await Promise.all([
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.input),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.view),
+        ]);
         const agent = new FlowDesignAgent({
             availableBlocks: [InputBlock, ViewBlock],
         });
@@ -89,6 +93,11 @@ describe('flow design agent', () => {
     });
 
     it('accepts a custom provider for intent, draft, and reflection decisions', async () => {
+        const [InputBlock, AiGenerateBlock, ViewBlock] = await Promise.all([
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.input),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.aiGenerate),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.view),
+        ]);
         const agent = new FlowDesignAgent({
             provider: {
                 analyzeRequest(userRequest) {

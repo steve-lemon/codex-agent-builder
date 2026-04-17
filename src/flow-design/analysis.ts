@@ -1,6 +1,7 @@
 // Shared flow-analysis helpers used by flow design core and skill/tool wrappers.
+import { matchFlowBlocksByCapabilities } from '../flow/block-matching';
 import type { DirectedGraph } from '../graph/types';
-import { availableFlowBlocks, availableFlowCapabilities, flowBlockCapabilityMap } from './catalog';
+import { getCatalogAvailableFlowCapabilities } from './catalog';
 import { getFlowDesignManifest } from './manifest';
 import {
     defaultFlowDesignTaskGraphAdvisor,
@@ -82,7 +83,10 @@ export async function inferTaskGraph(
 }
 
 /** Refines an inferred task graph using reflection output from an earlier design pass. */
-export async function refineTaskGraph(graph: DirectedGraph, reflection: TaskGraphRefinementInput): Promise<DirectedGraph> {
+export async function refineTaskGraph(
+    graph: DirectedGraph,
+    reflection: TaskGraphRefinementInput,
+): Promise<DirectedGraph> {
     // TODO(flow-agent): Track refinement provenance per node so later passes can
     // explain which reflection note changed which task-graph expectation.
     const exactCountMatch = reflection.improvementNotes.join(' ').match(/exactly\s+(\d+)/i);
@@ -152,31 +156,40 @@ export async function refineTaskGraph(graph: DirectedGraph, reflection: TaskGrap
 }
 
 /** Matches inferred task-graph nodes to the currently available blocks. */
-export function analyzeTaskGraph(graph: DirectedGraph): TaskNodeAnalysis[] {
-    return graph.nodes.map(node => {
-        const requiredCapabilities = ((node.data?.requiredCapabilities as string[] | undefined) ?? []).slice();
-        const matchedBlockIds = availableFlowBlocks
-            .filter(block => {
-                const blockCapabilities = flowBlockCapabilityMap[block.id] ?? [];
-                return requiredCapabilities.every(capability => blockCapabilities.includes(capability));
-            })
-            .map(block => block.id);
-        const reasons =
-            matchedBlockIds.length > 0
-                ? [`Matched block candidates: ${matchedBlockIds.join(', ')}`]
-                : [`No block currently provides all required capabilities: ${requiredCapabilities.join(', ')}`];
+export async function analyzeTaskGraph(graph: DirectedGraph): Promise<TaskNodeAnalysis[]> {
+    return await Promise.all(
+        graph.nodes.map(async node => {
+            const requiredCapabilities = ((node.data?.requiredCapabilities as string[] | undefined) ?? []).slice();
+            const matchResult = await matchFlowBlocksByCapabilities(requiredCapabilities);
+            const matchedBlockIds = matchResult.candidates
+                .filter(candidate => candidate.allRequiredCapabilitiesMatched)
+                .map(candidate => candidate.blockId);
+            const topCandidate = matchResult.candidates[0];
+            const reasons =
+                matchedBlockIds.length > 0
+                    ? [`Matched block candidates: ${matchedBlockIds.join(', ')}`]
+                    : topCandidate
+                    ? [
+                          // eslint-disable-next-line prettier/prettier
+                          `Closest block candidate '${topCandidate.blockId}' is missing: ${topCandidate.missingCapabilities.join(', ')}`,
+                      ]
+                    : [
+                          // eslint-disable-next-line prettier/prettier
+                          `No block currently provides any of the required capabilities: ${requiredCapabilities.join(', ')}`
+                      ];
 
-        return {
-            nodeId: node.id,
-            operation: String(node.data?.operation ?? node.label ?? node.id),
-            expectedInputs: ((node.data?.expectedInputs as string[] | undefined) ?? []).slice(),
-            expectedOutputs: ((node.data?.expectedOutputs as string[] | undefined) ?? []).slice(),
-            requiredCapabilities,
-            matchedBlockIds,
-            feasible: matchedBlockIds.length > 0,
-            reasons,
-        };
-    });
+            return {
+                nodeId: node.id,
+                operation: String(node.data?.operation ?? node.label ?? node.id),
+                expectedInputs: ((node.data?.expectedInputs as string[] | undefined) ?? []).slice(),
+                expectedOutputs: ((node.data?.expectedOutputs as string[] | undefined) ?? []).slice(),
+                requiredCapabilities,
+                matchedBlockIds,
+                feasible: matchedBlockIds.length > 0,
+                reasons,
+            };
+        }),
+    );
 }
 
 /** Produces draft block specs for task-graph nodes that have no current block match. */
@@ -214,11 +227,15 @@ export async function assessFlowFeasibility(userRequest: string): Promise<FlowFe
 }
 
 /** Performs a feasibility pass against a caller-provided task graph. */
-export function assessTaskGraphFeasibility(_userRequest: string, taskGraph: DirectedGraph): FlowFeasibilityAssessment {
+export async function assessTaskGraphFeasibility(
+    _userRequest: string,
+    taskGraph: DirectedGraph,
+): Promise<FlowFeasibilityAssessment> {
     // TODO(flow-agent): Introduce a first-class capability taxonomy instead of
     // string matching so block proposals and feasibility checks share one model.
-    const nodeAnalyses = analyzeTaskGraph(taskGraph);
+    const nodeAnalyses = await analyzeTaskGraph(taskGraph);
     const requiredCapabilities = deriveRequiredCapabilitiesFromTaskGraph(taskGraph);
+    const availableFlowCapabilities = await getCatalogAvailableFlowCapabilities();
     const missingCapabilities = requiredCapabilities.filter(
         capability => !availableFlowCapabilities.includes(capability),
     );

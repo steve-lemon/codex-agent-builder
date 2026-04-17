@@ -1,7 +1,8 @@
 // Vitest specs for flow document modeling.
 import { describe, expect, it } from 'vitest';
 import { AgentError } from '../errors/agent-error';
-import { TextInputBlock, defineFlowBlock } from './blocks';
+import { defineFlowBlock } from './blocks';
+import { BuiltinFlowBlockIds, getBuiltinFlowBlock } from './block-pool';
 import {
     DefaultFlowDocumentController,
     FlowDocumentController,
@@ -19,7 +20,8 @@ import {
 } from './document';
 
 describe('flow document', () => {
-    it('creates nodes from block definitions with materialized ports and global ids', () => {
+    it('creates nodes from block definitions with materialized ports and global ids', async () => {
+        const TextInputBlock = await getBuiltinFlowBlock(BuiltinFlowBlockIds.textInput);
         const flow = createFlowDocument([TextInputBlock]);
 
         const created = createFlowNode(flow, 'text-input');
@@ -102,7 +104,8 @@ describe('flow document', () => {
         });
     });
 
-    it('connects compatible ports between nodes and enforces single incoming edge per input port', () => {
+    it('connects compatible ports between nodes and enforces single incoming edge per input port', async () => {
+        const TextInputBlock = await getBuiltinFlowBlock(BuiltinFlowBlockIds.textInput);
         const textConsumer = defineFlowBlock({
             id: 'text-consumer',
             label: 'Text Consumer',
@@ -257,7 +260,8 @@ describe('flow document', () => {
         });
     });
 
-    it('allows any-typed inputs to adopt the connected source type', () => {
+    it('allows any-typed inputs to adopt the connected source type', async () => {
+        const TextInputBlock = await getBuiltinFlowBlock(BuiltinFlowBlockIds.textInput);
         const anyConsumer = defineFlowBlock({
             id: 'any-consumer',
             label: 'Any Consumer',
@@ -337,7 +341,8 @@ describe('flow document', () => {
         });
     });
 
-    it('rejects invalid conversions, duplicate local ids, and duplicate edges', () => {
+    it('rejects invalid conversions, duplicate local ids, and duplicate edges', async () => {
+        const TextInputBlock = await getBuiltinFlowBlock(BuiltinFlowBlockIds.textInput);
         expect(() =>
             defineFlowBlock({
                 id: 'bad-block',
@@ -403,7 +408,8 @@ describe('flow document', () => {
         ).toThrow(/already connected/);
     });
 
-    it('allows subclasses to override document policies without changing the public workflow', () => {
+    it('allows subclasses to override document policies without changing the public workflow', async () => {
+        const TextInputBlock = await getBuiltinFlowBlock(BuiltinFlowBlockIds.textInput);
         class PrefixedFlowController extends DefaultFlowDocumentController {
             protected override createNodeId(blockId: string): string {
                 return `custom-${blockId}`;

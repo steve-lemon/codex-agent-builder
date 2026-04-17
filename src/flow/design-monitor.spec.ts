@@ -1,6 +1,6 @@
 // Specs for live flow design monitoring sessions and transport adapters.
 import { describe, expect, it } from 'vitest';
-import { InputBlock, ViewBlock } from './blocks';
+import { BuiltinFlowBlockIds, getBuiltinFlowBlock } from './block-pool';
 import {
     CallbackFlowDesignConnection,
     FlowDesignSession,
@@ -9,7 +9,11 @@ import {
 } from './design-monitor';
 
 describe('flow design monitor', () => {
-    it('emits graph lifecycle, node lifecycle, and edge events with snapshots', () => {
+    it('emits graph lifecycle, node lifecycle, and edge events with snapshots', async () => {
+        const [InputBlock, ViewBlock] = await Promise.all([
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.input),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.view),
+        ]);
         const events: FlowDesignEvent[] = [];
         const session = new FlowDesignSession(
             'design-session-1',
@@ -108,7 +112,11 @@ describe('flow design monitor', () => {
         );
     });
 
-    it('supports clear, node update/delete, and edge delete for incremental UIs', () => {
+    it('supports clear, node update/delete, and edge delete for incremental UIs', async () => {
+        const [InputBlock, ViewBlock] = await Promise.all([
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.input),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.view),
+        ]);
         const events: FlowDesignEvent[] = [];
         const session = new FlowDesignSession(
             'design-session-2',
@@ -157,7 +165,8 @@ describe('flow design monitor', () => {
         );
     });
 
-    it('serializes monitoring events over a websocket-style transport', () => {
+    it('serializes monitoring events over a websocket-style transport', async () => {
+        const InputBlock = await getBuiltinFlowBlock(BuiltinFlowBlockIds.input);
         const payloads: string[] = [];
         const connection = new WebSocketFlowDesignConnection({
             send(payload) {

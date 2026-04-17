@@ -6,6 +6,7 @@ import {
 } from '../node-config-design/manifest-schemas';
 import { type LlmRuntimeManifestRecord, LlmRuntimeManifestSchema } from '../llm/runtime-manifest-schemas';
 import { type ToolPackResourceRecord, ToolPackResourceSchema } from '../tools/resource-schemas';
+import { type FlowBlockPoolRecord, FlowBlockPoolSchema } from '../flow/resource-schemas';
 
 export interface ResourceDefinition<T> {
     id: string;
@@ -17,6 +18,7 @@ export interface ResourceSchemaMap {
     'flow-design.manifest': FlowDesignManifestRecord;
     'node-config-design.manifest': NodeConfigDesignManifestRecord;
     'llm.runtime.manifest': LlmRuntimeManifestRecord;
+    'flow.block-pool': FlowBlockPoolRecord;
     'tools.sample-tools.set': ToolPackResourceRecord;
     'tools.flow-design.set': ToolPackResourceRecord;
     'tools.node-config.set': ToolPackResourceRecord;
@@ -42,6 +44,11 @@ export const RESOURCE_DEFINITIONS: {
         id: 'llm.runtime.manifest',
         relativePath: 'runtime/LLM_RUNTIME_MANIFEST.yml',
         schema: LlmRuntimeManifestSchema,
+    },
+    'flow.block-pool': {
+        id: 'flow.block-pool',
+        relativePath: 'flow/BLOCK_POOL.yml',
+        schema: FlowBlockPoolSchema,
     },
     'tools.sample-tools.set': {
         id: 'tools.sample-tools.set',

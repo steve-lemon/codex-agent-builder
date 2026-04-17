@@ -1,6 +1,6 @@
 // Task-graph inference and preflight validation tools for flow design.
 import { z } from 'zod';
-import { availableFlowBlocks } from '../flow-design/catalog';
+import { getCatalogAvailableFlowBlocks } from '../flow-design/catalog';
 import {
     analyzeTaskGraph,
     assessTaskGraphFeasibility,
@@ -113,11 +113,11 @@ function getTaskGraphToolExecutors() {
                 edges: Array<{ source: string; target: string; label?: string; data?: Record<string, unknown> }>;
             };
         }>(async ({ taskGraph }) => ({
-            availableBlocks: availableFlowBlocks.map(block => ({
+            availableBlocks: (await getCatalogAvailableFlowBlocks()).map(block => ({
                 id: block.id,
                 label: block.label,
             })),
-            nodeAnalyses: analyzeTaskGraph(taskGraph),
+            nodeAnalyses: await analyzeTaskGraph(taskGraph),
         })),
         [TASK_GRAPH_EXECUTE_IDS.proposeMissingBlocks]: defineTaskGraphToolExecutor<{
             nodeAnalyses: Array<{
@@ -153,7 +153,7 @@ function getTaskGraphToolExecutors() {
                 edges: Array<{ source: string; target: string; label?: string; data?: Record<string, unknown> }>;
             };
         }>(async ({ userRequest, taskGraph }) =>
-            taskGraph ? assessTaskGraphFeasibility(userRequest, taskGraph) : await assessFlowFeasibility(userRequest),
+            taskGraph ? await assessTaskGraphFeasibility(userRequest, taskGraph) : await assessFlowFeasibility(userRequest),
         ),
     };
 }

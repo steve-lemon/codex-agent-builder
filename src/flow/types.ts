@@ -8,6 +8,24 @@
  */
 export type FlowPortDataType = 'text' | 'json' | 'image' | 'number' | 'any';
 
+/** Coarse category used to organize block capabilities at the catalog level. */
+export type FlowCapabilityCategory = 'input' | 'process' | 'view' | 'ai';
+
+/** One declared capability that a block may provide. */
+export interface FlowCapabilityDefinition {
+    /** Stable capability id used for matching and planning. */
+    id: string;
+
+    /** High-level capability family used by catalogs and editors. */
+    category: FlowCapabilityCategory;
+
+    /** Human-friendly capability label. */
+    label: string;
+
+    /** Optional explanation of the capability's purpose. */
+    description?: string;
+}
+
 /** String payload used for image ports. It may contain a URL or base64-encoded image data. */
 export type FlowImageValue = string;
 
@@ -148,6 +166,9 @@ export interface FlowBlockDefinition {
 
     /** Optional block-authored guidance consumed by node-config knowledge sources. */
     nodeConfigGuidance?: FlowBlockNodeConfigGuidance;
+
+    /** Capability ids provided by this block. */
+    capabilities?: string[];
 
     // TODO(flow): Let blocks optionally advertise multiple compatible strategy
     // ids or capability tags once node configuration needs layered behavior

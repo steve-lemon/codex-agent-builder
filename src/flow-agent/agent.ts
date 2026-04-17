@@ -1,6 +1,6 @@
 // Skill-based agent that designs, validates, executes, and improves flows.
 import { AgentError } from '../errors/agent-error';
-import { availableFlowBlocks } from '../flow-design/catalog';
+import { getCatalogAvailableFlowBlocks } from '../flow-design/catalog';
 import { FlowDesignSession } from '../flow/design-monitor';
 import type { FlowBlockDefinition } from '../flow/types';
 import { buildDefaultFlowDesignSkills } from './skills';
@@ -11,8 +11,6 @@ import type {
     FlowDesignAttemptState,
     FlowDesignSkill,
 } from './types';
-
-const defaultAvailableBlocks: FlowBlockDefinition[] = [...availableFlowBlocks];
 
 function snapshotAttempt(state: FlowDesignAttemptState): FlowDesignAttemptResult {
     if (!state.intent || !state.flow || !state.validation) {
@@ -42,7 +40,7 @@ export class FlowDesignAgent {
 
     constructor(private readonly options: FlowDesignAgentOptions = {}) {
         this.maxIterations = Math.max(1, options.maxIterations ?? 3);
-        this.availableBlocks = [...(options.availableBlocks ?? defaultAvailableBlocks)];
+        this.availableBlocks = [...(options.availableBlocks ?? [])];
         this.skills = [...(options.skills ?? buildDefaultFlowDesignSkills())];
     }
 
@@ -50,8 +48,10 @@ export class FlowDesignAgent {
         const iterations: FlowDesignAttemptResult[] = [];
         const allUsedSkills = new Set<string>();
         let sharedImprovementNotes: string[] = [];
+        const availableBlocks =
+            this.availableBlocks.length > 0 ? this.availableBlocks : await getCatalogAvailableFlowBlocks();
         const designSession = this.options.designConnection
-            ? new FlowDesignSession(`flow-design:${Date.now()}`, this.availableBlocks, this.options.designConnection)
+            ? new FlowDesignSession(`flow-design:${Date.now()}`, availableBlocks, this.options.designConnection)
             : undefined;
 
         designSession?.start({
@@ -71,7 +71,7 @@ export class FlowDesignAgent {
                 const state: FlowDesignAttemptState = {
                     iteration,
                     userRequest,
-                    availableBlocks: this.availableBlocks,
+                    availableBlocks,
                     improvementNotes: [...sharedImprovementNotes],
                     usedSkills: [],
                 };

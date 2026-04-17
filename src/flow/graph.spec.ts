@@ -1,12 +1,14 @@
 // Vitest specs for flow-to-graph conversion and planning.
 import { describe, expect, it } from 'vitest';
-import { defineFlowBlock, TextInputBlock } from './blocks';
+import { defineFlowBlock } from './blocks';
+import { BuiltinFlowBlockIds, getBuiltinFlowBlock } from './block-pool';
 import { connectFlowPorts, createFlowDocument, createFlowNode } from './document';
 import { convertFlowToGraph, DefaultFlowGraphAdapter, planFlowGraph } from './graph';
 import type { FlowNode } from './types';
 
 describe('flow graph conversion', () => {
-    it('converts flow nodes and edges into the generic graph representation', () => {
+    it('converts flow nodes and edges into the generic graph representation', async () => {
+        const TextInputBlock = await getBuiltinFlowBlock(BuiltinFlowBlockIds.textInput);
         const textConsumer = defineFlowBlock({
             id: 'text-consumer',
             label: 'Text Consumer',
@@ -76,7 +78,8 @@ describe('flow graph conversion', () => {
         });
     });
 
-    it('plans converted flows with the existing graph execution planner', () => {
+    it('plans converted flows with the existing graph execution planner', async () => {
+        const TextInputBlock = await getBuiltinFlowBlock(BuiltinFlowBlockIds.textInput);
         const passthrough = defineFlowBlock({
             id: 'passthrough',
             label: 'Passthrough',
@@ -170,7 +173,7 @@ describe('flow graph conversion', () => {
         ]);
     });
 
-    it('allows subclasses to customize graph conversion metadata', () => {
+    it('allows subclasses to customize graph conversion metadata', async () => {
         class TaggedFlowGraphAdapter extends DefaultFlowGraphAdapter {
             protected override toGraphNode(node: FlowNode) {
                 const converted = super.toGraphNode(node);
@@ -184,6 +187,7 @@ describe('flow graph conversion', () => {
             }
         }
 
+        const TextInputBlock = await getBuiltinFlowBlock(BuiltinFlowBlockIds.textInput);
         const adapter = new TaggedFlowGraphAdapter();
         let flow = createFlowDocument([TextInputBlock]);
         flow = createFlowNode(flow, 'text-input', { nodeId: 'input' }).flow;

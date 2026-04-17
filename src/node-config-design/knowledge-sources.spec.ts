@@ -1,6 +1,6 @@
 // Vitest specs for manifest-backed node-config knowledge sources.
 import { describe, expect, it } from 'vitest';
-import { AiGenerateBlock, InputBlock, ViewBlock } from '../flow/blocks';
+import { BuiltinFlowBlockIds, getBuiltinFlowBlock } from '../flow/block-pool';
 import { createFlowDocument, createFlowNode } from '../flow/document';
 import {
     ManifestSkillDocumentNodeConfigKnowledgeSource,
@@ -9,6 +9,11 @@ import {
 
 describe('node-config knowledge sources', () => {
     it('loads shared notes and directives from a manifest file', async () => {
+        const [InputBlock, AiGenerateBlock, ViewBlock] = await Promise.all([
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.input),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.aiGenerate),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.view),
+        ]);
         let flow = createFlowDocument([InputBlock, AiGenerateBlock, ViewBlock]);
         flow = createFlowNode(flow, InputBlock.id, { nodeId: 'system-input', label: 'System Input' }).flow;
         flow = createFlowNode(flow, AiGenerateBlock.id, { nodeId: 'ai-node', label: 'AI Node' }).flow;
@@ -71,6 +76,11 @@ describe('node-config knowledge sources', () => {
     });
 
     it('default knowledge source combines file guidance with block metadata', async () => {
+        const [InputBlock, AiGenerateBlock, ViewBlock] = await Promise.all([
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.input),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.aiGenerate),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.view),
+        ]);
         let flow = createFlowDocument([InputBlock, AiGenerateBlock, ViewBlock]);
         flow = createFlowNode(flow, InputBlock.id, { nodeId: 'system-input', label: 'System Input' }).flow;
         flow = createFlowNode(flow, InputBlock.id, { nodeId: 'prompt-input', label: 'Prompt Input' }).flow;

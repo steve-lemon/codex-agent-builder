@@ -5,11 +5,11 @@ This file groups the current in-code `TODO`s by architectural layer so follow-up
 ## Flow Core
 
 Files:
-- [src/flow/types.ts](/Users/dujung/Documents/Codex/src/flow/types.ts)
-- [src/flow/document.ts](/Users/dujung/Documents/Codex/src/flow/document.ts)
-- [src/flow/serialization.ts](/Users/dujung/Documents/Codex/src/flow/serialization.ts)
-- [src/flow/graph.ts](/Users/dujung/Documents/Codex/src/flow/graph.ts)
-- [src/flow/runtime.ts](/Users/dujung/Documents/Codex/src/flow/runtime.ts)
+- [`src/flow/types.ts`](../src/flow/types.ts)
+- [`src/flow/document.ts`](../src/flow/document.ts)
+- [`src/flow/serialization.ts`](../src/flow/serialization.ts)
+- [`src/flow/graph.ts`](../src/flow/graph.ts)
+- [`src/flow/runtime.ts`](../src/flow/runtime.ts)
 
 Planned work:
 - add richer packet metadata such as provenance, schema versioning, and diagnostics
@@ -26,11 +26,11 @@ Planned work:
 ## Flow-Design and Flow-Agent
 
 Files:
-- [src/flow-design/analysis.ts](/Users/dujung/Documents/Codex/src/flow-design/analysis.ts)
-- [src/tools/flow-tools.ts](/Users/dujung/Documents/Codex/src/tools/flow-tools.ts)
-- [src/tools/task-graph-tools.ts](/Users/dujung/Documents/Codex/src/tools/task-graph-tools.ts)
-- [src/llm/fake-plan-builders.ts](/Users/dujung/Documents/Codex/src/llm/fake-plan-builders.ts)
-- [src/agent/final-result-formatters.ts](/Users/dujung/Documents/Codex/src/agent/final-result-formatters.ts)
+- [`src/flow-design/analysis.ts`](../src/flow-design/analysis.ts)
+- [`src/tools/flow-tools.ts`](../src/tools/flow-tools.ts)
+- [`src/tools/task-graph-tools.ts`](../src/tools/task-graph-tools.ts)
+- [`src/llm/fake-plan-builders.ts`](../src/llm/fake-plan-builders.ts)
+- [`src/agent/final-result-formatters.ts`](../src/agent/final-result-formatters.ts)
 
 Planned work:
 - replace deterministic task-graph inference heuristics with a more block-aware decomposition model
@@ -45,8 +45,8 @@ Planned work:
 ## Node-Config Design
 
 Files:
-- [src/node-config-design/core.ts](/Users/dujung/Documents/Codex/src/node-config-design/core.ts)
-- [src/node-config-agent/strategies/shared.ts](/Users/dujung/Documents/Codex/src/node-config-agent/strategies/shared.ts)
+- [`src/node-config-design/core.ts`](../src/node-config-design/core.ts)
+- [`src/node-config-agent/strategies/shared.ts`](../src/node-config-agent/strategies/shared.ts)
 
 Planned work:
 - allow multiple strategies to cooperate on one node
@@ -56,10 +56,10 @@ Planned work:
 ## Monitoring and Observability
 
 Files:
-- [src/flow/design-monitor.ts](/Users/dujung/Documents/Codex/src/flow/design-monitor.ts)
-- [src/graph/renderer.ts](/Users/dujung/Documents/Codex/src/graph/renderer.ts)
-- [src/agent/runtime.ts](/Users/dujung/Documents/Codex/src/agent/runtime.ts)
-- [src/observability/unified-timeline.ts](/Users/dujung/Documents/Codex/src/observability/unified-timeline.ts)
+- [`src/flow/design-monitor.ts`](../src/flow/design-monitor.ts)
+- [`src/graph/renderer.ts`](../src/graph/renderer.ts)
+- [`src/agent/runtime.ts`](../src/agent/runtime.ts)
+- [`src/observability/unified-timeline.ts`](../src/observability/unified-timeline.ts)
 
 Planned work:
 - add diff-based design-monitor payloads for large graphs

@@ -1,12 +1,17 @@
 // Vitest specs for the shared node-config design core.
 import { describe, expect, it } from 'vitest';
-import { AiGenerateBlock, InputBlock, ViewBlock } from '../flow/blocks';
+import { BuiltinFlowBlockIds, getBuiltinFlowBlock } from '../flow/block-pool';
 import { createFlowDocument, createFlowNode, connectFlowPorts } from '../flow/document';
 import { NodeConfigDesignService } from './core';
 import { createDefaultNodeConfigKnowledgeSource } from './knowledge-sources';
 
 describe('node-config design core', () => {
     it('applies block-specific strategies and tracks assignments without tool wrappers', async () => {
+        const [InputBlock, AiGenerateBlock, ViewBlock] = await Promise.all([
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.input),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.aiGenerate),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.view),
+        ]);
         let flow = createFlowDocument([InputBlock, AiGenerateBlock, ViewBlock]);
         flow = createFlowNode(flow, InputBlock.id, { nodeId: 'system-input', label: 'System Input' }).flow;
         flow = createFlowNode(flow, InputBlock.id, { nodeId: 'prompt-input', label: 'Prompt Input' }).flow;
@@ -57,6 +62,11 @@ describe('node-config design core', () => {
     });
 
     it('merges knowledge-source notes into strategy inputs', async () => {
+        const [InputBlock, AiGenerateBlock, ViewBlock] = await Promise.all([
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.input),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.aiGenerate),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.view),
+        ]);
         let flow = createFlowDocument([InputBlock, AiGenerateBlock, ViewBlock]);
         flow = createFlowNode(flow, InputBlock.id, { nodeId: 'system-input', label: 'System Input' }).flow;
         flow = createFlowNode(flow, InputBlock.id, { nodeId: 'prompt-input', label: 'Prompt Input' }).flow;
@@ -89,6 +99,11 @@ describe('node-config design core', () => {
     });
 
     it('uses default knowledge sources to consume block metadata and skill guidance', async () => {
+        const [InputBlock, AiGenerateBlock, ViewBlock] = await Promise.all([
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.input),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.aiGenerate),
+            getBuiltinFlowBlock(BuiltinFlowBlockIds.view),
+        ]);
         let flow = createFlowDocument([InputBlock, AiGenerateBlock, ViewBlock]);
         flow = createFlowNode(flow, InputBlock.id, { nodeId: 'system-input', label: 'System Input' }).flow;
         flow = createFlowNode(flow, InputBlock.id, { nodeId: 'prompt-input', label: 'Prompt Input' }).flow;

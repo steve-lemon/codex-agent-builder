@@ -1,24 +1,21 @@
-// Shared catalog of built-in blocks and coarse capabilities used by flow-design layers.
-import { AiGenerateBlock, BufferBlock, InputBlock, TextInputBlock, ViewBlock } from '../flow/blocks';
+// Resource-backed block and capability catalog used by flow-design layers.
+import {
+    getAvailableFlowCapabilities as getAvailableFlowCapabilitiesFromPool,
+    getBuiltinFlowBlocks,
+    getFlowBlockCapabilityMap as getFlowBlockCapabilityMapFromPool,
+} from '../flow/block-pool';
 
 /** Built-in blocks currently available to flow-related design agents and tools. */
-export const availableFlowBlocks = [TextInputBlock, InputBlock, BufferBlock, ViewBlock, AiGenerateBlock];
+export async function getCatalogAvailableFlowBlocks() {
+    return await getBuiltinFlowBlocks();
+}
 
-/** Coarse capability registry exposed by the currently available blocks. */
-export const availableFlowCapabilities = [
-    'text-input',
-    'text-output',
-    'delay',
-    'view-log',
-    'mock-ai-generation',
-    'structured-output',
-];
+/** Coarse capability registry currently exposed by the built-in block pool. */
+export async function getCatalogAvailableFlowCapabilities() {
+    return await getAvailableFlowCapabilitiesFromPool();
+}
 
 /** Capability map used for deterministic task-graph to block matching. */
-export const flowBlockCapabilityMap: Record<string, string[]> = {
-    'text-input': ['text-input'],
-    input: ['text-input'],
-    buffer: ['delay'],
-    view: ['view-log', 'text-output'],
-    'ai-generate': ['mock-ai-generation', 'structured-output', 'text-output'],
-};
+export async function getCatalogFlowBlockCapabilityMap() {
+    return await getFlowBlockCapabilityMapFromPool();
+}
