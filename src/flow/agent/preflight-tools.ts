@@ -9,6 +9,8 @@ import {
     inferTaskGraph,
     refineTaskGraph,
 } from '../design/analysis';
+import { createFlowAiDelegationAdvisor } from '../design/ai-delegation';
+import { createFlowDesignTaskGraphAdvisor } from '../design/task-graphs';
 import { buildToolPackFromResource, loadToolPackResource } from '../../tools/core/resources';
 import { type ToolContext, type ToolDefinition, type ToolPack, type ToolRepositoryBundle } from '../../tools/core/types';
 
@@ -103,8 +105,10 @@ function getTaskGraphToolDefinitions(): Record<
 function getTaskGraphToolExecutors() {
     return {
         [TASK_GRAPH_EXECUTE_IDS.inferTaskGraph]: defineTaskGraphToolExecutor<{ userRequest: string }>(
-            async ({ userRequest }) => ({
-                taskGraph: await inferTaskGraph(userRequest),
+            async ({ userRequest }, context) => ({
+                taskGraph: await inferTaskGraph(userRequest, {
+                    taskGraphAdvisor: createFlowDesignTaskGraphAdvisor(context.llm),
+                }),
             }),
         ),
         [TASK_GRAPH_EXECUTE_IDS.analyzeTaskGraphCompatibility]: defineTaskGraphToolExecutor<{
@@ -112,12 +116,15 @@ function getTaskGraphToolExecutors() {
                 nodes: Array<{ id: string; label?: string; data?: Record<string, unknown> }>;
                 edges: Array<{ source: string; target: string; label?: string; data?: Record<string, unknown> }>;
             };
-        }>(async ({ taskGraph }) => ({
+        }>(async ({ taskGraph }, context) => ({
             availableBlocks: (await getCatalogAvailableFlowBlocks()).map(block => ({
                 id: block.id,
                 label: block.label,
             })),
-            nodeAnalyses: await analyzeTaskGraph(taskGraph),
+            nodeAnalyses: await analyzeTaskGraph(taskGraph, {
+                userRequest: '',
+                aiDelegationAdvisor: createFlowAiDelegationAdvisor(context.llm),
+            }),
         })),
         [TASK_GRAPH_EXECUTE_IDS.proposeMissingBlocks]: defineTaskGraphToolExecutor<{
             nodeAnalyses: Array<{
@@ -152,8 +159,16 @@ function getTaskGraphToolExecutors() {
                 nodes: Array<{ id: string; label?: string; data?: Record<string, unknown> }>;
                 edges: Array<{ source: string; target: string; label?: string; data?: Record<string, unknown> }>;
             };
-        }>(async ({ userRequest, taskGraph }) =>
-            taskGraph ? await assessTaskGraphFeasibility(userRequest, taskGraph) : await assessFlowFeasibility(userRequest),
+        }>(async ({ userRequest, taskGraph }, context) =>
+            taskGraph
+                ? await assessTaskGraphFeasibility(userRequest, taskGraph, {
+                      aiDelegationAdvisor: createFlowAiDelegationAdvisor(context.llm),
+                      taskGraphAdvisor: createFlowDesignTaskGraphAdvisor(context.llm),
+                  })
+                : await assessFlowFeasibility(userRequest, {
+                      aiDelegationAdvisor: createFlowAiDelegationAdvisor(context.llm),
+                      taskGraphAdvisor: createFlowDesignTaskGraphAdvisor(context.llm),
+                  }),
         ),
     };
 }

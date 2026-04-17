@@ -21,6 +21,7 @@ import type { Plan } from '../agent/schemas';
 import type { FinalResult, StepResult } from '../agent/types';
 import { DeterministicFlowDesignTaskGraphAdvisor, getFlowDesignTaskGraphCatalog } from '../flow/design/task-graphs';
 import { DeterministicFlowDesignTaskTypeAdvisor, getFlowDesignTaskTypeCatalog } from '../flow/design/task-types';
+import { defaultFlowAiDelegationAdvisor } from '../flow/design/ai-delegation';
 
 /** Deterministic gateway that returns stable plans and summaries for tests and demos. */
 export class FakeLlmGateway implements LlmGateway {
@@ -87,6 +88,22 @@ export class FakeLlmGateway implements LlmGateway {
             return request.schema.parse({
                 kind: 'task-graph',
                 templateId: recommendation.templateId,
+                confidence: recommendation.confidence,
+                rationale: recommendation.rationale,
+            });
+        }
+
+        if (request.schema.name === 'flow_ai_delegation_classification') {
+            const recommendation = await defaultFlowAiDelegationAdvisor.recommend({
+                userRequest: String(userPayload.userRequest ?? ''),
+                operation: String(userPayload.operation ?? ''),
+                requiredCapabilities: userPayload.requiredCapabilities ?? [],
+                expectedInputs: userPayload.expectedInputs ?? [],
+                expectedOutputs: userPayload.expectedOutputs ?? [],
+            });
+            return request.schema.parse({
+                kind: 'flow-ai-delegation',
+                delegable: recommendation.delegable,
                 confidence: recommendation.confidence,
                 rationale: recommendation.rationale,
             });

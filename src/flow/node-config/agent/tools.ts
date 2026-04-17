@@ -188,12 +188,13 @@ function getNodeConfigToolExecutors() {
                 strategyNotes = [],
                 strategyDirectives = [],
                 probeResult,
-            }) =>
+            }, context) =>
                 service.design({
                     userRequest,
                     flow: (await normalizeKnownFlowDocument(flow as FlowDocument)) as never,
                     desiredCount,
                     wantsJson,
+                    llm: context.llm,
                     improvementNotes,
                     strategyNotes,
                     strategyDirectives,

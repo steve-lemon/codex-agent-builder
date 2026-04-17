@@ -36,7 +36,7 @@ capabilities:
     category: view
     label: View Log
     description: Exposes values to operators through logs or inspection output.
-  - id: mock-ai-generation
+  - id: ai-generation
     category: ai
     label: Mock AI Generation
     description: Produces deterministic AI-style output for concept validation.
@@ -144,9 +144,9 @@ blocks:
     outputs: []
   - id: ai-generate
     label: AI Generate
-    description: Consumes system and prompt text, then emits a mocked model response.
+    description: Consumes system and prompt text, then emits a model response.
     capabilities:
-      - mock-ai-generation
+      - ai-generation
       - structured-output
       - text-output
     nodeConfigStrategyId: ai-generation
@@ -163,7 +163,7 @@ blocks:
         label: Model
         hint: text
         required: true
-        defaultValue: mock-gpt
+        defaultValue: runtime-main-model
       - id: systemPrompt
         label: System Prompt
         hint: text

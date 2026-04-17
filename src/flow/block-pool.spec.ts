@@ -21,7 +21,7 @@ describe('flow block pool', () => {
             'json-input': 'input',
             'image-input': 'input',
             'view-log': 'view',
-            'mock-ai-generation': 'ai',
+            'ai-generation': 'ai',
         });
     });
 
@@ -32,7 +32,7 @@ describe('flow block pool', () => {
         expect(aiGenerateBlock).toEqual(
             expect.objectContaining({
                 id: 'ai-generate',
-                capabilities: expect.arrayContaining(['mock-ai-generation', 'structured-output']),
+                capabilities: expect.arrayContaining(['ai-generation', 'structured-output']),
             }),
         );
         expect(matchingPolicy).toEqual(
@@ -45,7 +45,7 @@ describe('flow block pool', () => {
 
     it('matches blocks against required capabilities using the shared helper', async () => {
         const textInputMatch = await matchFlowBlocksByCapabilities(['text-input']);
-        const structuredMatch = await matchFlowBlocksByCapabilities(['mock-ai-generation', 'structured-output']);
+        const structuredMatch = await matchFlowBlocksByCapabilities(['ai-generation', 'structured-output']);
 
         expect(textInputMatch.requiredCategories).toEqual(['input']);
         expect(textInputMatch.candidates[0]).toEqual(

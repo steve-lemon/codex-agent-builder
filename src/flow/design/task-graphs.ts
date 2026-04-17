@@ -1,8 +1,13 @@
 // Internal task-graph catalog and recommendation helpers for flow-design preflight analysis.
 import { logDebug, logWarn } from '../../diagnostics/logger';
 import type { DirectedGraph } from '../../graph/types';
+import type { LlmGateway } from '../../llm/types';
+import { defineStructuredSchema } from '../../llm/structured-schema';
+import { runLiteAdvisor } from '../../advisors/lite';
+import { getLiteAdvisorDefinition } from '../../advisors/resources';
 import { getFlowDesignManifest } from './manifest';
 import type { FlowDesignTaskGraphTemplateRecord } from './manifest-schemas';
+import { z } from 'zod';
 
 export type FlowDesignTaskGraphTemplate = FlowDesignTaskGraphTemplateRecord;
 
@@ -23,14 +28,12 @@ export interface FlowDesignTaskGraphAdvisor {
     }): Promise<FlowDesignTaskGraphRecommendation>;
 }
 
-/** Optional model boundary for provider-backed task-graph classification. */
-export interface FlowDesignTaskGraphModel {
-    classify(args: { userRequest: string; templates: FlowDesignTaskGraphTemplate[] }): Promise<{
-        templateId: string;
-        confidence?: number;
-        rationale?: string;
-    }>;
-}
+const FlowDesignTaskGraphClassificationSchema = z.object({
+    kind: z.literal('task-graph'),
+    templateId: z.string(),
+    confidence: z.number().min(0).max(1).optional(),
+    rationale: z.string().optional(),
+});
 
 /** Returns the configured task-graph template catalog used by flow-design analysis. */
 export async function getFlowDesignTaskGraphCatalog(): Promise<FlowDesignTaskGraphTemplate[]> {
@@ -121,10 +124,9 @@ export class DeterministicFlowDesignTaskGraphAdvisor implements FlowDesignTaskGr
     }
 }
 
-/** Advisor that consults a model first and falls back to the deterministic advisor when needed. */
-export class ModelBackedFlowDesignTaskGraphAdvisor implements FlowDesignTaskGraphAdvisor {
+export class LlmBackedFlowDesignTaskGraphAdvisor implements FlowDesignTaskGraphAdvisor {
     constructor(
-        private readonly model: FlowDesignTaskGraphModel,
+        private readonly gateway: LlmGateway,
         private readonly fallback: FlowDesignTaskGraphAdvisor = new DeterministicFlowDesignTaskGraphAdvisor(),
     ) {}
 
@@ -132,42 +134,57 @@ export class ModelBackedFlowDesignTaskGraphAdvisor implements FlowDesignTaskGrap
         userRequest: string;
         templates: FlowDesignTaskGraphTemplate[];
     }): Promise<FlowDesignTaskGraphRecommendation> {
-        const result = await this.model.classify(args);
-        const matchedTemplate = args.templates.find(template => template.id === result.templateId);
-
-        if (!matchedTemplate) {
-            logWarn({
-                scope: 'flow-design',
-                action: 'task_graph_model_miss',
-                message: 'Model-backed task-graph result did not match the configured catalog. Using fallback advisor.',
-                data: {
-                    requestedTemplateId: result.templateId,
-                },
-            });
-            return this.fallback.recommend(args);
-        }
-
-        const recommendation: FlowDesignTaskGraphRecommendation = {
-            templateId: matchedTemplate.id,
-            graph: matchedTemplate.graph,
-            confidence: result.confidence ?? 0.7,
-            rationale:
-                result.rationale ??
-                `Selected '${matchedTemplate.label}' using the configured model-backed task-graph advisor.`,
-            source: 'model',
-        };
-        logDebug({
+        const advisor = await getLiteAdvisorDefinition('flow-design.advisors', 'flow-design.task-graph');
+        return await runLiteAdvisor({
+            advisorId: advisor.id,
             scope: 'flow-design',
-            action: 'task_graph_selected',
-            message: 'Selected task graph template.',
-            data: {
-                selectedTemplateId: recommendation.templateId,
-                confidence: recommendation.confidence,
-                source: recommendation.source,
+            gateway: this.gateway,
+            systemPrompt: advisor.systemPrompt,
+            fallbackNote: advisor.fallbackNote,
+            schema: defineStructuredSchema('flow_design_task_graph_classification', FlowDesignTaskGraphClassificationSchema),
+            input: {
+                userRequest: args.userRequest,
+                templates: args.templates.map(template => ({
+                    id: template.id,
+                    label: template.label,
+                    description: template.description,
+                    examples: template.examples,
+                    signals: template.signals,
+                })),
             },
+            shouldFallback: result =>
+                typeof advisor.confidenceThreshold === 'number' &&
+                typeof result.confidence === 'number' &&
+                result.confidence < advisor.confidenceThreshold,
+            mapResult: result => {
+                const matchedTemplate = args.templates.find(template => template.id === result.templateId);
+                if (!matchedTemplate) {
+                    throw new Error(
+                        `Model-backed task-graph result did not match the configured catalog: ${result.templateId}`,
+                    );
+                }
+                return {
+                    templateId: matchedTemplate.id,
+                    graph: matchedTemplate.graph,
+                    confidence: result.confidence ?? 0.7,
+                    rationale:
+                        result.rationale ??
+                        `Selected '${matchedTemplate.label}' using the configured lite-model task-graph advisor.`,
+                    source: 'model',
+                };
+            },
+            fallback: () => this.fallback.recommend(args),
         });
-        return recommendation;
     }
+}
+
+export function createFlowDesignTaskGraphAdvisor(gateway?: LlmGateway): FlowDesignTaskGraphAdvisor {
+    // TODO(flow-design): Move threshold tuning into a shared advisor profile so
+    // task-type, task-graph, and delegation thresholds can be tuned together by resource.
+    if (!gateway) {
+        return defaultFlowDesignTaskGraphAdvisor;
+    }
+    return new LlmBackedFlowDesignTaskGraphAdvisor(gateway, defaultFlowDesignTaskGraphAdvisor);
 }
 
 /** Shared default task-graph advisor for flow-design preflight analysis. */

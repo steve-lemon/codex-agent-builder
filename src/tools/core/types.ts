@@ -3,6 +3,7 @@ import { z, type ZodTypeAny } from 'zod';
 import type { RunStateContext } from '../../state/types';
 import { serializeZodSchema } from '../../schema/json-schema';
 import type { FlowDesignConnection } from '../../flow/design-monitor';
+import type { LlmGateway } from '../../llm/types';
 
 export type ToolRiskLevel = 'read-only' | 'side-effecting' | 'approval-required';
 type ToolExecutor<TArgs> = {
@@ -22,6 +23,7 @@ export interface ToolContext {
     now: number;
     runState: RunStateContext;
     designConnection?: FlowDesignConnection;
+    llm?: LlmGateway;
 }
 
 /** Generic tool call envelope used across planning and execution. */

@@ -44,6 +44,8 @@ function collectRequirementAssessment(args: {
     finalFlow?: FlowDocument;
     outputContract: ProductDesignRunResult['outputContract'];
 }): RequirementAssessment {
+    // TODO(product): Consider advisor-backed fulfillment scoring so classification,
+    // output-contract, and runtime evidence can be weighted more consistently.
     const finalResult = args.result.finalResult;
     const flowDesign = finalResult?.designDetails?.flowDesign;
     const payload = finalResult?.payload;

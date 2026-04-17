@@ -96,6 +96,7 @@ export class StepExecutor {
                             now: now(),
                             runState: context.runState,
                             designConnection: context.designConnection,
+                            llm: context.llm,
                         },
                     );
                     if (!execution.ok) {
@@ -178,8 +179,9 @@ export class StepExecutor {
         toolName: string;
         args: Record<string, unknown>;
         runState: ExecuteStepContext['runState'];
+        llm?: ExecuteStepContext['llm'];
     }): Promise<StepResult> {
-        const { runId, skillName, stepId, toolName, args, runState } = params;
+        const { runId, skillName, stepId, toolName, args, runState, llm } = params;
         const allowedToolNames = new Set(this.skillRouter.toolNamesForSkill(skillName as never));
 
         if (!allowedToolNames.has(toolName)) {
@@ -205,6 +207,7 @@ export class StepExecutor {
                         runId,
                         now: now(),
                         runState,
+                        llm,
                     },
                 );
                 if (!execution.ok) {

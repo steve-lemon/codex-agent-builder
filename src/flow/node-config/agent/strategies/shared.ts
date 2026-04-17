@@ -1,6 +1,6 @@
 // Shared contracts and helpers for block-specific node-configuration strategies.
 import type { FlowDocument, FlowNode } from '../../../types';
-import { defaultFlowDesignTaskTypeAdvisor, getFlowDesignTaskTypeCatalog } from '../../../design/task-types';
+import { createFlowDesignTaskTypeAdvisor, getFlowDesignTaskTypeCatalog } from '../../../design/task-types';
 import type { NodeConfigurationDesignInput, NodeConfigurationSuggestion } from '../types';
 
 export interface NodeBlockConfigStrategyContext {
@@ -33,9 +33,20 @@ export interface NodeBlockConfigStrategy {
 export async function inferTaskType(userRequest: string, wantsJson: boolean): Promise<string> {
     const taskTypes = await getFlowDesignTaskTypeCatalog();
     return (
-        await defaultFlowDesignTaskTypeAdvisor.recommend({
+        await createFlowDesignTaskTypeAdvisor().recommend({
             userRequest,
             wantsJson,
+            taskTypes,
+        })
+    ).taskType;
+}
+
+export async function inferTaskTypeWithInput(input: NodeConfigurationDesignInput): Promise<string> {
+    const taskTypes = await getFlowDesignTaskTypeCatalog();
+    return (
+        await createFlowDesignTaskTypeAdvisor(input.llm).recommend({
+            userRequest: input.userRequest,
+            wantsJson: input.wantsJson,
             taskTypes,
         })
     ).taskType;

@@ -7,6 +7,7 @@ import type { Plan, PlanStep } from './schemas';
 import type { TraceEvent } from '../observability/types';
 import type { RunStateContext } from '../state/types';
 import type { FlowDesignConnection } from '../flow/design-monitor';
+import type { LlmGateway } from '../llm/types';
 
 export type RunStatus = 'idle' | 'running' | 'waiting_for_approval' | 'completed' | 'failed';
 
@@ -323,6 +324,7 @@ export interface ExecuteStepContext {
     allowParallel: boolean;
     runState: RunStateContext;
     designConnection?: FlowDesignConnection;
+    llm?: LlmGateway;
 }
 
 /** Concrete timeout and retry settings resolved for a tool. */

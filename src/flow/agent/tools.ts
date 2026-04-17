@@ -6,9 +6,12 @@ import {
     probeFlowBlockRuntime,
     proposeBlockSpecUpdate,
     validateDesignedFlow,
+    analyzeFlowRequest as analyzeFlowIntent,
 } from '../design/core';
 import { getCatalogAvailableFlowBlocks } from '../design/catalog';
 import { defaultFlowDesignProvider, type FlowDesignProvider } from '../design/provider';
+import { createFlowDesignTaskTypeAdvisor } from '../design/task-types';
+import { createFlowDesignTaskGraphAdvisor } from '../design/task-graphs';
 import type { FlowDocument } from '../types';
 import { buildToolPackFromResource, loadToolPackResource } from '../../tools/core/resources';
 import {
@@ -20,6 +23,7 @@ import {
 } from '../../tools/core/types';
 import type { FlowFeasibilityAssessment } from '../design/analysis';
 import { assessFlowFeasibility } from '../design/analysis';
+import { createFlowAiDelegationAdvisor } from '../design/ai-delegation';
 
 const FlowPortSchema = z.object({
     id: z.string(),
@@ -443,8 +447,10 @@ export async function createFlowDesignToolBundle(
 
     const executors = {
         [FLOW_DESIGN_EXECUTE_IDS.analyzeFlowRequest]: defineFlowToolExecutor<{ userRequest: string }>(
-            async ({ userRequest }) => {
-                const intent = await Promise.resolve(provider.analyzeRequest(userRequest));
+            async ({ userRequest }, context) => {
+                const intent = await analyzeFlowIntent(userRequest, {
+                    taskTypeAdvisor: createFlowDesignTaskTypeAdvisor(context.llm),
+                });
                 return {
                     taskType: intent.taskType,
                     outputContract: intent.outputContract,
@@ -477,8 +483,11 @@ export async function createFlowDesignToolBundle(
             },
         ),
         [FLOW_DESIGN_EXECUTE_IDS.assessFlowFeasibility]: defineFlowToolExecutor<{ userRequest: string }>(
-            async ({ userRequest }) => {
-                return await assessFlowFeasibility(userRequest as string);
+            async ({ userRequest }, context) => {
+                return await assessFlowFeasibility(userRequest as string, {
+                    aiDelegationAdvisor: createFlowAiDelegationAdvisor(context.llm),
+                    taskGraphAdvisor: createFlowDesignTaskGraphAdvisor(context.llm),
+                });
             },
         ),
         [FLOW_DESIGN_EXECUTE_IDS.probeFlowBlock]: defineFlowToolExecutor<{
@@ -503,7 +512,10 @@ export async function createFlowDesignToolBundle(
         }>(async ({ userRequest, sampleInput, desiredCount, wantsJson, improvementNotes = [], preflight }, context) => {
             const feasibility =
                 (preflight as FlowFeasibilityAssessment | undefined) ??
-                (await assessFlowFeasibility(userRequest as string));
+                (await assessFlowFeasibility(userRequest as string, {
+                    aiDelegationAdvisor: createFlowAiDelegationAdvisor(context.llm),
+                    taskGraphAdvisor: createFlowDesignTaskGraphAdvisor(context.llm),
+                }));
             return await Promise.resolve(
                 provider.composeDraft({
                     userRequest: userRequest as string,

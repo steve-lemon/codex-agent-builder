@@ -1,8 +1,13 @@
 // Internal task-type catalog and recommendation helpers for flow-design intent analysis.
 import { logDebug, logWarn } from '../../diagnostics/logger';
+import type { LlmGateway } from '../../llm/types';
+import { defineStructuredSchema } from '../../llm/structured-schema';
+import { runLiteAdvisor } from '../../advisors/lite';
+import { getLiteAdvisorDefinition } from '../../advisors/resources';
 import type { FlowDesignTaskType } from './types';
 import { getFlowDesignManifest } from './manifest';
 import type { FlowDesignTaskTypeDefinitionRecord } from './manifest-schemas';
+import { z } from 'zod';
 
 export type FlowDesignTaskTypeDefinition = FlowDesignTaskTypeDefinitionRecord;
 
@@ -23,14 +28,12 @@ export interface FlowDesignTaskTypeAdvisor {
     }): Promise<FlowDesignTaskTypeRecommendation>;
 }
 
-/** Optional model boundary for provider-backed task-type classification. */
-export interface FlowDesignTaskTypeModel {
-    classify(args: { userRequest: string; wantsJson: boolean; taskTypes: FlowDesignTaskTypeDefinition[] }): Promise<{
-        taskType: string;
-        confidence?: number;
-        rationale?: string;
-    }>;
-}
+const FlowDesignTaskTypeClassificationSchema = z.object({
+    kind: z.literal('task-type'),
+    taskType: z.string(),
+    confidence: z.number().min(0).max(1).optional(),
+    rationale: z.string().optional(),
+});
 
 /** Returns the configured task-type catalog used by flow-design analysis. */
 export async function getFlowDesignTaskTypeCatalog(): Promise<FlowDesignTaskTypeDefinition[]> {
@@ -135,10 +138,9 @@ export class DeterministicFlowDesignTaskTypeAdvisor implements FlowDesignTaskTyp
     }
 }
 
-/** Advisor that consults a model first and falls back to the deterministic advisor when needed. */
-export class ModelBackedFlowDesignTaskTypeAdvisor implements FlowDesignTaskTypeAdvisor {
+export class LlmBackedFlowDesignTaskTypeAdvisor implements FlowDesignTaskTypeAdvisor {
     constructor(
-        private readonly model: FlowDesignTaskTypeModel,
+        private readonly gateway: LlmGateway,
         private readonly fallback: FlowDesignTaskTypeAdvisor = new DeterministicFlowDesignTaskTypeAdvisor(),
     ) {}
 
@@ -147,41 +149,55 @@ export class ModelBackedFlowDesignTaskTypeAdvisor implements FlowDesignTaskTypeA
         wantsJson: boolean;
         taskTypes: FlowDesignTaskTypeDefinition[];
     }): Promise<FlowDesignTaskTypeRecommendation> {
-        const result = await this.model.classify(args);
-        const matchedTaskType = args.taskTypes.find(taskType => taskType.id === result.taskType);
-
-        if (!matchedTaskType) {
-            logWarn({
-                scope: 'flow-design',
-                action: 'task_type_model_miss',
-                message: 'Model-backed task-type result did not match the configured catalog. Using fallback advisor.',
-                data: {
-                    requestedTaskType: result.taskType,
-                },
-            });
-            return this.fallback.recommend(args);
-        }
-
-        const recommendation: FlowDesignTaskTypeRecommendation = {
-            taskType: matchedTaskType.id,
-            confidence: result.confidence ?? 0.7,
-            rationale:
-                result.rationale ??
-                `Selected '${matchedTaskType.label}' using the configured model-backed task-type advisor.`,
-            source: 'model',
-        };
-        logDebug({
+        const advisor = await getLiteAdvisorDefinition('flow-design.advisors', 'flow-design.task-type');
+        return await runLiteAdvisor({
+            advisorId: advisor.id,
             scope: 'flow-design',
-            action: 'task_type_selected',
-            message: 'Selected task type.',
-            data: {
-                selectedTaskType: recommendation.taskType,
-                confidence: recommendation.confidence,
-                source: recommendation.source,
+            gateway: this.gateway,
+            systemPrompt: advisor.systemPrompt,
+            fallbackNote: advisor.fallbackNote,
+            schema: defineStructuredSchema('flow_design_task_type_classification', FlowDesignTaskTypeClassificationSchema),
+            input: {
+                userRequest: args.userRequest,
+                wantsJson: args.wantsJson,
+                taskTypes: args.taskTypes.map(taskType => ({
+                    id: taskType.id,
+                    label: taskType.label,
+                    description: taskType.description,
+                    examples: taskType.examples,
+                    signals: taskType.signals,
+                })),
             },
+            shouldFallback: result =>
+                typeof advisor.confidenceThreshold === 'number' &&
+                typeof result.confidence === 'number' &&
+                result.confidence < advisor.confidenceThreshold,
+            mapResult: result => {
+                const matchedTaskType = args.taskTypes.find(taskType => taskType.id === result.taskType);
+                if (!matchedTaskType) {
+                    throw new Error(`Model-backed task-type result did not match the configured catalog: ${result.taskType}`);
+                }
+                return {
+                    taskType: matchedTaskType.id,
+                    confidence: result.confidence ?? 0.7,
+                    rationale:
+                        result.rationale ??
+                        `Selected '${matchedTaskType.label}' using the configured lite-model task-type advisor.`,
+                    source: 'model',
+                };
+            },
+            fallback: () => this.fallback.recommend(args),
         });
-        return recommendation;
     }
+}
+
+export function createFlowDesignTaskTypeAdvisor(gateway?: LlmGateway): FlowDesignTaskTypeAdvisor {
+    // TODO(flow-design): Replace per-domain factory helpers with a shared advisor
+    // registry/factory when additional domains adopt the same lite-advisor pattern.
+    if (!gateway) {
+        return defaultFlowDesignTaskTypeAdvisor;
+    }
+    return new LlmBackedFlowDesignTaskTypeAdvisor(gateway, defaultFlowDesignTaskTypeAdvisor);
 }
 
 /** Shared default task-type advisor for flow-design intent analysis. */

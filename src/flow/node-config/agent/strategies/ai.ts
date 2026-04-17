@@ -7,7 +7,7 @@ import {
 } from '../../design/resources';
 import {
     collectStrategyNotesFor,
-    inferTaskType,
+    inferTaskTypeWithInput,
     applyNodeConfig,
     type NodeBlockConfigStrategy,
     type NodeBlockConfigStrategyContext,
@@ -16,7 +16,7 @@ import {
 import type { NodeConfigurationDesignInput } from '../types';
 
 async function selectModel(input: NodeConfigurationDesignInput): Promise<string> {
-    const taskType = await inferTaskType(input.userRequest, input.wantsJson);
+    const taskType = await inferTaskTypeWithInput(input);
     const strategyNotes = collectStrategyNotesFor(input, 'ai-generation').join(' ').toLowerCase();
     return await getNodeConfigModelProfile({
         taskType,
@@ -30,7 +30,7 @@ async function buildAiDefaults(input: NodeConfigurationDesignInput): Promise<{
     promptTemplate: string;
     outputSchema: string;
 }> {
-    const taskType = await inferTaskType(input.userRequest, input.wantsJson);
+    const taskType = await inferTaskTypeWithInput(input);
     const outputContract = inferFlowOutputContract(input.userRequest);
     const systemPrompt = await getNodeConfigSystemPromptDefault(taskType);
     const countInstruction =

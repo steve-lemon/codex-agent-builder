@@ -194,6 +194,7 @@ export class AgentRuntime {
                 toolName: run.pendingApproval.toolCall.toolName,
                 args: resolved.args,
                 runState: this.createRunStateContext(runId),
+                llm: this.options.llm,
             });
 
             await this.options.store.appendStepResult(runId, stepResult);
@@ -267,6 +268,7 @@ export class AgentRuntime {
                         allowParallel: true,
                         runState: this.createRunStateContext(runId),
                         designConnection,
+                        llm: this.options.llm,
                     },
                 });
 

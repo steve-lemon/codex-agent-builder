@@ -337,10 +337,99 @@ function renderFlowSnapshotMarkdown(event: FlowDesignEvent | undefined): string 
     ].join('\n');
 }
 
-function printDesignedFlowSummary(event: FlowDesignEvent | undefined): void {
+function dedupeAssessmentCaveats(args: {
+    language: PromptLabLanguage;
+    caveats: string[];
+    reasons: Array<{ message: string }>;
+}): string[] {
+    const isKorean = args.language === 'ko';
+    const normalize = (text: string) => text.toLowerCase().replace(/\s+/g, ' ').replace(/[.]/g, '').trim();
+
+    const localizedReasonTexts = new Set(
+        args.reasons.map(reason =>
+            normalize(isKorean ? localizeAssessmentInline(reason.message, true) : reason.message),
+        ),
+    );
+
+    return args.caveats.filter(
+        caveat => !localizedReasonTexts.has(normalize(isKorean ? localizeAssessmentInline(caveat, true) : caveat)),
+    );
+}
+
+function localizeAssessmentInline(text: string, isKorean: boolean): string {
+    if (!isKorean) {
+        return text;
+    }
+
+    const replacements: Array<[string, string]> = [
+        [
+            'The run completed successfully, but requirement fulfillment is still uncertain because the design relied on a generic task-graph fallback and the final flow still uses mock execution settings.',
+            '실행은 성공했지만, 설계가 일반 task graph fallback에 의존하고 최종 flow도 mock 실행 설정을 사용해서 요구 충족 여부는 아직 불확실합니다.',
+        ],
+        [
+            'The run completed successfully, but requirement fulfillment is still uncertain because the design relied on a generic task-graph fallback.',
+            '실행은 성공했지만, 설계가 일반 task graph fallback에 의존해서 요구 충족 여부는 아직 불확실합니다.',
+        ],
+        [
+            'The run completed successfully, but requirement fulfillment is still uncertain because the final flow still uses mock execution settings.',
+            '실행은 성공했지만, 최종 flow가 아직 mock 실행 설정을 사용하고 있어 요구 충족 여부는 아직 불확실합니다.',
+        ],
+        [
+            'The run completed, but the requirement is only partially covered because some capabilities are still missing.',
+            '실행은 완료됐지만, 일부 capability가 아직 부족해서 요구사항을 부분적으로만 충족합니다.',
+        ],
+        [
+            'The run did not complete successfully, so the requirement is not yet fulfilled.',
+            '실행이 성공적으로 끝나지 않아 아직 요구사항을 충족하지 못했습니다.',
+        ],
+        [
+            'The run completed successfully and the current design appears to fulfill the requirement.',
+            '실행이 성공적으로 완료되었고, 현재 설계는 요구사항을 충족하는 것으로 보입니다.',
+        ],
+        [
+            'Task-graph classification fell back to a generic template.',
+            'task graph 분류가 일반 템플릿 fallback으로 처리되었습니다.',
+        ],
+        [
+            'The final flow still uses a mock AI model configuration.',
+            '최종 flow가 아직 mock AI 모델 설정을 사용하고 있습니다.',
+        ],
+        ['the design relied on a generic task-graph fallback', '설계가 일반 task graph fallback에 의존했습니다.'],
+        ['the final flow still uses mock execution settings', '최종 flow가 아직 mock 실행 설정을 사용하고 있습니다.'],
+        ['the requested JSON output contract was not preserved', '요청된 JSON 출력 계약이 유지되지 않았습니다.'],
+        [
+            'structured JSON output still lacks an explicit output schema',
+            '구조화된 JSON 출력에 필요한 명시적 스키마가 아직 없습니다.',
+        ],
+        [
+            'the flow output format drifted away from the requested plain-text preference',
+            '출력 형식이 요청된 평문 선호에서 벗어났습니다.',
+        ],
+        ['the run did not complete successfully', '실행이 성공적으로 완료되지 않았습니다.'],
+    ];
+
+    if (text.startsWith('some capabilities are still missing (')) {
+        return text.replace('some capabilities are still missing', '일부 capability가 아직 부족합니다');
+    }
+
+    if (text.startsWith('Missing capabilities remain: ')) {
+        return text.replace('Missing capabilities remain:', '남아 있는 부족 capability:');
+    }
+
+    const matched = replacements.find(([source]) => source === text);
+    return matched?.[1] ?? text;
+}
+
+function printDesignedFlowSummary(
+    event: FlowDesignEvent | undefined,
+    options: { executionSucceeded: boolean } = { executionSucceeded: true },
+): void {
     output.write('\n=== Final Designed Flow ===\n');
     if (!event) {
         output.write('No design snapshot was captured.\n');
+        if (!options.executionSucceeded) {
+            output.write('The run stopped before a flow graph snapshot could be finalized.\n');
+        }
         output.write('===========================\n\n');
         return;
     }
@@ -387,77 +476,12 @@ function printRequirementAssessment(args: {
           }[args.fulfillmentLevel] ?? args.fulfillmentLevel
         : args.fulfillmentLevel;
     const footer = isKorean ? '=========================' : '==============================';
-    const localizeAssessmentText = (text: string): string => {
-        if (!isKorean) {
-            return text;
-        }
-
-        const replacements: Array<[string, string]> = [
-            [
-                'The run completed successfully, but requirement fulfillment is still uncertain because the design relied on a generic task-graph fallback and the final flow still uses mock execution settings.',
-                '실행은 성공했지만, 설계가 일반 task graph fallback에 의존하고 최종 flow도 mock 실행 설정을 사용해서 요구 충족 여부는 아직 불확실합니다.',
-            ],
-            [
-                'The run completed successfully, but requirement fulfillment is still uncertain because the design relied on a generic task-graph fallback.',
-                '실행은 성공했지만, 설계가 일반 task graph fallback에 의존해서 요구 충족 여부는 아직 불확실합니다.',
-            ],
-            [
-                'The run completed successfully, but requirement fulfillment is still uncertain because the final flow still uses mock execution settings.',
-                '실행은 성공했지만, 최종 flow가 아직 mock 실행 설정을 사용하고 있어 요구 충족 여부는 아직 불확실합니다.',
-            ],
-            [
-                'The run completed, but the requirement is only partially covered because some capabilities are still missing.',
-                '실행은 완료됐지만, 일부 capability가 아직 부족해서 요구사항을 부분적으로만 충족합니다.',
-            ],
-            [
-                'The run did not complete successfully, so the requirement is not yet fulfilled.',
-                '실행이 성공적으로 끝나지 않아 아직 요구사항을 충족하지 못했습니다.',
-            ],
-            [
-                'The run completed successfully and the current design appears to fulfill the requirement.',
-                '실행이 성공적으로 완료되었고, 현재 설계는 요구사항을 충족하는 것으로 보입니다.',
-            ],
-            [
-                'Task-graph classification fell back to a generic template.',
-                'task graph 분류가 일반 템플릿 fallback으로 처리되었습니다.',
-            ],
-            [
-                'The final flow still uses a mock AI model configuration.',
-                '최종 flow가 아직 mock AI 모델 설정을 사용하고 있습니다.',
-            ],
-            [
-                'the design relied on a generic task-graph fallback',
-                '설계가 일반 task graph fallback에 의존했습니다.',
-            ],
-            [
-                'the final flow still uses mock execution settings',
-                '최종 flow가 아직 mock 실행 설정을 사용하고 있습니다.',
-            ],
-            [
-                'the requested JSON output contract was not preserved',
-                '요청된 JSON 출력 계약이 유지되지 않았습니다.',
-            ],
-            [
-                'structured JSON output still lacks an explicit output schema',
-                '구조화된 JSON 출력에 필요한 명시적 스키마가 아직 없습니다.',
-            ],
-            [
-                'the flow output format drifted away from the requested plain-text preference',
-                '출력 형식이 요청된 평문 선호에서 벗어났습니다.',
-            ],
-            [
-                'the run did not complete successfully',
-                '실행이 성공적으로 완료되지 않았습니다.',
-            ],
-        ];
-
-        if (text.startsWith('some capabilities are still missing (')) {
-            return text.replace('some capabilities are still missing', '일부 capability가 아직 부족합니다');
-        }
-
-        const matched = replacements.find(([source]) => source === text);
-        return matched?.[1] ?? text;
-    };
+    const localizeAssessmentText = (text: string): string => localizeAssessmentInline(text, isKorean);
+    const visibleCaveats = dedupeAssessmentCaveats({
+        language: args.language,
+        caveats: args.caveats,
+        reasons: args.reasons,
+    });
 
     output.write(`${title}\n`);
     output.write(`${executionLabel}: ${String(args.executionSucceeded)}\n`);
@@ -478,7 +502,7 @@ function printRequirementAssessment(args: {
             output.write(`- [${category}] ${localizeAssessmentText(reason.message)}\n`);
         }
     }
-    for (const caveat of args.caveats) {
+    for (const caveat of visibleCaveats) {
         output.write(`- ${localizeAssessmentText(caveat)}\n`);
     }
     output.write(`${footer}\n\n`);
@@ -658,7 +682,9 @@ async function main() {
             await writeText(latestPaths.designedFlowPath, renderFlowSnapshotMarkdown(latestDesignEvent));
             await writeText(latestPaths.designedFlowGraphPath, renderReagraphHtml(latestDesignEvent));
         }
-        printDesignedFlowSummary(latestDesignEvent);
+        printDesignedFlowSummary(latestDesignEvent, {
+            executionSucceeded: result.requirementAssessment.executionSucceeded,
+        });
         printRequirementAssessment({
             language,
             ...result.requirementAssessment,

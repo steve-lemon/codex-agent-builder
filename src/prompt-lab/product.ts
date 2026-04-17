@@ -157,9 +157,7 @@ function inferJsonOutputContract(result: ProductDesignRunResult, requirement: st
     }
 
     const hasConsonantVowelSchema =
-        /consonants/i.test(outputSchema) &&
-        /vowels/i.test(outputSchema) &&
-        /integer/i.test(outputSchema);
+        /consonants/i.test(outputSchema) && /vowels/i.test(outputSchema) && /integer/i.test(outputSchema);
 
     if (hasConsonantVowelSchema) {
         return '출력은 JSON 객체 하나로만 반환하고, 형식은 {"consonants": 정수, "vowels": 정수}이어야 합니다. 설명이나 추가 텍스트는 포함하지 마세요.';
@@ -182,15 +180,15 @@ export function sanitizeCodexPromptText(
     const filtered = splitPromptSentences(prompt).filter(sentence => {
         const normalized = sentence.toLowerCase();
 
-        if (!allowsExamples && (/예시|example|샘플/.test(normalized))) {
+        if (!allowsExamples && /예시|example|샘플/.test(normalized)) {
             return false;
         }
 
-        if (!allowsErrorOutput && (/오류|에러|\berror\b|exception/.test(normalized))) {
+        if (!allowsErrorOutput && /오류|에러|\berror\b|exception/.test(normalized)) {
             return false;
         }
 
-        if (!allowsFallbackRules && (/fallback|폴백|대체 규칙/.test(normalized))) {
+        if (!allowsFallbackRules && /fallback|폴백|대체 규칙/.test(normalized)) {
             return false;
         }
 
@@ -202,9 +200,8 @@ export function sanitizeCodexPromptText(
     const prefersPlainText = result?.outputContract.format === 'plain-text';
 
     if (jsonContract) {
-        const hasJsonContract = /json 객체 하나로만 반환|json object only|only json|형식은\s*\{.*consonants.*vowels.*\}/i.test(
-            normalized,
-        );
+        const hasJsonContract =
+            /json 객체 하나로만 반환|json object only|only json|형식은\s*\{.*consonants.*vowels.*\}/i.test(normalized);
         if (!hasJsonContract) {
             normalized = `${normalized} ${jsonContract}`.trim();
         }
@@ -248,16 +245,11 @@ function localizeAssessmentSummary(language: 'ko' | 'en', summary: string): stri
             '실행은 성공적으로 완료되었지만, 최종 flow의 출력 형식이 요청된 평문 선호에서 벗어나 요구사항 충족 여부는 아직 불확실합니다.',
         'The run completed successfully and the current design appears to fulfill the requirement.':
             '실행은 성공적으로 완료되었고, 현재 설계는 요구사항을 충족하는 것으로 보입니다.',
-        'the run did not complete successfully':
-            '실행이 성공적으로 완료되지 않았습니다.',
-        'some capabilities are still missing':
-            '일부 capability가 아직 부족합니다.',
-        'the design relied on a generic task-graph fallback':
-            '설계가 일반 task graph fallback에 의존했습니다.',
-        'the final flow still uses mock execution settings':
-            '최종 flow가 아직 mock 실행 설정을 사용하고 있습니다.',
-        'the requested JSON output contract was not preserved':
-            '요청된 JSON 출력 계약이 유지되지 않았습니다.',
+        'the run did not complete successfully': '실행이 성공적으로 완료되지 않았습니다.',
+        'some capabilities are still missing': '일부 capability가 아직 부족합니다.',
+        'the design relied on a generic task-graph fallback': '설계가 일반 task graph fallback에 의존했습니다.',
+        'the final flow still uses mock execution settings': '최종 flow가 아직 mock 실행 설정을 사용하고 있습니다.',
+        'the requested JSON output contract was not preserved': '요청된 JSON 출력 계약이 유지되지 않았습니다.',
         'structured JSON output still lacks an explicit output schema':
             '구조화된 JSON 출력에 필요한 명시적 스키마가 아직 없습니다.',
         'the flow output format drifted away from the requested plain-text preference':
@@ -302,6 +294,20 @@ function localizeAssessmentReasonCategory(language: 'ko' | 'en', category: strin
     };
 
     return mapping[category] ?? category;
+}
+
+function dedupeLocalizedAssessmentCaveats(args: {
+    language: 'ko' | 'en';
+    caveats: string[];
+    reasons: Array<{ message: string }>;
+}): string[] {
+    const normalize = (text: string) => text.toLowerCase().replace(/\s+/g, ' ').replace(/[.]/g, '').trim();
+
+    const reasonTexts = new Set(
+        args.reasons.map(reason => normalize(localizeAssessmentSummary(args.language, reason.message))),
+    );
+
+    return args.caveats.filter(caveat => !reasonTexts.has(normalize(localizeAssessmentCaveat(args.language, caveat))));
 }
 
 function renderSummaryMarkdown(args: {
@@ -363,6 +369,11 @@ function renderSummaryMarkdown(args: {
               'not-fulfilled': '미충족',
           }[args.result.requirementAssessment.fulfillmentLevel] ?? args.result.requirementAssessment.fulfillmentLevel
         : args.result.requirementAssessment.fulfillmentLevel;
+    const visibleCaveats = dedupeLocalizedAssessmentCaveats({
+        language: args.session.config.language,
+        caveats: args.result.requirementAssessment.caveats,
+        reasons: args.result.requirementAssessment.reasons,
+    });
 
     return [
         `# ${sections.title}`,
@@ -398,19 +409,17 @@ function renderSummaryMarkdown(args: {
                   `- ${sections.assessmentReasons}:`,
                   ...args.result.requirementAssessment.reasons.map(
                       item =>
-                          `  - [${localizeAssessmentReasonCategory(args.session.config.language, item.category)}] ${localizeAssessmentSummary(
+                          `  - [${localizeAssessmentReasonCategory(
                               args.session.config.language,
-                              item.message,
-                          )}`,
+                              item.category,
+                          )}] ${localizeAssessmentSummary(args.session.config.language, item.message)}`,
                   ),
               ]
             : []),
-        ...(args.result.requirementAssessment.caveats.length > 0
+        ...(visibleCaveats.length > 0
             ? [
                   '',
-                  ...args.result.requirementAssessment.caveats.map(
-                      item => `- ${localizeAssessmentCaveat(args.session.config.language, item)}`,
-                  ),
+                  ...visibleCaveats.map(item => `- ${localizeAssessmentCaveat(args.session.config.language, item)}`),
                   '',
               ]
             : ['']),

@@ -79,7 +79,7 @@ taskGraphTemplates:
             expectedOutputs:
               - reply body text
             requiredCapabilities:
-              - mock-ai-generation
+              - ai-generation
               - text-output
         - id: send-reply
           label: Send Reply
@@ -133,7 +133,7 @@ taskGraphTemplates:
             expectedOutputs:
               - title suggestions
             requiredCapabilities:
-              - mock-ai-generation
+              - ai-generation
               - text-output
         - id: review-output
           label: Review Output
@@ -185,7 +185,7 @@ taskGraphTemplates:
             expectedOutputs:
               - response text
             requiredCapabilities:
-              - mock-ai-generation
+              - ai-generation
               - text-output
         - id: review-output
           label: Review Output

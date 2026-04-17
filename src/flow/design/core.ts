@@ -158,7 +158,7 @@ function buildTaskGraphMapping(taskNodes: TaskGraphNode[]) {
     const captureNode =
         findTaskNodeByCapability(taskNodes, 'text-input') ?? findTaskNodeByOperation(taskNodes, 'capture');
     const generateNode =
-        findTaskNodeByCapability(taskNodes, 'mock-ai-generation') ?? findTaskNodeByOperation(taskNodes, 'generate');
+        findTaskNodeByCapability(taskNodes, 'ai-generation') ?? findTaskNodeByOperation(taskNodes, 'generate');
     const reviewNode = findTaskNodeByCapability(taskNodes, 'view-log') ?? findTaskNodeByOperation(taskNodes, 'log');
 
     return {

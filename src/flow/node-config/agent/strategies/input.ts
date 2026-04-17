@@ -6,14 +6,14 @@ import type { NodeConfigurationDesignInput } from '../types';
 import {
     applyNodeConfig,
     collectStrategyNotesFor,
-    inferTaskType,
+    inferTaskTypeWithInput,
     type NodeBlockConfigStrategy,
     type NodeBlockConfigStrategyContext,
     type NodeBlockConfigStrategyResult,
 } from './shared';
 
 async function buildSystemPrompt(input: NodeConfigurationDesignInput): Promise<string> {
-    const taskType = await inferTaskType(input.userRequest, input.wantsJson);
+    const taskType = await inferTaskTypeWithInput(input);
     const basePrompt = await getNodeConfigSystemPromptDefault(taskType);
     const probeHint = input.probeResult?.behaviorNotes?.[0]?.trim()
         ? ` Observed block behavior: ${input.probeResult.behaviorNotes[0].trim()}`

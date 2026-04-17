@@ -1,7 +1,9 @@
 // Shared flow-analysis helpers used by flow design core and skill/tool wrappers.
 import { matchFlowBlocksByCapabilities } from '../block-matching';
+import { BuiltinFlowBlockIds, getBuiltinFlowBlocks } from '../block-pool';
 import type { DirectedGraph } from '../../graph/types';
 import { getCatalogAvailableFlowCapabilities } from './catalog';
+import { defaultFlowAiDelegationAdvisor, getTaskNodeOperation, type FlowAiDelegationAdvisor } from './ai-delegation';
 import { getFlowDesignManifest } from './manifest';
 import {
     defaultFlowDesignTaskGraphAdvisor,
@@ -19,6 +21,7 @@ export interface TaskNodeAnalysis {
     requiredCapabilities: string[];
     matchedBlockIds: string[];
     feasible: boolean;
+    resolvedByAiDelegation?: boolean;
     reasons: string[];
 }
 
@@ -156,7 +159,17 @@ export async function refineTaskGraph(
 }
 
 /** Matches inferred task-graph nodes to the currently available blocks. */
-export async function analyzeTaskGraph(graph: DirectedGraph): Promise<TaskNodeAnalysis[]> {
+export async function analyzeTaskGraph(
+    graph: DirectedGraph,
+    options: {
+        userRequest?: string;
+        aiDelegationAdvisor?: FlowAiDelegationAdvisor;
+    } = {},
+): Promise<TaskNodeAnalysis[]> {
+    const availableBlocks = await getBuiltinFlowBlocks();
+    const hasAiGenerateBlock = availableBlocks.some(block => block.id === BuiltinFlowBlockIds.aiGenerate);
+    const aiDelegationAdvisor = options.aiDelegationAdvisor ?? defaultFlowAiDelegationAdvisor;
+
     return await Promise.all(
         graph.nodes.map(async node => {
             const requiredCapabilities = ((node.data?.requiredCapabilities as string[] | undefined) ?? []).slice();
@@ -164,10 +177,30 @@ export async function analyzeTaskGraph(graph: DirectedGraph): Promise<TaskNodeAn
             const matchedBlockIds = matchResult.candidates
                 .filter(candidate => candidate.allRequiredCapabilitiesMatched)
                 .map(candidate => candidate.blockId);
+            const aiDelegation =
+                matchedBlockIds.length === 0 && hasAiGenerateBlock
+                    ? await aiDelegationAdvisor.recommend({
+                          userRequest: options.userRequest ?? '',
+                          operation: getTaskNodeOperation(node),
+                          requiredCapabilities,
+                          expectedInputs: ((node.data?.expectedInputs as string[] | undefined) ?? []).slice(),
+                          expectedOutputs: ((node.data?.expectedOutputs as string[] | undefined) ?? []).slice(),
+                      })
+                    : undefined;
+            const delegatedBlockIds =
+                matchedBlockIds.length === 0 && aiDelegation?.delegable ? [BuiltinFlowBlockIds.aiGenerate] : [];
             const topCandidate = matchResult.candidates[0];
             const reasons =
                 matchedBlockIds.length > 0
                     ? [`Matched block candidates: ${matchedBlockIds.join(', ')}`]
+                    : delegatedBlockIds.length > 0
+                    ? [
+                          `Resolved through ai-generate because ${
+                              aiDelegation?.source === 'model' ? 'the lite model' : 'deterministic fallback'
+                          } judged the task AI-delegable${
+                              aiDelegation?.rationale ? `: ${aiDelegation.rationale}` : ''
+                          }`,
+                      ]
                     : topCandidate
                     ? [
                           // eslint-disable-next-line prettier/prettier
@@ -184,8 +217,9 @@ export async function analyzeTaskGraph(graph: DirectedGraph): Promise<TaskNodeAn
                 expectedInputs: ((node.data?.expectedInputs as string[] | undefined) ?? []).slice(),
                 expectedOutputs: ((node.data?.expectedOutputs as string[] | undefined) ?? []).slice(),
                 requiredCapabilities,
-                matchedBlockIds,
-                feasible: matchedBlockIds.length > 0,
+                matchedBlockIds: matchedBlockIds.length > 0 ? matchedBlockIds : delegatedBlockIds,
+                feasible: matchedBlockIds.length > 0 || delegatedBlockIds.length > 0,
+                resolvedByAiDelegation: delegatedBlockIds.length > 0,
                 reasons,
             };
         }),
@@ -222,22 +256,44 @@ export function buildProposedBlocks(nodeAnalyses: TaskNodeAnalysis[]): ProposedB
 }
 
 /** Performs a full graph-based feasibility pass over the user request. */
-export async function assessFlowFeasibility(userRequest: string): Promise<FlowFeasibilityAssessment> {
-    return assessTaskGraphFeasibility(userRequest, await inferTaskGraph(userRequest));
+export async function assessFlowFeasibility(
+    userRequest: string,
+    options: {
+        aiDelegationAdvisor?: FlowAiDelegationAdvisor;
+        taskGraphAdvisor?: FlowDesignTaskGraphAdvisor;
+    } = {},
+): Promise<FlowFeasibilityAssessment> {
+    return assessTaskGraphFeasibility(
+        userRequest,
+        await inferTaskGraph(userRequest, {
+            taskGraphAdvisor: options.taskGraphAdvisor ?? defaultFlowDesignTaskGraphAdvisor,
+        }),
+        options,
+    );
 }
 
 /** Performs a feasibility pass against a caller-provided task graph. */
 export async function assessTaskGraphFeasibility(
-    _userRequest: string,
+    userRequest: string,
     taskGraph: DirectedGraph,
+    options: {
+        aiDelegationAdvisor?: FlowAiDelegationAdvisor;
+        taskGraphAdvisor?: FlowDesignTaskGraphAdvisor;
+    } = {},
 ): Promise<FlowFeasibilityAssessment> {
     // TODO(flow-agent): Introduce a first-class capability taxonomy instead of
     // string matching so block proposals and feasibility checks share one model.
-    const nodeAnalyses = await analyzeTaskGraph(taskGraph);
+    const nodeAnalyses = await analyzeTaskGraph(taskGraph, {
+        userRequest,
+        aiDelegationAdvisor: options.aiDelegationAdvisor,
+    });
     const requiredCapabilities = deriveRequiredCapabilitiesFromTaskGraph(taskGraph);
     const availableFlowCapabilities = await getCatalogAvailableFlowCapabilities();
+    const aiDelegatedCapabilities = new Set(
+        nodeAnalyses.filter(node => node.resolvedByAiDelegation).flatMap(node => node.requiredCapabilities),
+    );
     const missingCapabilities = requiredCapabilities.filter(
-        capability => !availableFlowCapabilities.includes(capability),
+        capability => !availableFlowCapabilities.includes(capability) && !aiDelegatedCapabilities.has(capability),
     );
     const graphLevelMissingCapabilities = nodeAnalyses
         .filter(node => !node.feasible)
