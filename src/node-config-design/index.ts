@@ -3,4 +3,6 @@ export * from './core';
 export * from './dto';
 export * from './knowledge';
 export * from './knowledge-sources';
+export * from './manifest';
+export * from './manifest-schemas';
 export * from './types';

@@ -1,42 +1,20 @@
-// File-backed defaults for node-config strategies.
-import { join } from 'node:path';
-import { z } from 'zod';
-import { CachedJsonFileResource } from '../resources/json-file';
-import { resolveJsonResourcePath } from '../resources/path-resolver';
+// Manifest-backed defaults for node-config strategies.
 import type { FlowDesignTaskType } from '../flow-design/types';
+import { getNodeConfigDesignManifest } from './manifest';
 
-const NodeConfigDefaultsSchema = z.object({
-    systemPrompts: z.record(z.string()),
-    aiModelProfiles: z.object({
-        default: z.string(),
-        'blog-title-generation': z.string(),
-        'structured-output': z.string(),
-    }),
-});
-
-type NodeConfigDefaults = z.infer<typeof NodeConfigDefaultsSchema>;
-
-const nodeConfigDefaultsResource = new CachedJsonFileResource<NodeConfigDefaults>(
-    resolveJsonResourcePath({
-        fallbackRoot: join(process.cwd(), 'data'),
-        relativePath: join('skills', 'node-config-designer', 'NODE_CONFIG_DEFAULTS.json'),
-    }),
-    NodeConfigDefaultsSchema,
-);
-
-/** Returns the file-backed default system prompt for node-config strategies. */
+/** Returns the manifest-backed default system prompt for node-config strategies. */
 export async function getNodeConfigSystemPromptDefault(taskType: FlowDesignTaskType): Promise<string> {
-    const defaults = await nodeConfigDefaultsResource.load();
+    const { defaults } = await getNodeConfigDesignManifest();
     return defaults.systemPrompts[taskType] ?? defaults.systemPrompts.unknown;
 }
 
-/** Returns the file-backed default AI model profile for node-config strategies. */
+/** Returns the manifest-backed default AI model profile for node-config strategies. */
 export async function getNodeConfigModelProfile(args: {
     taskType: FlowDesignTaskType;
     wantsJson: boolean;
     strategyNotes: string;
 }): Promise<string> {
-    const defaults = await nodeConfigDefaultsResource.load();
+    const { defaults } = await getNodeConfigDesignManifest();
     if (args.strategyNotes.includes('json') || args.wantsJson) {
         return defaults.aiModelProfiles['structured-output'];
     }

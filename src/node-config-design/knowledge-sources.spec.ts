@@ -1,7 +1,4 @@
-// Vitest specs for file-backed node-config knowledge sources.
-import { mkdtemp, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+// Vitest specs for manifest-backed node-config knowledge sources.
 import { describe, expect, it } from 'vitest';
 import { AiGenerateBlock, InputBlock, ViewBlock } from '../flow/blocks';
 import { createFlowDocument, createFlowNode } from '../flow/document';
@@ -12,11 +9,22 @@ import {
 
 describe('node-config knowledge sources', () => {
     it('loads shared notes and directives from a manifest file', async () => {
-        const dir = await mkdtemp(join(tmpdir(), 'node-config-knowledge-'));
-        const manifestPath = join(dir, 'manifest.json');
-        await writeFile(
-            manifestPath,
-            JSON.stringify({
+        let flow = createFlowDocument([InputBlock, AiGenerateBlock, ViewBlock]);
+        flow = createFlowNode(flow, InputBlock.id, { nodeId: 'system-input', label: 'System Input' }).flow;
+        flow = createFlowNode(flow, AiGenerateBlock.id, { nodeId: 'ai-node', label: 'AI Node' }).flow;
+
+        const source = new ManifestSkillDocumentNodeConfigKnowledgeSource(async () => ({
+            defaults: {
+                systemPrompts: {
+                    unknown: 'fallback prompt',
+                },
+                aiModelProfiles: {
+                    default: 'default-model',
+                    'blog-title-generation': 'blog-model',
+                    'structured-output': 'structured-model',
+                },
+            },
+            knowledge: {
                 sharedNotes: ['base note'],
                 conditionalSharedNotes: [
                     {
@@ -31,15 +39,8 @@ describe('node-config knowledge sources', () => {
                         note: 'manifest directive',
                     },
                 ],
-            }),
-            'utf-8',
-        );
-
-        let flow = createFlowDocument([InputBlock, AiGenerateBlock, ViewBlock]);
-        flow = createFlowNode(flow, InputBlock.id, { nodeId: 'system-input', label: 'System Input' }).flow;
-        flow = createFlowNode(flow, AiGenerateBlock.id, { nodeId: 'ai-node', label: 'AI Node' }).flow;
-
-        const source = new ManifestSkillDocumentNodeConfigKnowledgeSource(manifestPath);
+            },
+        }));
         const notes = await source.getSharedNotes({
             userRequest: '상품 소개 문구를 JSON 형태로 여러개 만들어줘',
             flow,

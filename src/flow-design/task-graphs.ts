@@ -1,41 +1,9 @@
 // Internal task-graph catalog and recommendation helpers for flow-design preflight analysis.
-import { join } from 'node:path';
-import { z } from 'zod';
 import type { DirectedGraph } from '../graph/types';
-import { CachedJsonFileResource } from '../resources/json-file';
-import { resolveJsonResourcePath } from '../resources/path-resolver';
+import { getFlowDesignManifest } from './manifest';
+import type { FlowDesignTaskGraphTemplateRecord } from './manifest-schemas';
 
-const TaskGraphNodeSchema = z.object({
-    id: z.string(),
-    label: z.string().optional(),
-    data: z.record(z.unknown()).optional(),
-});
-
-const TaskGraphEdgeSchema = z.object({
-    source: z.string(),
-    target: z.string(),
-    label: z.string().optional(),
-    data: z.record(z.unknown()).optional(),
-});
-
-const TaskGraphTemplateSchema = z.object({
-    id: z.string(),
-    label: z.string(),
-    description: z.string(),
-    examples: z.array(z.string()),
-    signals: z.array(z.string()),
-    graph: z.object({
-        nodes: z.array(TaskGraphNodeSchema),
-        edges: z.array(TaskGraphEdgeSchema),
-    }),
-});
-
-const TaskGraphCatalogSchema = z.object({
-    templates: z.array(TaskGraphTemplateSchema),
-});
-
-export type FlowDesignTaskGraphTemplate = z.infer<typeof TaskGraphTemplateSchema>;
-type FlowDesignTaskGraphCatalog = z.infer<typeof TaskGraphCatalogSchema>;
+export type FlowDesignTaskGraphTemplate = FlowDesignTaskGraphTemplateRecord;
 
 /** Structured recommendation produced by a task-graph advisor. */
 export interface FlowDesignTaskGraphRecommendation {
@@ -63,17 +31,9 @@ export interface FlowDesignTaskGraphModel {
     }>;
 }
 
-const taskGraphCatalogResource = new CachedJsonFileResource<FlowDesignTaskGraphCatalog>(
-    resolveJsonResourcePath({
-        fallbackRoot: join(process.cwd(), 'data'),
-        relativePath: join('skills', 'flow-designer', 'FLOW_DESIGN_TASK_GRAPHS.json'),
-    }),
-    TaskGraphCatalogSchema,
-);
-
 /** Returns the configured task-graph template catalog used by flow-design analysis. */
 export async function getFlowDesignTaskGraphCatalog(): Promise<FlowDesignTaskGraphTemplate[]> {
-    return (await taskGraphCatalogResource.load()).templates;
+    return (await getFlowDesignManifest()).taskGraphTemplates;
 }
 
 function normalize(text: string): string {

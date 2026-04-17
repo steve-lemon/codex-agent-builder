@@ -54,17 +54,17 @@ export class OpenAiGateway implements LlmGateway {
     }
 
     async plan(input: PlannerInput) {
-        const parsed = await this.generateStructured(buildPlanStructuredRequest(input));
+        const parsed = await this.generateStructured(await buildPlanStructuredRequest(input));
 
         return parsePlanStructuredOutput(parsed);
     }
 
     async reflect(input: ReflectorInput) {
-        return this.generateStructured(buildReflectStructuredRequest(input));
+        return this.generateStructured(await buildReflectStructuredRequest(input));
     }
 
     async finalize(input: FinalizerInput) {
-        return this.generateStructured(buildFinalizeStructuredRequest(input));
+        return this.generateStructured(await buildFinalizeStructuredRequest(input));
     }
 
     async generateStructured<TSchema extends z.ZodTypeAny>(

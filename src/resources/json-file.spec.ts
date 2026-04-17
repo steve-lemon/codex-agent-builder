@@ -51,8 +51,8 @@ describe('json resource helpers', () => {
     it('uses a profiled sibling file when CODEX_RESOURCE_PROFILE is set', async () => {
         const rootDir = await mkdtemp(join(tmpdir(), 'json-resource-profile-'));
         const skillDir = join(rootDir, 'skills', 'flow-designer');
-        const defaultPath = join(skillDir, 'FLOW_DESIGN_DEFAULTS.json');
-        const profiledPath = join(skillDir, 'FLOW_DESIGN_DEFAULTS.staging.json');
+        const defaultPath = join(skillDir, 'FLOW_DESIGN_MANIFEST.json');
+        const profiledPath = join(skillDir, 'FLOW_DESIGN_MANIFEST.staging.json');
 
         await mkdir(skillDir, { recursive: true });
         await writeFile(defaultPath, '{"value":"default"}', 'utf8');
@@ -62,7 +62,7 @@ describe('json resource helpers', () => {
 
         const resolvedPath = resolveJsonResourcePath({
             fallbackRoot: join(process.cwd(), 'data'),
-            relativePath: join('skills', 'flow-designer', 'FLOW_DESIGN_DEFAULTS.json'),
+            relativePath: join('skills', 'flow-designer', 'FLOW_DESIGN_MANIFEST.json'),
         });
 
         expect(resolvedPath).toBe(profiledPath);
@@ -71,8 +71,8 @@ describe('json resource helpers', () => {
     it('resolves from CODEX_RESOURCE_ROOT before falling back to the built-in data directory', async () => {
         const rootDir = await mkdtemp(join(tmpdir(), 'json-resource-root-'));
         const runtimeDir = join(rootDir, 'runtime');
-        const defaultPath = join(runtimeDir, 'FAKE_LLM_COPY.json');
-        const profiledPath = join(runtimeDir, 'FAKE_LLM_COPY.production.json');
+        const defaultPath = join(runtimeDir, 'LLM_RUNTIME_MANIFEST.json');
+        const profiledPath = join(runtimeDir, 'LLM_RUNTIME_MANIFEST.production.json');
 
         await mkdir(runtimeDir, { recursive: true });
         await writeFile(defaultPath, '{"value":"root"}', 'utf8');
@@ -82,7 +82,7 @@ describe('json resource helpers', () => {
 
         const resolvedPath = resolveJsonResourcePath({
             fallbackRoot: join(process.cwd(), 'data'),
-            relativePath: join('runtime', 'FAKE_LLM_COPY.json'),
+            relativePath: join('runtime', 'LLM_RUNTIME_MANIFEST.json'),
         });
 
         expect(resolvedPath).toBe(profiledPath);

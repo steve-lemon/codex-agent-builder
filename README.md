@@ -29,9 +29,9 @@ Layered structure:
 1. `src/agent/*`
    Shared runtime contracts, execution flow, persistence hooks, and final-result assembly helpers.
 2. `src/flow-design/*`
-   Core flow-design logic: intent analysis, task-graph reasoning, draft composition, sample execution, reflection, DTOs, provider boundary, and deterministic mocks.
+   Core flow-design logic: intent analysis, task-graph reasoning, draft composition, sample execution, reflection, DTOs, provider boundary, deterministic mocks, and a manifest-backed resource surface.
 3. `src/node-config-design/*`
-   Core node-configuration logic: block-family strategies, knowledge sources, validation, and DTOs.
+   Core node-configuration logic: block-family strategies, validation, DTOs, and a manifest-backed defaults/knowledge surface plus metadata-backed strategy guidance.
 4. `src/tools/*`
    Thin runtime-facing tool wrappers that delegate into the shared design cores.
 5. `src/flow-agent/*`, `src/node-config-agent/*`
@@ -207,7 +207,7 @@ The Gemini SDK requires Node.js 20 or newer for real API execution, and this pro
 - `USE_REAL_GEMINI`: `true` or `false`
 - `USE_REAL_OPENAI`: `true` or `false`
 - `CODEX_RESOURCE_ROOT`: optional shared resource root; defaults to `/Users/dujung/Documents/Codex/data`
-- `CODEX_RESOURCE_PROFILE`: optional resource profile suffix; if set to `staging`, the loader will prefer files such as `FLOW_DESIGN_DEFAULTS.staging.json` when they exist inside the resource root
+- `CODEX_RESOURCE_PROFILE`: optional resource profile suffix; if set to `staging`, the loader will prefer files such as `FLOW_DESIGN_MANIFEST.staging.json` when they exist inside the resource root
 
 Resource loading notes:
 
@@ -215,27 +215,29 @@ Resource loading notes:
 - Today the default source is the local filesystem.
 - The resource boundary is intentionally abstracted so the same modules can later be backed by a remote config service, database, or managed manifest store without rewriting the design cores.
 - The runtime now expects one shared resource root rather than per-file override paths.
+- Each major resource consumer reads through a manifest surface:
+  - `flow-design`: `getFlowDesignManifest()`
+  - `node-config-design`: `getNodeConfigDesignManifest()`
+  - `llm/runtime`: `getLlmRuntimeManifest()`
 
 Expected resource root structure:
 
 ```text
 <CODEX_RESOURCE_ROOT>/
 ├─ runtime/
-│  └─ FAKE_LLM_COPY.json
+│  └─ LLM_RUNTIME_MANIFEST.json
 └─ skills/
    ├─ flow-designer/
-   │  ├─ FLOW_DESIGN_DEFAULTS.json
-   │  └─ FLOW_DESIGN_KNOWLEDGE.json
+   │  └─ FLOW_DESIGN_MANIFEST.json
    └─ node-config-designer/
-      ├─ NODE_CONFIG_DEFAULTS.json
-      └─ NODE_CONFIG_KNOWLEDGE.json
+      └─ NODE_CONFIG_MANIFEST.json
 ```
 
 Profile-specific variants follow the same layout by inserting the profile name before the extension. Examples:
 
-- `skills/flow-designer/FLOW_DESIGN_DEFAULTS.staging.json`
-- `skills/node-config-designer/NODE_CONFIG_KNOWLEDGE.production.json`
-- `runtime/FAKE_LLM_COPY.dev.json`
+- `skills/flow-designer/FLOW_DESIGN_MANIFEST.staging.json`
+- `skills/node-config-designer/NODE_CONFIG_MANIFEST.production.json`
+- `runtime/LLM_RUNTIME_MANIFEST.dev.json`
 
 ## Future Extensions
 

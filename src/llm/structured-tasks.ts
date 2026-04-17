@@ -3,15 +3,15 @@ import { createOpenAiPlanResponseSchema, parsePlanResponse, ReflectorOutputSchem
 import { FinalResultSchema } from '../agent/types';
 import type { FinalizerInput, PlannerInput, ReflectorInput, StructuredGenerationInput } from './types';
 import { defineStructuredSchema } from './structured-schema';
+import { getFinalizeSystemPrompt, getPlanSystemPrompt, getReflectSystemPrompt } from './structured-task-resources';
 
 /** Builds the common structured request used for planner execution. */
-export function buildPlanStructuredRequest(input: PlannerInput): StructuredGenerationInput {
+export async function buildPlanStructuredRequest(input: PlannerInput): Promise<StructuredGenerationInput> {
     return {
         input: [
             {
                 role: 'system',
-                content:
-                    'Return a concise executable plan for an agent runtime. Use only provided tools and generate tool args that satisfy each tool parameter schema.',
+                content: await getPlanSystemPrompt(),
             },
             {
                 role: 'user',
@@ -34,10 +34,10 @@ export function parsePlanStructuredOutput(output: unknown) {
 }
 
 /** Builds the common structured request used for reflector execution. */
-export function buildReflectStructuredRequest(input: ReflectorInput): StructuredGenerationInput {
+export async function buildReflectStructuredRequest(input: ReflectorInput): Promise<StructuredGenerationInput> {
     return {
         input: [
-            { role: 'system', content: 'Decide whether run is complete.' },
+            { role: 'system', content: await getReflectSystemPrompt() },
             { role: 'user', content: JSON.stringify(input) },
         ],
         schema: defineStructuredSchema('reflector_output', ReflectorOutputSchema),
@@ -45,10 +45,10 @@ export function buildReflectStructuredRequest(input: ReflectorInput): Structured
 }
 
 /** Builds the common structured request used for finalizer execution. */
-export function buildFinalizeStructuredRequest(input: FinalizerInput): StructuredGenerationInput {
+export async function buildFinalizeStructuredRequest(input: FinalizerInput): Promise<StructuredGenerationInput> {
     return {
         input: [
-            { role: 'system', content: 'Return final concise agent result.' },
+            { role: 'system', content: await getFinalizeSystemPrompt() },
             { role: 'user', content: JSON.stringify(input) },
         ],
         schema: defineStructuredSchema('final_result', FinalResultSchema),

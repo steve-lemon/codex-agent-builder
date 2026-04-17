@@ -1,24 +1,9 @@
 // Internal task-type catalog and recommendation helpers for flow-design intent analysis.
-import { join } from 'node:path';
-import { z } from 'zod';
-import { CachedJsonFileResource } from '../resources/json-file';
-import { resolveJsonResourcePath } from '../resources/path-resolver';
 import type { FlowDesignTaskType } from './types';
+import { getFlowDesignManifest } from './manifest';
+import type { FlowDesignTaskTypeDefinitionRecord } from './manifest-schemas';
 
-const FlowDesignTaskTypeDefinitionSchema = z.object({
-    id: z.enum(['blog-title-generation', 'json-generation', 'text-generation']),
-    label: z.string(),
-    description: z.string(),
-    examples: z.array(z.string()),
-    signals: z.array(z.string()),
-});
-
-const FlowDesignTaskTypeCatalogSchema = z.object({
-    taskTypes: z.array(FlowDesignTaskTypeDefinitionSchema),
-});
-
-export type FlowDesignTaskTypeDefinition = z.infer<typeof FlowDesignTaskTypeDefinitionSchema>;
-type FlowDesignTaskTypeCatalog = z.infer<typeof FlowDesignTaskTypeCatalogSchema>;
+export type FlowDesignTaskTypeDefinition = FlowDesignTaskTypeDefinitionRecord;
 
 /** Structured recommendation produced by a task-type advisor. */
 export interface FlowDesignTaskTypeRecommendation {
@@ -46,17 +31,9 @@ export interface FlowDesignTaskTypeModel {
     }>;
 }
 
-const taskTypeCatalogResource = new CachedJsonFileResource<FlowDesignTaskTypeCatalog>(
-    resolveJsonResourcePath({
-        fallbackRoot: join(process.cwd(), 'data'),
-        relativePath: join('skills', 'flow-designer', 'FLOW_DESIGN_TASK_TYPES.json'),
-    }),
-    FlowDesignTaskTypeCatalogSchema,
-);
-
 /** Returns the configured task-type catalog used by flow-design analysis. */
 export async function getFlowDesignTaskTypeCatalog(): Promise<FlowDesignTaskTypeDefinition[]> {
-    return (await taskTypeCatalogResource.load()).taskTypes;
+    return (await getFlowDesignManifest()).taskTypes;
 }
 
 function normalize(text: string): string {

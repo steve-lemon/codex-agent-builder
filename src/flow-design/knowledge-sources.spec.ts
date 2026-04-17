@@ -1,7 +1,4 @@
-// Vitest specs for file-backed flow-design knowledge sources.
-import { mkdtemp, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+// Vitest specs for manifest-backed flow-design knowledge sources.
 import { describe, expect, it } from 'vitest';
 import { analyzeFlowRequest, designFlowDraft, reflectFlowExecution } from './core';
 import { availableFlowBlocks } from './catalog';
@@ -10,11 +7,37 @@ import { DeterministicFlowDesignProvider } from './provider';
 
 describe('flow-design knowledge sources', () => {
     it('loads draft and reflection notes from a manifest file', async () => {
-        const dir = await mkdtemp(join(tmpdir(), 'flow-design-knowledge-'));
-        const manifestPath = join(dir, 'manifest.json');
-        await writeFile(
-            manifestPath,
-            JSON.stringify({
+        const intent = await analyzeFlowRequest('상품 소개 문구를 JSON 형태로 여러개 만들어줘');
+        const source = new ManifestFlowDesignKnowledgeSource(async () => ({
+            taskTypes: [],
+            taskGraphTemplates: [],
+            classifierPrompts: {
+                taskTypeSystemPrompt: 'classify task type',
+                taskGraphSystemPrompt: 'classify task graph',
+            },
+            defaults: {
+                sampleInputs: {
+                    default: 'default',
+                    keywordDriven: 'keyword',
+                    byTaskType: {},
+                },
+                systemPrompts: {
+                    unknown: 'unknown',
+                },
+                aiNodeDefaults: {
+                    model: 'model',
+                },
+                probeDefaults: {
+                    sampleConfig: {
+                        model: 'probe-model',
+                    },
+                    sampleInputs: {
+                        system: 'probe system',
+                        prompt: 'probe prompt',
+                    },
+                },
+            },
+            knowledge: {
                 sharedDraftNotes: ['base draft note'],
                 conditionalDraftNotes: [
                     {
@@ -23,12 +46,8 @@ describe('flow-design knowledge sources', () => {
                     },
                 ],
                 reflectionNotes: ['base reflection note'],
-            }),
-            'utf-8',
-        );
-
-        const intent = await analyzeFlowRequest('상품 소개 문구를 JSON 형태로 여러개 만들어줘');
-        const source = new ManifestFlowDesignKnowledgeSource(manifestPath);
+            },
+        }));
 
         expect(await source.getDraftNotes(intent)).toEqual(
             expect.arrayContaining(['base draft note', 'json draft note']),
