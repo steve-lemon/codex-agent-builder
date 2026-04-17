@@ -5,7 +5,7 @@ import { InMemoryRunStateStore } from './state/memory-store';
 import { buildDefaultToolRegistry } from './tools';
 
 /** Creates the default runtime with fake, OpenAI, or Gemini-backed LLM wiring. */
-export function createRuntime(options?: Partial<AgentRuntimeOptions>) {
+export async function createRuntime(options?: Partial<AgentRuntimeOptions>) {
     const provider = String(process.env.LLM_PROVIDER ?? '').toLowerCase();
     const useRealOpenAi = String(process.env.USE_REAL_OPENAI ?? 'false').toLowerCase() === 'true';
     const useRealGemini = String(process.env.USE_REAL_GEMINI ?? 'false').toLowerCase() === 'true';
@@ -17,7 +17,7 @@ export function createRuntime(options?: Partial<AgentRuntimeOptions>) {
             ? new OpenAiGateway()
             : new FakeLlmGateway());
     const store = options?.store ?? new InMemoryRunStateStore();
-    const toolRegistry = options?.toolRegistry ?? buildDefaultToolRegistry();
+    const toolRegistry = options?.toolRegistry ?? (await buildDefaultToolRegistry());
 
     return new AgentRuntime({
         llm,

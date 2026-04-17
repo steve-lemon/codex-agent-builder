@@ -17,17 +17,17 @@ import {
     getNodeConfigDesignerPayload,
 } from './final-result-payload';
 
-function buildDefaultRuntime() {
+async function buildDefaultRuntime() {
     return new AgentRuntime({
         llm: new FakeLlmGateway(),
         store: new InMemoryRunStateStore(),
-        toolRegistry: buildDefaultToolRegistry(),
+        toolRegistry: await buildDefaultToolRegistry(),
     });
 }
 
 describe('runtime flow', () => {
     it('completes planner/executor/reflector/finalizer flow with fake gateway', async () => {
-        const runtime = buildDefaultRuntime();
+        const runtime = await buildDefaultRuntime();
         const result = await runtime.run('Review customer issue and summarize');
 
         expect(result.status).toBe('completed');
@@ -41,7 +41,7 @@ describe('runtime flow', () => {
         const runtime = new AgentRuntime({
             llm: new FakeLlmGateway(),
             store,
-            toolRegistry: buildDefaultToolRegistry(),
+            toolRegistry: await buildDefaultToolRegistry(),
         });
         const result = await runtime.run('키워드를 줄테니 블로그 타이틀 여러개 만들기');
         const run = await store.get(result.runId);
@@ -107,7 +107,7 @@ describe('runtime flow', () => {
     });
 
     it('completes a node-config-designer skill run with sub-agent guidance', async () => {
-        const runtime = buildDefaultRuntime();
+        const runtime = await buildDefaultRuntime();
         const result = await runtime.run('ai 노드의 시스템 프롬프트와 모델 설정을 디자인해줘');
 
         expect(result.status).toBe('completed');
@@ -127,7 +127,7 @@ describe('runtime flow', () => {
     });
 
     it('stops early and reports missing capabilities when the request cannot be satisfied by available blocks', async () => {
-        const runtime = buildDefaultRuntime();
+        const runtime = await buildDefaultRuntime();
         const result = await runtime.run('이메일을 확인해서 답장 해줘');
 
         expect(result.status).toBe('completed');
@@ -157,7 +157,7 @@ describe('runtime flow', () => {
         const runtime = new AgentRuntime({
             llm: new FakeLlmGateway(),
             store: new InMemoryRunStateStore(),
-            toolRegistry: buildDefaultToolRegistry(),
+            toolRegistry: await buildDefaultToolRegistry(),
             flowDesignConnectionFactory: ({ skillName }) =>
                 skillName === 'flow-designer'
                     ? new CallbackFlowDesignConnection(event => {
@@ -183,7 +183,7 @@ describe('runtime flow', () => {
         const runtime = new AgentRuntime({
             llm: new FakeLlmGateway(),
             store: new InMemoryRunStateStore(),
-            toolRegistry: buildDefaultToolRegistry(),
+            toolRegistry: await buildDefaultToolRegistry(),
             unifiedEventConnectionFactory: () =>
                 new CallbackUnifiedRunEventConnection(event => {
                     timeline.push(event);
@@ -202,7 +202,7 @@ describe('runtime flow', () => {
     });
 
     it('completes a preflight validation run and returns task-graph feasibility feedback', async () => {
-        const runtime = buildDefaultRuntime();
+        const runtime = await buildDefaultRuntime();
         const result = await runtime.run('이 요청이 가능한지 사전 검증해줘: 이메일을 확인해서 답장 해줘');
 
         expect(result.status).toBe('completed');
@@ -318,7 +318,7 @@ describe('runtime flow', () => {
     });
 
     it('final result contains expected structured fields', async () => {
-        const runtime = buildDefaultRuntime();
+        const runtime = await buildDefaultRuntime();
         const result = await runtime.run('Prepare a quick customer summary');
         expect(result.finalResult).toEqual(
             expect.objectContaining({
@@ -438,7 +438,7 @@ describe('runtime flow', () => {
         const runtime = new AgentRuntime({
             llm,
             store: new InMemoryRunStateStore(),
-            toolRegistry: buildDefaultToolRegistry(),
+            toolRegistry: await buildDefaultToolRegistry(),
         });
 
         const result = await runtime.run('customer question');
@@ -470,7 +470,7 @@ describe('runtime flow', () => {
         const runtime = new AgentRuntime({
             llm,
             store: new InMemoryRunStateStore(),
-            toolRegistry: buildDefaultToolRegistry(),
+            toolRegistry: await buildDefaultToolRegistry(),
         });
 
         await expect(runtime.run('Please review this customer complaint.')).rejects.toThrow(
@@ -501,7 +501,7 @@ describe('runtime flow', () => {
         const runtime = new AgentRuntime({
             llm,
             store: new InMemoryRunStateStore(),
-            toolRegistry: buildDefaultToolRegistry(),
+            toolRegistry: await buildDefaultToolRegistry(),
         });
 
         await expect(runtime.run('Please refund this customer order now.')).rejects.toThrow(
@@ -538,7 +538,7 @@ describe('runtime flow', () => {
         const runtime = new AgentRuntime({
             llm,
             store: new InMemoryRunStateStore(),
-            toolRegistry: buildDefaultToolRegistry(),
+            toolRegistry: await buildDefaultToolRegistry(),
         });
 
         const result = await runtime.run('Please review this customer complaint.');

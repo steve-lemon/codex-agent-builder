@@ -48,7 +48,7 @@ describe('skill selector and router', () => {
     });
 
     it('exposes only tools allowed for selected skill', async () => {
-        const router = new MultiSkillRouter(buildDefaultToolRegistry());
+        const router = new MultiSkillRouter(await buildDefaultToolRegistry());
         const tools = router.toolNamesForSkill('research-brief-generator');
         expect(tools).toContain('webSearch');
         expect(tools).not.toContain('refundOrder');
@@ -56,7 +56,7 @@ describe('skill selector and router', () => {
     });
 
     it('exposes only flow design tools for the flow designer skill', async () => {
-        const router = new MultiSkillRouter(buildDefaultToolRegistry());
+        const router = new MultiSkillRouter(await buildDefaultToolRegistry());
         const tools = router.toolNamesForSkill('flow-designer');
         expect(tools).toEqual([
             'analyzeFlowRequest',
@@ -76,13 +76,13 @@ describe('skill selector and router', () => {
     });
 
     it('exposes only node-configuration tools for the node-config designer skill', async () => {
-        const router = new MultiSkillRouter(buildDefaultToolRegistry());
+        const router = new MultiSkillRouter(await buildDefaultToolRegistry());
         const tools = router.toolNamesForSkill('node-config-designer');
         expect(tools).toEqual(['designFlowNodeConfigurations', 'validateFlowNodeConfigurations']);
     });
 
     it('exposes only task-graph preflight tools for the preflight validator skill', async () => {
-        const router = new MultiSkillRouter(buildDefaultToolRegistry());
+        const router = new MultiSkillRouter(await buildDefaultToolRegistry());
         const tools = router.toolNamesForSkill('flow-preflight-validator');
         expect(tools).toEqual([
             'inferTaskGraph',

@@ -1,7 +1,8 @@
 // Tools that expose the node-configuration design sub-agent to the runtime.
 import { z } from 'zod';
 import { NodeConfigDesignService } from '../node-config-design/core';
-import { defineTool, type ToolDefinition } from './types';
+import { buildToolPackFromResource, loadToolPackResource } from './resources';
+import { type ToolContext, type ToolDefinition, type ToolPack, type ToolRepositoryBundle } from './types';
 
 const service = new NodeConfigDesignService();
 
@@ -84,13 +85,29 @@ const StrategyDirectiveSchema = z.object({
     note: z.string(),
 });
 
-/** Returns tools that design and validate concrete node configurations for a flow draft. */
-export function createNodeConfigTools(): ToolDefinition[] {
-    return [
-        defineTool({
+function defineNodeConfigToolExecutor<TArgs extends Record<string, unknown>>(
+    handler: (args: TArgs, context: ToolContext) => Promise<unknown> | unknown,
+) {
+    return async (args: Record<string, unknown>, context: ToolContext) => {
+        return await handler(args as TArgs, context);
+    };
+}
+
+const NODE_CONFIG_EXECUTE_IDS = {
+    designFlowNodeConfigurations: 'node-config.design-flow-node-configurations',
+    validateFlowNodeConfigurations: 'node-config.validate-flow-node-configurations',
+} as const;
+
+function getNodeConfigToolDefinitions(): Record<
+    string,
+    Omit<
+        ToolDefinition,
+        'description' | 'riskLevel' | 'allowedSkills' | 'requiresConfirmation' | 'parallelSafe' | 'executeId'
+    >
+> {
+    return {
+        designFlowNodeConfigurations: {
             name: 'designFlowNodeConfigurations',
-            description:
-                'Design concrete configuration values for flow nodes so each block has the settings and prompts it needs to behave as expected.',
             parameters: z.object({
                 userRequest: z.string(),
                 flow: FlowDocumentSchema,
@@ -101,11 +118,35 @@ export function createNodeConfigTools(): ToolDefinition[] {
                 strategyDirectives: z.array(StrategyDirectiveSchema).optional(),
                 probeResult: ProbeResultSchema.optional(),
             }),
-            riskLevel: 'read-only',
-            allowedSkills: ['flow-designer', 'node-config-designer'],
-            requiresConfirmation: false,
-            parallelSafe: false,
-            execute: async ({
+        },
+        validateFlowNodeConfigurations: {
+            name: 'validateFlowNodeConfigurations',
+            parameters: z.object({
+                flow: FlowDocumentSchema,
+            }),
+        },
+    };
+}
+
+function getNodeConfigToolExecutors() {
+    return {
+        [NODE_CONFIG_EXECUTE_IDS.designFlowNodeConfigurations]: defineNodeConfigToolExecutor<{
+            userRequest: string;
+            flow: unknown;
+            desiredCount: number;
+            wantsJson: boolean;
+            improvementNotes?: string[];
+            strategyNotes?: string[];
+            strategyDirectives?: Array<{ strategyId: string; note: string }>;
+            probeResult?: {
+                blockId: string;
+                observedOutputs?: Record<string, unknown>;
+                observedLogs?: string[];
+                behaviorNotes?: string[];
+                mismatchesFromSpec?: string[];
+            };
+        }>(
+            async ({
                 userRequest,
                 flow,
                 desiredCount,
@@ -114,32 +155,43 @@ export function createNodeConfigTools(): ToolDefinition[] {
                 strategyNotes = [],
                 strategyDirectives = [],
                 probeResult,
-            }) => {
-                return service.design({
+            }) =>
+                service.design({
                     userRequest,
-                    flow,
+                    flow: flow as never,
                     desiredCount,
                     wantsJson,
                     improvementNotes,
                     strategyNotes,
                     strategyDirectives,
                     probeResult,
-                });
-            },
-        }),
-        defineTool({
-            name: 'validateFlowNodeConfigurations',
-            description: 'Validate that a flow draft now contains the required node-level settings for execution.',
-            parameters: z.object({
-                flow: FlowDocumentSchema,
-            }),
-            riskLevel: 'read-only',
-            allowedSkills: ['flow-designer', 'node-config-designer'],
-            requiresConfirmation: false,
-            parallelSafe: true,
-            execute: async ({ flow }) => {
-                return service.validate(flow);
-            },
-        }),
-    ];
+                }),
+        ),
+        [NODE_CONFIG_EXECUTE_IDS.validateFlowNodeConfigurations]: defineNodeConfigToolExecutor<{ flow: unknown }>(
+            async ({ flow }) => service.validate(flow as never),
+        ),
+    };
+}
+
+/** Returns node-config tool metadata plus executor mappings for repository-style registration. */
+export async function createNodeConfigToolBundle(): Promise<ToolRepositoryBundle> {
+    return (await createNodeConfigToolPack()).bundle;
+}
+
+/** Groups node-config design tools into a named pack for repository-level registration. */
+export async function createNodeConfigToolPack(): Promise<ToolPack> {
+    const resource = await loadToolPackResource('tools.node-config.set');
+    const pack = buildToolPackFromResource(resource, getNodeConfigToolDefinitions());
+    return {
+        ...pack,
+        bundle: {
+            tools: pack.bundle.tools,
+            executors: getNodeConfigToolExecutors(),
+        },
+    };
+}
+
+/** Returns node-config tool metadata for callers that only need the visible tool pool. */
+export async function createNodeConfigTools(): Promise<ToolDefinition[]> {
+    return (await createNodeConfigToolBundle()).tools;
 }

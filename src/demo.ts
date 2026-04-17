@@ -3,7 +3,7 @@ import { createRuntime, FlowDesignProduct } from './index';
 
 async function runDemo() {
     const product = new FlowDesignProduct();
-    const runtime = createRuntime();
+    const runtime = await createRuntime();
 
     console.log('\n=== A) Product preflight run ===');
     const preflight = await product.preflight('이메일을 확인해서 답장 해줘');

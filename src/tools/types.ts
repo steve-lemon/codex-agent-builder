@@ -9,6 +9,13 @@ type ToolExecutor<TArgs> = {
     bivarianceHack(args: TArgs, context: ToolContext): Promise<unknown> | unknown;
 }['bivarianceHack'];
 
+export type AnyToolExecutor = (args: Record<string, unknown>, context: ToolContext) => Promise<unknown> | unknown;
+
+export type ToolExecutorMap = Record<string, AnyToolExecutor>;
+
+export type ToolPackId = string;
+export type ToolPackScope = 'agent-owned' | 'sample-only' | 'shared';
+
 /** Runtime context injected into each tool call. */
 export interface ToolContext {
     runId: string;
@@ -51,7 +58,28 @@ export interface ToolDefinition<TSchema extends ZodTypeAny = ZodTypeAny> {
     allowedSkills: string[];
     requiresConfirmation: boolean;
     parallelSafe: boolean;
-    execute: ToolExecutor<z.infer<TSchema>>;
+    executeId?: string;
+    execute?: ToolExecutor<z.infer<TSchema>>;
+}
+
+export interface ToolRepositoryBundle {
+    tools: ToolDefinition[];
+    executors: ToolExecutorMap;
+}
+
+/**
+ * Describes a domain- or skill-oriented pack of tools that can be registered together.
+ * The bundle carries the actual tool metadata and executor mappings.
+ */
+export interface ToolPack {
+    id: ToolPackId;
+    version: number;
+    name: string;
+    description: string;
+    owner: string;
+    scope: ToolPackScope;
+    skills: string[];
+    bundle: ToolRepositoryBundle;
 }
 
 /** Preserves tool parameter inference when defining registry entries. */

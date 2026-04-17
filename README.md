@@ -113,6 +113,14 @@ Use `FlowDesignProduct` when the application wants explicit product operations s
 
 Use `AgentRuntime` directly when the application wants lower-level skill/runtime control.
 
+Runtime factory usage:
+
+```ts
+import { createRuntime } from '/Users/dujung/Documents/Codex/src';
+
+const runtime = await createRuntime();
+```
+
 ## File Structure
 
 ```text
@@ -219,6 +227,7 @@ Resource loading notes:
   - `flow-design`: `getFlowDesignManifest()`
   - `node-config-design`: `getNodeConfigDesignManifest()`
   - `llm/runtime`: `getLlmRuntimeManifest()`
+  - `tools`: resource-backed tool-set packs registered through `buildDefaultToolRegistry()`
 
 Expected resource root structure:
 
@@ -226,18 +235,41 @@ Expected resource root structure:
 <CODEX_RESOURCE_ROOT>/
 ├─ runtime/
 │  └─ LLM_RUNTIME_MANIFEST.yml
-└─ skills/
-   ├─ flow-designer/
-   │  └─ FLOW_DESIGN_MANIFEST.yml
-   └─ node-config-designer/
-      └─ NODE_CONFIG_MANIFEST.yml
+├─ skills/
+│  ├─ flow-designer/
+│  │  ├─ FLOW_DESIGN_MANIFEST.yml
+│  │  └─ TOOLS.yml
+│  ├─ flow-preflight-validator/
+│  │  └─ TOOLS.yml
+│  └─ node-config-designer/
+│     ├─ NODE_CONFIG_MANIFEST.yml
+│     └─ TOOLS.yml
+└─ tools/
+   └─ sample-tools/
+      └─ TOOLS.yml
 ```
+
+Agent-owned tool sets now live alongside each agent's skill/manifest resources. Sample/demo packs that are reused across tests or local flows, such as `sample-tools`, remain in the top-level `tools/` area until a real shared/common resource surface is introduced.
+
+Each resource-owning folder may also include a small `RESOURCE.md` file that explains:
+- which files in that folder are owned by the skill or shared pack
+- which tuning changes belong there
+- which changes should stay in shared runtime/common areas
+
+Each tool set manifest also carries a `version` field so pack-level migration can be introduced later without changing the runtime loading contract.
+Tool sets also carry:
+- `owner`: the skill or area that owns the pack
+- `scope`: one of `agent-owned`, `sample-only`, or `shared`
 
 Profile-specific variants follow the same layout by inserting the profile name before the extension. Examples:
 
 - `skills/flow-designer/FLOW_DESIGN_MANIFEST.staging.yml`
+- `skills/flow-designer/TOOLS.staging.yml`
+- `skills/flow-preflight-validator/TOOLS.staging.yml`
 - `skills/node-config-designer/NODE_CONFIG_MANIFEST.production.yml`
+- `skills/node-config-designer/TOOLS.production.yml`
 - `runtime/LLM_RUNTIME_MANIFEST.dev.yml`
+- `tools/sample-tools/TOOLS.dev.yml`
 
 ## Future Extensions
 

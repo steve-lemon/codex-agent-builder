@@ -1,0 +1,52 @@
+id: flow-task-graph
+version: 1
+owner: flow-preflight-validator
+scope: agent-owned
+name: Flow Task Graph Tools
+description: Preflight task-graph inference, compatibility analysis, and missing-block proposal tools.
+skills:
+  - flow-preflight-validator
+  - flow-designer
+tools:
+  - name: inferTaskGraph
+    description: Infer the user request as a task graph with ordered operations, expected IO, and dependencies.
+    riskLevel: read-only
+    allowedSkills:
+      - flow-preflight-validator
+    requiresConfirmation: false
+    parallelSafe: true
+    executeId: task-graph.infer
+  - name: analyzeTaskGraphCompatibility
+    description: Match each inferred task-graph node to currently available blocks and explain why a node is or is not feasible.
+    riskLevel: read-only
+    allowedSkills:
+      - flow-preflight-validator
+    requiresConfirmation: false
+    parallelSafe: true
+    executeId: task-graph.analyze-compatibility
+  - name: proposeMissingBlocks
+    description: Draft new block proposals for infeasible task-graph nodes that do not match the current block set.
+    riskLevel: read-only
+    allowedSkills:
+      - flow-preflight-validator
+    requiresConfirmation: false
+    parallelSafe: true
+    executeId: task-graph.propose-missing-blocks
+  - name: refineTaskGraph
+    description: Refine an inferred task graph using reflection issues and improvement notes from an earlier design pass.
+    riskLevel: read-only
+    allowedSkills:
+      - flow-preflight-validator
+      - flow-designer
+    requiresConfirmation: false
+    parallelSafe: true
+    executeId: task-graph.refine
+  - name: prevalidateFlowDesignRequest
+    description: Run full graph-based preflight validation for a flow design request and summarize feasibility, graph reasoning, and missing blocks.
+    riskLevel: read-only
+    allowedSkills:
+      - flow-preflight-validator
+      - flow-designer
+    requiresConfirmation: false
+    parallelSafe: true
+    executeId: task-graph.prevalidate-flow-design-request

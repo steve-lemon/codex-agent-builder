@@ -14,7 +14,7 @@ describe('approval flow', () => {
         const runtime = new AgentRuntime({
             llm: new FakeLlmGateway(),
             store: new InMemoryRunStateStore(),
-            toolRegistry: buildDefaultToolRegistry(),
+            toolRegistry: await buildDefaultToolRegistry(),
         });
 
         const result = await runtime.run('Please refund this customer order now.');
@@ -26,7 +26,7 @@ describe('approval flow', () => {
         const runtime = new AgentRuntime({
             llm: new FakeLlmGateway(),
             store: new InMemoryRunStateStore(),
-            toolRegistry: buildDefaultToolRegistry(),
+            toolRegistry: await buildDefaultToolRegistry(),
         });
 
         const waiting = await runtime.run('Please refund this customer order now.');
@@ -40,7 +40,7 @@ describe('approval flow', () => {
         const runtime = new AgentRuntime({
             llm: new FakeLlmGateway(),
             store: new InMemoryRunStateStore(),
-            toolRegistry: buildDefaultToolRegistry(),
+            toolRegistry: await buildDefaultToolRegistry(),
         });
 
         const waiting = await runtime.run('Please refund this customer order now.');
@@ -146,7 +146,7 @@ describe('approval flow', () => {
         const runtime = new AgentRuntime({
             llm: new FakeLlmGateway(),
             store: new InMemoryRunStateStore(),
-            toolRegistry: buildDefaultToolRegistry(),
+            toolRegistry: await buildDefaultToolRegistry(),
         });
 
         await expect(runtime.resume('missing-run', { decision: 'approve' })).rejects.toThrow(
@@ -158,7 +158,7 @@ describe('approval flow', () => {
         const runtime = new AgentRuntime({
             llm: new FakeLlmGateway(),
             store: new InMemoryRunStateStore(),
-            toolRegistry: buildDefaultToolRegistry(),
+            toolRegistry: await buildDefaultToolRegistry(),
         });
 
         const completed = await runtime.run('Review customer issue and summarize.');

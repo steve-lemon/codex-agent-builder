@@ -27,7 +27,7 @@ describe('node-config design agent', () => {
     });
 
     it('applies blog-title prompts and a blog-focused model to a generated flow draft', async () => {
-        const registry = buildDefaultToolRegistry();
+        const registry = await buildDefaultToolRegistry();
         const design = await registry.execute(
             {
                 toolName: 'designFlowDraft',
@@ -113,7 +113,7 @@ describe('node-config design agent', () => {
     });
 
     it('uses structured output configuration for json-oriented requests', async () => {
-        const registry = buildDefaultToolRegistry();
+        const registry = await buildDefaultToolRegistry();
         const design = await registry.execute(
             {
                 toolName: 'designFlowDraft',
@@ -153,7 +153,7 @@ describe('node-config design agent', () => {
     });
 
     it('reports validation issues when required prompts or ai settings are missing', async () => {
-        const registry = buildDefaultToolRegistry();
+        const registry = await buildDefaultToolRegistry();
         const design = await registry.execute(
             {
                 toolName: 'designFlowDraft',
@@ -199,7 +199,7 @@ describe('node-config design agent', () => {
     });
 
     it('accepts an external knowledge source through the wrapper', async () => {
-        const registry = buildDefaultToolRegistry();
+        const registry = await buildDefaultToolRegistry();
         const design = await registry.execute(
             {
                 toolName: 'designFlowDraft',

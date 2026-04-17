@@ -1,0 +1,28 @@
+id: flow-node-config
+version: 1
+owner: node-config-designer
+scope: agent-owned
+name: Flow Node Config Tools
+description: Node-level configuration design and validation tools for flow execution readiness.
+skills:
+  - flow-designer
+  - node-config-designer
+tools:
+  - name: designFlowNodeConfigurations
+    description: Design concrete configuration values for flow nodes so each block has the settings and prompts it needs to behave as expected.
+    riskLevel: read-only
+    allowedSkills:
+      - flow-designer
+      - node-config-designer
+    requiresConfirmation: false
+    parallelSafe: false
+    executeId: node-config.design-flow-node-configurations
+  - name: validateFlowNodeConfigurations
+    description: Validate that a flow draft now contains the required node-level settings for execution.
+    riskLevel: read-only
+    allowedSkills:
+      - flow-designer
+      - node-config-designer
+    requiresConfirmation: false
+    parallelSafe: true
+    executeId: node-config.validate-flow-node-configurations

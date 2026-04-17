@@ -2,8 +2,10 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { buildDefaultToolRegistry } from '.';
-import { createFlowDesignTools } from './flow-tools';
-import { createMockTools } from './mock-tools';
+import { createFlowDesignToolPack, createFlowDesignTools } from './flow-tools';
+import { createMockToolPack, createMockTools } from './mock-tools';
+import { createNodeConfigToolPack } from './node-config-tools';
+import { createTaskGraphToolPack } from './task-graph-tools';
 import { AnyArgsSchema, ToolRegistry } from './registry';
 import { defineTool, type ToolDefinition } from './types';
 import type { ToolContext } from './types';
@@ -39,8 +41,8 @@ function makeTestTool(overrides: Partial<ToolDefinition> = {}): ToolDefinition {
 }
 
 describe('tools modules', () => {
-    it('buildDefaultToolRegistry loads all mock tools into the registry', () => {
-        const registry = buildDefaultToolRegistry();
+    it('buildDefaultToolRegistry loads all mock tools into the registry', async () => {
+        const registry = await buildDefaultToolRegistry();
         const toolNames = registry.list().map(tool => tool.name);
 
         expect(toolNames).toEqual([
@@ -70,8 +72,65 @@ describe('tools modules', () => {
         ]);
     });
 
-    it('createMockTools returns metadata that matches policy expectations', () => {
-        const tools = createMockTools();
+    it('buildDefaultToolRegistry registers named tool packs for each major tool family', async () => {
+        const registry = await buildDefaultToolRegistry();
+
+        expect(registry.listPacks()).toEqual([
+            expect.objectContaining({
+                id: 'sample-tools',
+                version: 1,
+                name: 'Sample Tools',
+                owner: 'sample-tools',
+                scope: 'sample-only',
+            }),
+            expect.objectContaining({
+                id: 'flow-design',
+                version: 1,
+                name: 'Flow Design Tools',
+                owner: 'flow-designer',
+                scope: 'agent-owned',
+            }),
+            expect.objectContaining({
+                id: 'flow-node-config',
+                version: 1,
+                name: 'Flow Node Config Tools',
+                owner: 'node-config-designer',
+                scope: 'agent-owned',
+            }),
+            expect.objectContaining({
+                id: 'flow-task-graph',
+                version: 1,
+                name: 'Flow Task Graph Tools',
+                owner: 'flow-preflight-validator',
+                scope: 'agent-owned',
+            }),
+        ]);
+    });
+
+    it('tool family pack creators expose metadata plus bundled tools and executors', async () => {
+        const packs = await Promise.all([
+            createMockToolPack(),
+            createFlowDesignToolPack(),
+            createNodeConfigToolPack(),
+            createTaskGraphToolPack(),
+        ]);
+
+        expect(packs.map(pack => pack.id)).toEqual(['sample-tools', 'flow-design', 'flow-node-config', 'flow-task-graph']);
+        expect(packs.every(pack => pack.version === 1)).toBe(true);
+        expect(packs).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ id: 'sample-tools', scope: 'sample-only' }),
+                expect.objectContaining({ id: 'flow-design', scope: 'agent-owned' }),
+                expect.objectContaining({ id: 'flow-node-config', scope: 'agent-owned' }),
+                expect.objectContaining({ id: 'flow-task-graph', scope: 'agent-owned' }),
+            ]),
+        );
+        expect(packs.every(pack => pack.bundle.tools.length > 0)).toBe(true);
+        expect(packs.every(pack => Object.keys(pack.bundle.executors).length > 0)).toBe(true);
+    });
+
+    it('createMockTools returns metadata that matches policy expectations', async () => {
+        const tools = await createMockTools();
         const refundTool = tools.find(tool => tool.name === 'refundOrder');
         const searchTool = tools.find(tool => tool.name === 'webSearch');
         const slackTool = tools.find(tool => tool.name === 'sendSlackMessage');
@@ -94,8 +153,8 @@ describe('tools modules', () => {
         expect(slackTool?.allowedSkills).toEqual(['ops-automation-agent']);
     });
 
-    it('createFlowDesignTools returns planner-safe read-only tools for the flow-designer skill', () => {
-        const tools = createFlowDesignTools();
+    it('createFlowDesignTools returns planner-safe read-only tools for the flow-designer skill', async () => {
+        const tools = await createFlowDesignTools();
 
         expect(tools).toHaveLength(9);
         expect(tools.map(tool => tool.name)).toEqual([
@@ -115,7 +174,7 @@ describe('tools modules', () => {
     });
 
     it('assessFlowFeasibility reports missing capabilities for impossible requests', async () => {
-        const registry = buildDefaultToolRegistry();
+        const registry = await buildDefaultToolRegistry();
 
         const result = await registry.execute(
             {
@@ -166,7 +225,7 @@ describe('tools modules', () => {
     });
 
     it('task-graph preflight tools infer a graph, match blocks, and propose missing blocks', async () => {
-        const registry = buildDefaultToolRegistry();
+        const registry = await buildDefaultToolRegistry();
 
         const inferred = await registry.execute(
             {
@@ -249,7 +308,7 @@ describe('tools modules', () => {
     });
 
     it('refineTaskGraph updates generation expectations from reflection feedback and revalidates the graph', async () => {
-        const registry = buildDefaultToolRegistry();
+        const registry = await buildDefaultToolRegistry();
 
         const inferred = await registry.execute(
             {
@@ -323,15 +382,15 @@ describe('tools modules', () => {
         });
     });
 
-    it('prevalidateFlowDesignRequest is shared with flow-designer so design runs can reuse preflight facts', () => {
-        const registry = buildDefaultToolRegistry();
+    it('prevalidateFlowDesignRequest is shared with flow-designer so design runs can reuse preflight facts', async () => {
+        const registry = await buildDefaultToolRegistry();
         const preflightTool = registry.get('prevalidateFlowDesignRequest');
 
         expect(preflightTool?.allowedSkills).toEqual(['flow-preflight-validator', 'flow-designer']);
     });
 
-    it('node configuration tools are shared with flow-designer and node-config-designer', () => {
-        const registry = buildDefaultToolRegistry();
+    it('node configuration tools are shared with flow-designer and node-config-designer', async () => {
+        const registry = await buildDefaultToolRegistry();
 
         expect(registry.get('designFlowNodeConfigurations')?.allowedSkills).toEqual([
             'flow-designer',
@@ -344,7 +403,7 @@ describe('tools modules', () => {
     });
 
     it('mock tools return deterministic customer and order data', async () => {
-        const registry = buildDefaultToolRegistry();
+        const registry = await buildDefaultToolRegistry();
 
         const customer = await registry.execute(
             { toolName: 'getCustomerById', args: { customerId: 'c_1' } },
@@ -380,7 +439,7 @@ describe('tools modules', () => {
     });
 
     it('mock read-only tools return safe fallback data for unknown records', async () => {
-        const registry = buildDefaultToolRegistry();
+        const registry = await buildDefaultToolRegistry();
 
         const customer = await registry.execute(
             { toolName: 'getCustomerById', args: { customerId: 'missing' } },
@@ -404,7 +463,7 @@ describe('tools modules', () => {
     });
 
     it('mock side-effect tools still return deterministic payloads', async () => {
-        const registry = buildDefaultToolRegistry();
+        const registry = await buildDefaultToolRegistry();
 
         const ticket = await registry.execute(
             {
@@ -452,7 +511,7 @@ describe('tools modules', () => {
     });
 
     it('flow design tools produce deterministic intent, flow draft, validation, execution, and reflection outputs', async () => {
-        const registry = buildDefaultToolRegistry();
+        const registry = await buildDefaultToolRegistry();
 
         const intent = await registry.execute(
             {
@@ -657,7 +716,7 @@ describe('tools modules', () => {
     });
 
     it('node configuration tools configure prompts/model settings and validate them deterministically', async () => {
-        const registry = buildDefaultToolRegistry();
+        const registry = await buildDefaultToolRegistry();
 
         const design = await registry.execute(
             {
@@ -777,6 +836,50 @@ describe('tools modules', () => {
         expect(registry.list().map(tool => tool.name)).toEqual(['echoTool', 'opsTool']);
         expect(registry.listBySkills('customer-support-reviewer').map(tool => tool.name)).toEqual(['echoTool']);
         expect(registry.listBySkills('ops-automation-agent').map(tool => tool.name)).toEqual(['opsTool']);
+    });
+
+    it('registerPack stores pack metadata and resolves execution through executeId mappings', async () => {
+        const registry = new ToolRegistry();
+        registry.registerPack({
+            id: 'test-pack',
+            version: 1,
+            name: 'Test Pack',
+            description: 'Pack used for repository registration tests.',
+            owner: 'tests',
+            scope: 'shared',
+            skills: ['customer-support-reviewer'],
+            bundle: {
+                tools: [
+                    makeTestTool({
+                        executeId: 'test.echo',
+                        execute: undefined,
+                    }),
+                ],
+                executors: {
+                    'test.echo': async (args, context) => ({
+                        ...(args as Record<string, unknown>),
+                        runId: context.runId,
+                        via: 'executor-map',
+                    }),
+                },
+            },
+        });
+
+        expect(registry.listPacks()).toEqual([
+            expect.objectContaining({ id: 'test-pack', version: 1, name: 'Test Pack', owner: 'tests', scope: 'shared' }),
+        ]);
+
+        await expect(
+            registry.execute({ toolName: 'echoTool', args: { value: 'hello' } }, makeToolContext('pack-run')),
+        ).resolves.toEqual({
+            toolName: 'echoTool',
+            ok: true,
+            data: {
+                value: 'hello',
+                runId: 'pack-run',
+                via: 'executor-map',
+            },
+        });
     });
 
     it('parseArgs validates arguments and throws on invalid input', () => {

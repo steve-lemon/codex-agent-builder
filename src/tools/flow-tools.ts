@@ -1,18 +1,16 @@
 // Flow-design tool wrappers built on the shared flow-design core.
 import { z } from 'zod';
 import {
-    analyzeFlowRequest,
-    designFlowDraft,
     executeFlowDesignSample,
     probeFlowBlockRuntime,
     proposeBlockSpecUpdate,
-    reflectFlowExecution,
     validateDesignedFlow,
 } from '../flow-design/core';
 import { availableFlowBlocks } from '../flow-design/catalog';
 import { defaultFlowDesignProvider, type FlowDesignProvider } from '../flow-design/provider';
 import type { FlowDocument } from '../flow/types';
-import { defineTool, type ToolDefinition } from './types';
+import { buildToolPackFromResource, loadToolPackResource } from './resources';
+import { defineTool, type ToolContext, type ToolDefinition, type ToolPack, type ToolRepositoryBundle } from './types';
 import type { FlowFeasibilityAssessment } from '../flow-design/analysis';
 import { assessFlowFeasibility } from '../flow-design/analysis';
 
@@ -236,10 +234,35 @@ function buildNodeConfigSkillImprovements(args: {
     };
 }
 
-/** Returns deterministic tools used by the flow-designer skill. */
-export function createFlowDesignTools(options: { provider?: FlowDesignProvider } = {}): ToolDefinition[] {
+function defineFlowToolExecutor<TArgs extends Record<string, unknown>>(
+    handler: (args: TArgs, context: ToolContext) => Promise<unknown> | unknown,
+) {
+    return async (args: Record<string, unknown>, context: ToolContext) => {
+        return await handler(args as TArgs, context);
+    };
+}
+
+const FLOW_DESIGN_EXECUTE_IDS = {
+    analyzeFlowRequest: 'flow-design.analyze-request',
+    listAvailableFlowBlocks: 'flow-design.list-available-blocks',
+    assessFlowFeasibility: 'flow-design.assess-feasibility',
+    probeFlowBlock: 'flow-design.probe-block',
+    designFlowDraft: 'flow-design.design-draft',
+    validateFlowDraft: 'flow-design.validate-draft',
+    proposeBlockSpecUpdate: 'flow-design.propose-block-spec-update',
+    runFlowSample: 'flow-design.run-sample',
+    reflectFlowResult: 'flow-design.reflect-result',
+} as const;
+
+/** Returns deterministic tools and executor mappings used by the flow-designer skill. */
+export async function createFlowDesignToolBundle(
+    options: {
+        provider?: FlowDesignProvider;
+    } = {},
+): Promise<ToolRepositoryBundle> {
     const provider = options.provider ?? defaultFlowDesignProvider;
-    return [
+
+    const codeTools: ToolDefinition[] = [
         defineTool({
             name: 'analyzeFlowRequest',
             description: 'Analyze a user request into flow-design intent, constraints, and success criteria.',
@@ -250,21 +273,7 @@ export function createFlowDesignTools(options: { provider?: FlowDesignProvider }
             allowedSkills: ['flow-designer'],
             requiresConfirmation: false,
             parallelSafe: true,
-            execute: async ({ userRequest }) => {
-                const intent = await Promise.resolve(provider.analyzeRequest(userRequest));
-                return {
-                    taskType: intent.taskType,
-                    wantsJson: intent.wantsJson,
-                    wantsMultiple: intent.wantsMultiple,
-                    desiredCount: intent.desiredCount,
-                    sampleInput: intent.sampleInput,
-                    constraints: ['Use only available blocks from the repository.'],
-                    successCriteria:
-                        intent.desiredCount > 1
-                            ? [`Produce ${intent.desiredCount} useful outputs.`]
-                            : ['Produce one useful output.'],
-                };
-            },
+            executeId: FLOW_DESIGN_EXECUTE_IDS.analyzeFlowRequest,
         }),
         defineTool({
             name: 'listAvailableFlowBlocks',
@@ -276,19 +285,7 @@ export function createFlowDesignTools(options: { provider?: FlowDesignProvider }
             allowedSkills: ['flow-designer'],
             requiresConfirmation: false,
             parallelSafe: true,
-            execute: async ({ includeIds }) => {
-                const ids = includeIds ? new Set(includeIds) : undefined;
-                return availableFlowBlocks
-                    .filter(block => !ids || ids.has(block.id))
-                    .map(block => ({
-                        id: block.id,
-                        label: block.label,
-                        description: block.description,
-                        configs: block.configs ?? [],
-                        inputs: block.inputs,
-                        outputs: block.outputs,
-                    }));
-            },
+            executeId: FLOW_DESIGN_EXECUTE_IDS.listAvailableFlowBlocks,
         }),
         defineTool({
             name: 'assessFlowFeasibility',
@@ -301,9 +298,7 @@ export function createFlowDesignTools(options: { provider?: FlowDesignProvider }
             allowedSkills: ['flow-designer'],
             requiresConfirmation: false,
             parallelSafe: true,
-            execute: async ({ userRequest }) => {
-                return await assessFlowFeasibility(userRequest);
-            },
+            executeId: FLOW_DESIGN_EXECUTE_IDS.assessFlowFeasibility,
         }),
         defineTool({
             name: 'probeFlowBlock',
@@ -318,14 +313,7 @@ export function createFlowDesignTools(options: { provider?: FlowDesignProvider }
             allowedSkills: ['flow-designer'],
             requiresConfirmation: false,
             parallelSafe: false,
-            execute: async ({ blockId, sampleConfig, sampleInputs }) => {
-                return await probeFlowBlockRuntime({
-                    blockId,
-                    sampleConfig,
-                    sampleInputs,
-                    availableBlocks: availableFlowBlocks,
-                });
-            },
+            executeId: FLOW_DESIGN_EXECUTE_IDS.probeFlowBlock,
         }),
         defineTool({
             name: 'designFlowDraft',
@@ -343,27 +331,7 @@ export function createFlowDesignTools(options: { provider?: FlowDesignProvider }
             allowedSkills: ['flow-designer'],
             requiresConfirmation: false,
             parallelSafe: false,
-            execute: async (
-                { userRequest, sampleInput, desiredCount, wantsJson, improvementNotes = [], preflight },
-                context,
-            ) => {
-                const feasibility =
-                    (preflight as FlowFeasibilityAssessment | undefined) ?? (await assessFlowFeasibility(userRequest));
-                return await Promise.resolve(
-                    provider.composeDraft({
-                        userRequest,
-                        sampleInput,
-                        desiredCount,
-                        wantsJson,
-                        improvementNotes,
-                        preflight: feasibility,
-                        availableBlocks: availableFlowBlocks,
-                        designConnection: context.designConnection,
-                        designSessionId: `${context.runId}:designFlowDraft`,
-                        toolName: 'designFlowDraft',
-                    }),
-                );
-            },
+            executeId: FLOW_DESIGN_EXECUTE_IDS.designFlowDraft,
         }),
         defineTool({
             name: 'validateFlowDraft',
@@ -375,19 +343,7 @@ export function createFlowDesignTools(options: { provider?: FlowDesignProvider }
             allowedSkills: ['flow-designer'],
             requiresConfirmation: false,
             parallelSafe: true,
-            execute: async ({ flow }) => {
-                const validation = validateDesignedFlow(hydrateFlowDocument(flow));
-                return {
-                    isValid: validation.isValid,
-                    issues: validation.issues,
-                    planSummary: validation.plan
-                        ? {
-                              batchCount: validation.plan.batches.length,
-                              nodeCount: validation.plan.nodes.length,
-                          }
-                        : undefined,
-                };
-            },
+            executeId: FLOW_DESIGN_EXECUTE_IDS.validateFlowDraft,
         }),
         defineTool({
             name: 'proposeBlockSpecUpdate',
@@ -406,13 +362,7 @@ export function createFlowDesignTools(options: { provider?: FlowDesignProvider }
             allowedSkills: ['flow-designer'],
             requiresConfirmation: false,
             parallelSafe: true,
-            execute: async ({ blockId, probeResult }) => {
-                return proposeBlockSpecUpdate({
-                    blockId,
-                    probeResult,
-                    availableBlocks: availableFlowBlocks,
-                });
-            },
+            executeId: FLOW_DESIGN_EXECUTE_IDS.proposeBlockSpecUpdate,
         }),
         defineTool({
             name: 'runFlowSample',
@@ -426,21 +376,7 @@ export function createFlowDesignTools(options: { provider?: FlowDesignProvider }
             allowedSkills: ['flow-designer'],
             requiresConfirmation: false,
             parallelSafe: false,
-            execute: async ({ userRequest, flow, improvementNotes = [] }) => {
-                const execution = await executeFlowDesignSample({
-                    flow: hydrateFlowDocument(flow),
-                    userRequest,
-                    improvementNotes,
-                });
-
-                return {
-                    status: execution.status,
-                    output: execution.output,
-                    logs: execution.logs,
-                    executionOrder: execution.graphRun.executionOrder,
-                    error: execution.graphRun.error,
-                };
-            },
+            executeId: FLOW_DESIGN_EXECUTE_IDS.runFlowSample,
         }),
         defineTool({
             name: 'reflectFlowResult',
@@ -459,29 +395,210 @@ export function createFlowDesignTools(options: { provider?: FlowDesignProvider }
             allowedSkills: ['flow-designer'],
             requiresConfirmation: false,
             parallelSafe: true,
-            execute: async ({ userRequest, desiredCount, wantsJson, sampleResult }) => {
-                const reflection = await Promise.resolve(
-                    provider.reflectExecution({
-                        userRequest,
-                        desiredCount,
-                        wantsJson,
-                        sampleResult,
-                    }),
-                );
-
-                return {
-                    satisfied: reflection.satisfied,
-                    summary: reflection.summary,
-                    issues: reflection.issues,
-                    improvementNotes: reflection.suggestedImprovements,
-                    ...buildNodeConfigSkillImprovements({
-                        userRequest,
-                        desiredCount,
-                        wantsJson,
-                        issues: reflection.issues,
-                    }),
-                };
-            },
+            executeId: FLOW_DESIGN_EXECUTE_IDS.reflectFlowResult,
         }),
     ];
+
+    const resource = await loadToolPackResource('tools.flow-design.set');
+    const pack = buildToolPackFromResource(
+        resource,
+        Object.fromEntries(
+            codeTools.map(tool => [
+                tool.name,
+                {
+                    name: tool.name,
+                    parameters: tool.parameters,
+                },
+            ]),
+        ),
+    );
+    const tools = pack.bundle.tools;
+
+    const executors = {
+        [FLOW_DESIGN_EXECUTE_IDS.analyzeFlowRequest]: defineFlowToolExecutor<{ userRequest: string }>(
+            async ({ userRequest }) => {
+                const intent = await Promise.resolve(provider.analyzeRequest(userRequest));
+                return {
+                    taskType: intent.taskType,
+                    wantsJson: intent.wantsJson,
+                    wantsMultiple: intent.wantsMultiple,
+                    desiredCount: intent.desiredCount,
+                    sampleInput: intent.sampleInput,
+                    constraints: ['Use only available blocks from the repository.'],
+                    successCriteria:
+                        intent.desiredCount > 1
+                            ? [`Produce ${intent.desiredCount} useful outputs.`]
+                            : ['Produce one useful output.'],
+                };
+            },
+        ),
+        [FLOW_DESIGN_EXECUTE_IDS.listAvailableFlowBlocks]: defineFlowToolExecutor<{ includeIds?: string[] }>(
+            async ({ includeIds }) => {
+                const ids = includeIds ? new Set(includeIds as string[]) : undefined;
+                return availableFlowBlocks
+                    .filter(block => !ids || ids.has(block.id))
+                    .map(block => ({
+                        id: block.id,
+                        label: block.label,
+                        description: block.description,
+                        configs: block.configs ?? [],
+                        inputs: block.inputs,
+                        outputs: block.outputs,
+                    }));
+            },
+        ),
+        [FLOW_DESIGN_EXECUTE_IDS.assessFlowFeasibility]: defineFlowToolExecutor<{ userRequest: string }>(
+            async ({ userRequest }) => {
+                return await assessFlowFeasibility(userRequest as string);
+            },
+        ),
+        [FLOW_DESIGN_EXECUTE_IDS.probeFlowBlock]: defineFlowToolExecutor<{
+            blockId: string;
+            sampleConfig?: Record<string, string>;
+            sampleInputs?: Record<string, unknown>;
+        }>(async ({ blockId, sampleConfig, sampleInputs }) => {
+            return await probeFlowBlockRuntime({
+                blockId: blockId as string,
+                sampleConfig: sampleConfig as Record<string, string> | undefined,
+                sampleInputs: sampleInputs as Record<string, unknown> | undefined,
+                availableBlocks: availableFlowBlocks,
+            });
+        }),
+        [FLOW_DESIGN_EXECUTE_IDS.designFlowDraft]: defineFlowToolExecutor<{
+            userRequest: string;
+            sampleInput: string;
+            desiredCount: number;
+            wantsJson: boolean;
+            improvementNotes?: string[];
+            preflight?: FlowFeasibilityAssessment;
+        }>(async ({ userRequest, sampleInput, desiredCount, wantsJson, improvementNotes = [], preflight }, context) => {
+            const feasibility =
+                (preflight as FlowFeasibilityAssessment | undefined) ??
+                (await assessFlowFeasibility(userRequest as string));
+            return await Promise.resolve(
+                provider.composeDraft({
+                    userRequest: userRequest as string,
+                    sampleInput: sampleInput as string,
+                    desiredCount: desiredCount as number,
+                    wantsJson: wantsJson as boolean,
+                    improvementNotes: improvementNotes as string[],
+                    preflight: feasibility,
+                    availableBlocks: availableFlowBlocks,
+                    designConnection: context.designConnection,
+                    designSessionId: `${context.runId}:designFlowDraft`,
+                    toolName: 'designFlowDraft',
+                }),
+            );
+        }),
+        [FLOW_DESIGN_EXECUTE_IDS.validateFlowDraft]: defineFlowToolExecutor<{ flow: FlowDocument }>(
+            async ({ flow }) => {
+                const validation = validateDesignedFlow(hydrateFlowDocument(flow as FlowDocument));
+                return {
+                    isValid: validation.isValid,
+                    issues: validation.issues,
+                    planSummary: validation.plan
+                        ? {
+                              batchCount: validation.plan.batches.length,
+                              nodeCount: validation.plan.nodes.length,
+                          }
+                        : undefined,
+                };
+            },
+        ),
+        [FLOW_DESIGN_EXECUTE_IDS.proposeBlockSpecUpdate]: defineFlowToolExecutor<{
+            blockId: string;
+            probeResult: {
+                behaviorNotes: string[];
+                mismatchesFromSpec: string[];
+                observedOutputs?: Record<string, unknown>;
+                observedLogs?: string[];
+            };
+        }>(async ({ blockId, probeResult }) => {
+            return proposeBlockSpecUpdate({
+                blockId: blockId as string,
+                probeResult: probeResult as {
+                    behaviorNotes: string[];
+                    mismatchesFromSpec: string[];
+                    observedOutputs?: Record<string, unknown>;
+                    observedLogs?: string[];
+                },
+                availableBlocks: availableFlowBlocks,
+            });
+        }),
+        [FLOW_DESIGN_EXECUTE_IDS.runFlowSample]: defineFlowToolExecutor<{
+            userRequest: string;
+            flow: FlowDocument;
+            improvementNotes?: string[];
+        }>(async ({ userRequest, flow, improvementNotes = [] }) => {
+            const execution = await executeFlowDesignSample({
+                flow: hydrateFlowDocument(flow as FlowDocument),
+                userRequest: userRequest as string,
+                improvementNotes: improvementNotes as string[],
+            });
+
+            return {
+                status: execution.status,
+                output: execution.output,
+                logs: execution.logs,
+                executionOrder: execution.graphRun.executionOrder,
+                error: execution.graphRun.error,
+            };
+        }),
+        [FLOW_DESIGN_EXECUTE_IDS.reflectFlowResult]: defineFlowToolExecutor<{
+            userRequest: string;
+            desiredCount: number;
+            wantsJson: boolean;
+            sampleResult: { status: 'completed' | 'failed' | 'cancelled'; output?: unknown; logs: string[] };
+        }>(async ({ userRequest, desiredCount, wantsJson, sampleResult }) => {
+            const reflection = await Promise.resolve(
+                provider.reflectExecution({
+                    userRequest: userRequest as string,
+                    desiredCount: desiredCount as number,
+                    wantsJson: wantsJson as boolean,
+                    sampleResult: sampleResult as {
+                        status: 'completed' | 'failed' | 'cancelled';
+                        output?: unknown;
+                        logs: string[];
+                    },
+                }),
+            );
+
+            return {
+                satisfied: reflection.satisfied,
+                summary: reflection.summary,
+                issues: reflection.issues,
+                improvementNotes: reflection.suggestedImprovements,
+                ...buildNodeConfigSkillImprovements({
+                    userRequest: userRequest as string,
+                    desiredCount: desiredCount as number,
+                    wantsJson: wantsJson as boolean,
+                    issues: reflection.issues,
+                }),
+            };
+        }),
+    };
+
+    return { tools, executors };
+}
+
+/** Groups flow-design tools into a named pack for repository-level registration. */
+export async function createFlowDesignToolPack(options: { provider?: FlowDesignProvider } = {}): Promise<ToolPack> {
+    const resource = await loadToolPackResource('tools.flow-design.set');
+    return {
+        id: resource.id,
+        version: resource.version,
+        name: resource.name,
+        description: resource.description,
+        owner: resource.owner,
+        scope: resource.scope,
+        skills: resource.skills,
+        bundle: await createFlowDesignToolBundle(options),
+    };
+}
+
+/** Returns deterministic flow-designer tool metadata for callers that only need the visible tool pool. */
+export async function createFlowDesignTools(
+    options: { provider?: FlowDesignProvider } = {},
+): Promise<ToolDefinition[]> {
+    return (await createFlowDesignToolBundle(options)).tools;
 }

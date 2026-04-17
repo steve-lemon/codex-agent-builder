@@ -1,6 +1,5 @@
 // Task-graph inference and preflight validation tools for flow design.
 import { z } from 'zod';
-import { defineTool, type ToolDefinition } from './types';
 import { availableFlowBlocks } from '../flow-design/catalog';
 import {
     analyzeTaskGraph,
@@ -10,68 +9,61 @@ import {
     inferTaskGraph,
     refineTaskGraph,
 } from '../flow-design/analysis';
+import { buildToolPackFromResource, loadToolPackResource } from './resources';
+import { type ToolContext, type ToolDefinition, type ToolPack, type ToolRepositoryBundle } from './types';
 
-/** Returns deterministic tools used by the flow-preflight-validator skill. */
-export function createTaskGraphTools(): ToolDefinition[] {
-    return [
-        defineTool({
+function defineTaskGraphToolExecutor<TArgs extends Record<string, unknown>>(
+    handler: (args: TArgs, context: ToolContext) => Promise<unknown> | unknown,
+) {
+    return async (args: Record<string, unknown>, context: ToolContext) => {
+        return await handler(args as TArgs, context);
+    };
+}
+
+const TASK_GRAPH_EXECUTE_IDS = {
+    inferTaskGraph: 'task-graph.infer',
+    analyzeTaskGraphCompatibility: 'task-graph.analyze-compatibility',
+    proposeMissingBlocks: 'task-graph.propose-missing-blocks',
+    refineTaskGraph: 'task-graph.refine',
+    prevalidateFlowDesignRequest: 'task-graph.prevalidate-flow-design-request',
+} as const;
+
+const TaskGraphShapeSchema = z.object({
+    nodes: z.array(
+        z.object({
+            id: z.string(),
+            label: z.string().optional(),
+            data: z.record(z.unknown()).optional(),
+        }),
+    ),
+    edges: z.array(
+        z.object({
+            source: z.string(),
+            target: z.string(),
+            label: z.string().optional(),
+            data: z.record(z.unknown()).optional(),
+        }),
+    ),
+});
+
+function getTaskGraphToolDefinitions(): Record<
+    string,
+    Omit<
+        ToolDefinition,
+        'description' | 'riskLevel' | 'allowedSkills' | 'requiresConfirmation' | 'parallelSafe' | 'executeId'
+    >
+> {
+    return {
+        inferTaskGraph: {
             name: 'inferTaskGraph',
-            description:
-                'Infer the user request as a task graph with ordered operations, expected IO, and dependencies.',
-            parameters: z.object({
-                userRequest: z.string(),
-            }),
-            riskLevel: 'read-only',
-            allowedSkills: ['flow-preflight-validator'],
-            requiresConfirmation: false,
-            parallelSafe: true,
-            execute: async ({ userRequest }) => {
-                return {
-                    taskGraph: await inferTaskGraph(userRequest),
-                };
-            },
-        }),
-        defineTool({
+            parameters: z.object({ userRequest: z.string() }),
+        },
+        analyzeTaskGraphCompatibility: {
             name: 'analyzeTaskGraphCompatibility',
-            description:
-                'Match each inferred task-graph node to currently available blocks and explain why a node is or is not feasible.',
-            parameters: z.object({
-                taskGraph: z.object({
-                    nodes: z.array(
-                        z.object({
-                            id: z.string(),
-                            label: z.string().optional(),
-                            data: z.record(z.unknown()).optional(),
-                        }),
-                    ),
-                    edges: z.array(
-                        z.object({
-                            source: z.string(),
-                            target: z.string(),
-                            label: z.string().optional(),
-                            data: z.record(z.unknown()).optional(),
-                        }),
-                    ),
-                }),
-            }),
-            riskLevel: 'read-only',
-            allowedSkills: ['flow-preflight-validator'],
-            requiresConfirmation: false,
-            parallelSafe: true,
-            execute: async ({ taskGraph }) => {
-                return {
-                    availableBlocks: availableFlowBlocks.map(block => ({
-                        id: block.id,
-                        label: block.label,
-                    })),
-                    nodeAnalyses: analyzeTaskGraph(taskGraph),
-                };
-            },
-        }),
-        defineTool({
+            parameters: z.object({ taskGraph: TaskGraphShapeSchema }),
+        },
+        proposeMissingBlocks: {
             name: 'proposeMissingBlocks',
-            description:
-                'Draft new block proposals for infeasible task-graph nodes that do not match the current block set.',
             parameters: z.object({
                 nodeAnalyses: z.array(
                     z.object({
@@ -86,94 +78,104 @@ export function createTaskGraphTools(): ToolDefinition[] {
                     }),
                 ),
             }),
-            riskLevel: 'read-only',
-            allowedSkills: ['flow-preflight-validator'],
-            requiresConfirmation: false,
-            parallelSafe: true,
-            execute: async ({ nodeAnalyses }) => {
-                return {
-                    proposedBlocks: buildProposedBlocks(nodeAnalyses),
-                };
-            },
-        }),
-        defineTool({
+        },
+        refineTaskGraph: {
             name: 'refineTaskGraph',
-            description:
-                'Refine an inferred task graph using reflection issues and improvement notes from an earlier design pass.',
             parameters: z.object({
-                taskGraph: z.object({
-                    nodes: z.array(
-                        z.object({
-                            id: z.string(),
-                            label: z.string().optional(),
-                            data: z.record(z.unknown()).optional(),
-                        }),
-                    ),
-                    edges: z.array(
-                        z.object({
-                            source: z.string(),
-                            target: z.string(),
-                            label: z.string().optional(),
-                            data: z.record(z.unknown()).optional(),
-                        }),
-                    ),
-                }),
+                taskGraph: TaskGraphShapeSchema,
                 reflection: z.object({
                     issues: z.array(z.string()).default([]),
                     improvementNotes: z.array(z.string()).default([]),
                 }),
             }),
-            riskLevel: 'read-only',
-            allowedSkills: ['flow-preflight-validator', 'flow-designer'],
-            requiresConfirmation: false,
-            parallelSafe: true,
-            execute: async ({ taskGraph, reflection }) => {
-                // TODO(flow-agent): Emit structured diff data here so UI layers
-                // can visualize exactly how the inferred graph changed per pass.
-                const refinedTaskGraph = refineTaskGraph(taskGraph, reflection);
-                return {
-                    taskGraph: refinedTaskGraph,
-                    changeSummary: reflection.improvementNotes,
-                };
-            },
-        }),
-        defineTool({
+        },
+        prevalidateFlowDesignRequest: {
             name: 'prevalidateFlowDesignRequest',
-            description:
-                'Run full graph-based preflight validation for a flow design request and summarize feasibility, graph reasoning, and missing blocks.',
             parameters: z.object({
                 userRequest: z.string(),
-                taskGraph: z
-                    .object({
-                        nodes: z.array(
-                            z.object({
-                                id: z.string(),
-                                label: z.string().optional(),
-                                data: z.record(z.unknown()).optional(),
-                            }),
-                        ),
-                        edges: z.array(
-                            z.object({
-                                source: z.string(),
-                                target: z.string(),
-                                label: z.string().optional(),
-                                data: z.record(z.unknown()).optional(),
-                            }),
-                        ),
-                    })
-                    .optional(),
+                taskGraph: TaskGraphShapeSchema.optional(),
             }),
-            riskLevel: 'read-only',
-            allowedSkills: ['flow-preflight-validator', 'flow-designer'],
-            requiresConfirmation: false,
-            parallelSafe: true,
-            execute: async ({ userRequest, taskGraph }) => {
-                // TODO(flow-agent): Cache repeated preflight results per request
-                // and task-graph hash once real providers make this path costlier.
-                return taskGraph
-                    ? assessTaskGraphFeasibility(userRequest, taskGraph)
-                    : await assessFlowFeasibility(userRequest);
-            },
+        },
+    };
+}
+
+function getTaskGraphToolExecutors() {
+    return {
+        [TASK_GRAPH_EXECUTE_IDS.inferTaskGraph]: defineTaskGraphToolExecutor<{ userRequest: string }>(
+            async ({ userRequest }) => ({
+                taskGraph: await inferTaskGraph(userRequest),
+            }),
+        ),
+        [TASK_GRAPH_EXECUTE_IDS.analyzeTaskGraphCompatibility]: defineTaskGraphToolExecutor<{
+            taskGraph: {
+                nodes: Array<{ id: string; label?: string; data?: Record<string, unknown> }>;
+                edges: Array<{ source: string; target: string; label?: string; data?: Record<string, unknown> }>;
+            };
+        }>(async ({ taskGraph }) => ({
+            availableBlocks: availableFlowBlocks.map(block => ({
+                id: block.id,
+                label: block.label,
+            })),
+            nodeAnalyses: analyzeTaskGraph(taskGraph),
+        })),
+        [TASK_GRAPH_EXECUTE_IDS.proposeMissingBlocks]: defineTaskGraphToolExecutor<{
+            nodeAnalyses: Array<{
+                nodeId: string;
+                operation: string;
+                expectedInputs: string[];
+                expectedOutputs: string[];
+                requiredCapabilities: string[];
+                matchedBlockIds: string[];
+                feasible: boolean;
+                reasons: string[];
+            }>;
+        }>(async ({ nodeAnalyses }) => ({
+            proposedBlocks: buildProposedBlocks(nodeAnalyses),
+        })),
+        [TASK_GRAPH_EXECUTE_IDS.refineTaskGraph]: defineTaskGraphToolExecutor<{
+            taskGraph: {
+                nodes: Array<{ id: string; label?: string; data?: Record<string, unknown> }>;
+                edges: Array<{ source: string; target: string; label?: string; data?: Record<string, unknown> }>;
+            };
+            reflection: { issues: string[]; improvementNotes: string[] };
+        }>(async ({ taskGraph, reflection }) => {
+            const refinedTaskGraph = refineTaskGraph(taskGraph, reflection);
+            return {
+                taskGraph: refinedTaskGraph,
+                changeSummary: reflection.improvementNotes,
+            };
         }),
-    ];
+        [TASK_GRAPH_EXECUTE_IDS.prevalidateFlowDesignRequest]: defineTaskGraphToolExecutor<{
+            userRequest: string;
+            taskGraph?: {
+                nodes: Array<{ id: string; label?: string; data?: Record<string, unknown> }>;
+                edges: Array<{ source: string; target: string; label?: string; data?: Record<string, unknown> }>;
+            };
+        }>(async ({ userRequest, taskGraph }) =>
+            taskGraph ? assessTaskGraphFeasibility(userRequest, taskGraph) : await assessFlowFeasibility(userRequest),
+        ),
+    };
+}
+
+/** Returns deterministic task-graph tool metadata plus executor mappings. */
+export async function createTaskGraphToolBundle(): Promise<ToolRepositoryBundle> {
+    return (await createTaskGraphToolPack()).bundle;
+}
+
+/** Groups task-graph analysis tools into a named pack for repository-level registration. */
+export async function createTaskGraphToolPack(): Promise<ToolPack> {
+    const resource = await loadToolPackResource('tools.task-graph.set');
+    const pack = buildToolPackFromResource(resource, getTaskGraphToolDefinitions());
+    return {
+        ...pack,
+        bundle: {
+            tools: pack.bundle.tools,
+            executors: getTaskGraphToolExecutors(),
+        },
+    };
+}
+
+/** Returns deterministic task-graph tool metadata for callers that only need the visible tool pool. */
+export async function createTaskGraphTools(): Promise<ToolDefinition[]> {
+    return (await createTaskGraphToolBundle()).tools;
 }

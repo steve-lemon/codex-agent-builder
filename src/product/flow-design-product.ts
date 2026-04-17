@@ -16,16 +16,20 @@ export interface FlowDesignProductOptions {
 
 /** Product-ready facade that exposes explicit flow-related agent entrypoints. */
 export class FlowDesignProduct implements FlowDesignProductApi {
-    private readonly baseRuntime: AgentRuntime;
-    private readonly baseRuntimeOptions: AgentRuntimeOptions;
+    private readonly baseRuntimePromise: Promise<AgentRuntime>;
+    private readonly baseRuntimeOptionsPromise: Promise<AgentRuntimeOptions>;
 
     constructor(private readonly options: FlowDesignProductOptions = {}) {
-        this.baseRuntime = options.runtime ?? new AgentRuntime(this.resolveRuntimeOptions(options.runtimeOptions));
-        this.baseRuntimeOptions = options.runtime?.getOptions() ?? this.resolveRuntimeOptions(options.runtimeOptions);
+        this.baseRuntimeOptionsPromise = options.runtime
+            ? Promise.resolve(options.runtime.getOptions())
+            : this.resolveRuntimeOptions(options.runtimeOptions);
+        this.baseRuntimePromise = options.runtime
+            ? Promise.resolve(options.runtime)
+            : this.baseRuntimeOptionsPromise.then(runtimeOptions => new AgentRuntime(runtimeOptions));
     }
 
-    getRuntime(): AgentRuntime {
-        return this.baseRuntime;
+    async getRuntime(): Promise<AgentRuntime> {
+        return await this.baseRuntimePromise;
     }
 
     async preflight(userRequest: string, hooks?: ProductMonitoringHooks): Promise<ProductDesignRunResult> {
@@ -44,7 +48,7 @@ export class FlowDesignProduct implements FlowDesignProductApi {
     }
 
     async resume(runId: string, decision: ApprovalDecision): Promise<ProductDesignRunResult> {
-        const resumed = await this.baseRuntime.resume(runId, decision);
+        const resumed = await (await this.baseRuntimePromise).resume(runId, decision);
         const skillName = resumed.finalResult?.payload?.kind ?? 'flow-designer';
         return normalizeProductDesignRunResult(skillName, resumed);
     }
@@ -57,12 +61,12 @@ export class FlowDesignProduct implements FlowDesignProductApi {
         if (!hooks?.onDesignEvent && !hooks?.onTimelineEvent) {
             return normalizeProductDesignRunResult(
                 skillName,
-                await this.baseRuntime.runWithSkill(skillName, userRequest),
+                await (await this.baseRuntimePromise).runWithSkill(skillName, userRequest),
             );
         }
 
         const runtime = new AgentRuntime({
-            ...this.baseRuntimeOptions,
+            ...(await this.baseRuntimeOptionsPromise),
             flowDesignConnectionFactory: hooks?.onDesignEvent
                 ? () => new CallbackFlowDesignConnection(event => hooks.onDesignEvent?.(event))
                 : undefined,
@@ -74,7 +78,7 @@ export class FlowDesignProduct implements FlowDesignProductApi {
         return normalizeProductDesignRunResult(skillName, await runtime.runWithSkill(skillName, userRequest));
     }
 
-    private resolveRuntimeOptions(options?: Partial<AgentRuntimeOptions>): AgentRuntimeOptions {
+    private async resolveRuntimeOptions(options?: Partial<AgentRuntimeOptions>): Promise<AgentRuntimeOptions> {
         const provider = String(process.env.LLM_PROVIDER ?? '').toLowerCase();
         const useRealOpenAi = String(process.env.USE_REAL_OPENAI ?? 'false').toLowerCase() === 'true';
         const useRealGemini = String(process.env.USE_REAL_GEMINI ?? 'false').toLowerCase() === 'true';
@@ -88,7 +92,7 @@ export class FlowDesignProduct implements FlowDesignProductApi {
                     ? new OpenAiGateway()
                     : new FakeLlmGateway()),
             store: options?.store ?? new InMemoryRunStateStore(),
-            toolRegistry: options?.toolRegistry ?? buildDefaultToolRegistry(),
+            toolRegistry: options?.toolRegistry ?? (await buildDefaultToolRegistry()),
             tracer: options?.tracer,
             traceStore: options?.traceStore,
             flowDesignConnectionFactory: options?.flowDesignConnectionFactory,
