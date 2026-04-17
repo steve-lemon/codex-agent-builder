@@ -195,9 +195,9 @@ export async function formatFlowDesignerFinalResult(stepResults: StepResult[]): 
 
     if (latestReflection?.satisfied === true) {
         return {
-            summary: `Handled with skill flow-designer. The flow satisfied the request after ${designPassCount} design pass(es), ${taskGraphRefinementCount} task-graph refinement step(s), and ${configuredNodeCount} configured node(s)${
+            summary: `Handled with skill flow-designer. The flow executed successfully after ${designPassCount} design pass(es), ${taskGraphRefinementCount} task-graph refinement step(s), and ${configuredNodeCount} configured node(s)${
                 probeInsightCount > 0 ? ` informed by ${probeInsightCount} probe insight(s)` : ''
-            }.`,
+            }. The current reflection judged the result satisfactory for the request based on the available sample validation.`,
             success: true,
             nextActions:
                 designPassCount > 1

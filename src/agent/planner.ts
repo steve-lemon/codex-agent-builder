@@ -3,7 +3,83 @@ import { PlanSchema, type Plan } from './schemas';
 import type { LlmGateway } from '../llm/types';
 import type { ToolDefinition, ToolManifest } from '../tools';
 import { AgentError } from '../errors/agent-error';
-import { containsStepReferences, validateStepReferences } from './step-references';
+import {
+    containsStepReferences,
+    isStepResultReference,
+    type StepResultReference,
+    validateStepReferences,
+} from './step-references';
+import type { PlanStep } from './schemas';
+
+const REFERENCE_ONLY_TOOL_ARGS: Readonly<Record<string, readonly string[]>> = {
+    validateFlowDraft: ['flow'],
+    runFlowSample: ['flow'],
+    designFlowNodeConfigurations: ['flow'],
+    validateFlowNodeConfigurations: ['flow'],
+};
+
+const FLOW_REFERENCE_PRODUCERS: Readonly<Record<string, readonly string[]>> = {
+    designFlowNodeConfigurations: ['designFlowDraft'],
+    validateFlowNodeConfigurations: ['designFlowNodeConfigurations', 'designFlowDraft'],
+    validateFlowDraft: ['designFlowNodeConfigurations', 'designFlowDraft'],
+    runFlowSample: ['designFlowNodeConfigurations', 'designFlowDraft'],
+};
+
+function findPreviousFlowReference(
+    steps: PlanStep[],
+    currentStepIndex: number,
+    toolNames: readonly string[],
+): StepResultReference | undefined {
+    for (let index = currentStepIndex - 1; index >= 0; index -= 1) {
+        const step = steps[index];
+        if (!step) {
+            continue;
+        }
+        const matchingToolCall = step.toolCalls?.find(toolCall => toolNames.includes(toolCall.toolName));
+        if (matchingToolCall) {
+            return {
+                $fromStep: step.id,
+                path: 'toolResults.0.data.flow',
+            };
+        }
+    }
+
+    return undefined;
+}
+
+function validateReferenceOnlyArgs(
+    steps: PlanStep[],
+    currentStepIndex: number,
+    toolName: string,
+    args: Record<string, unknown>,
+): void {
+    const requiredReferenceArgs = REFERENCE_ONLY_TOOL_ARGS[toolName];
+    if (!requiredReferenceArgs) {
+        return;
+    }
+
+    for (const argName of requiredReferenceArgs) {
+        const value = args[argName];
+        if (isStepResultReference(value)) {
+            continue;
+        }
+
+        const producers = FLOW_REFERENCE_PRODUCERS[toolName];
+        const repairedReference =
+            argName === 'flow' && producers
+                ? findPreviousFlowReference(steps, currentStepIndex, producers)
+                : undefined;
+        if (repairedReference) {
+            args[argName] = repairedReference;
+            continue;
+        }
+
+        throw new AgentError(`Planner must pass ${toolName}.${argName} via a step reference instead of an inline value`, {
+            code: 'PLANNER_REFERENCE_REQUIRED',
+            transient: false,
+        });
+    }
+}
 
 /** Validates planner output returned from the configured LLM gateway. */
 export class Planner {
@@ -33,7 +109,7 @@ export class Planner {
         const parsedPlan = PlanSchema.parse(plan);
         const toolMap = new Map(toolDefinitions.map(tool => [tool.name, tool]));
 
-        for (const step of parsedPlan.steps) {
+        for (const [stepIndex, step] of parsedPlan.steps.entries()) {
             for (const toolCall of step.toolCalls ?? []) {
                 const tool = toolMap.get(toolCall.toolName);
                 if (!tool) {
@@ -41,6 +117,8 @@ export class Planner {
                         `Planner returned tool ${toolCall.toolName} that is not available in this run`,
                     );
                 }
+
+                validateReferenceOnlyArgs(parsedPlan.steps, stepIndex, toolCall.toolName, toolCall.args);
 
                 if (containsStepReferences(toolCall.args)) {
                     validateStepReferences(toolCall.args);

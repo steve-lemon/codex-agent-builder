@@ -1,5 +1,6 @@
 // Flow-design tool wrappers built on the shared flow-design core.
 import { z } from 'zod';
+import { AgentError } from '../../errors/agent-error';
 import {
     executeFlowDesignSample,
     probeFlowBlockRuntime,
@@ -157,9 +158,28 @@ const PreflightSummarySchema = z.object({
 
 async function hydrateFlowDocument(flow: FlowDocument): Promise<FlowDocument> {
     const availableFlowBlocks = await getCatalogAvailableFlowBlocks();
+    const availableBlockMap = new Map(availableFlowBlocks.map(block => [block.id, block]));
+    const unknownBlockIds = flow.nodes
+        .map(node => node.blockId)
+        .filter(blockId => !availableBlockMap.has(blockId));
+
+    if (unknownBlockIds.length > 0) {
+        throw new AgentError(
+            `Flow document references unknown blocks: ${Array.from(new Set(unknownBlockIds)).join(', ')}`,
+            {
+                code: 'FLOW_UNKNOWN_BLOCKS',
+            },
+        );
+    }
+
     return {
         ...flow,
-        blocks: flow.blocks.length > 0 ? flow.blocks : availableFlowBlocks,
+        blocks:
+            flow.blocks.length > 0
+                ? flow.blocks
+                      .map(block => availableBlockMap.get(block.id))
+                      .filter((block): block is NonNullable<typeof block> => block !== undefined)
+                : availableFlowBlocks,
         nodes: flow.nodes.map(node => ({
             ...node,
             inputPorts: node.inputPorts.map(port => ({

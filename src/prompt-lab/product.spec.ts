@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import yaml from 'js-yaml';
 import { PromptLabProduct, PromptLabRunError } from './product';
 
 describe('PromptLabProduct', () => {
@@ -33,10 +34,27 @@ describe('PromptLabProduct', () => {
         const summary = await readFile(join(artifacts.session.sessionDir, 'summary.md'), 'utf8');
         const promptMarkdown = await readFile(join(artifacts.session.sessionDir, 'codex-prompt.md'), 'utf8');
         const resultJson = JSON.parse(await readFile(join(artifacts.session.sessionDir, 'result.json'), 'utf8'));
+        const designedFlowYaml = await readFile(join(artifacts.session.sessionDir, 'designed-flow.yml'), 'utf8');
+        const designedFlow = yaml.load(designedFlowYaml) as {
+            nodes?: unknown[];
+            edges?: unknown[];
+            blocks?: unknown[];
+        };
 
         expect(summary).toContain('Prompt Lab Session');
+        expect(summary).toContain('Requirement Assessment');
         expect(promptMarkdown).toContain('## Prompt');
         expect(resultJson.skillName).toBe('flow-designer');
+        expect(resultJson.requirementAssessment).toEqual(
+            expect.objectContaining({
+                executionSucceeded: true,
+                fulfillmentLevel: expect.any(String),
+                summary: expect.any(String),
+            }),
+        );
+        expect(Array.isArray(designedFlow.nodes)).toBe(true);
+        expect(Array.isArray(designedFlow.edges)).toBe(true);
+        expect(Array.isArray(designedFlow.blocks)).toBe(true);
     });
 
     it('can validate preflight runs through the same prompt-lab workflow', async () => {

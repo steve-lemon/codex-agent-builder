@@ -28,6 +28,9 @@ export interface PromptLabArtifactPaths {
     designPath: string;
     diagnosticsPath: string;
     resultPath: string;
+    designedFlowPath: string;
+    designedFlowYamlPath: string;
+    designedFlowGraphPath: string;
     selfReviewPath: string;
     feedbackPath: string;
     promptJsonPath: string;
@@ -70,8 +73,10 @@ export interface PromptLabEventHooks {
     onTimelineEvent?: (event: UnifiedRunEvent) => void;
     onDesignEvent?: (event: FlowDesignEvent) => void;
     onDiagnosticEvent?: (entry: PromptLabDiagnosticEntry) => void;
-    onSessionPrepared?: (args: {
-        session: PromptLabSessionRecord;
-        paths: PromptLabArtifactPaths;
-    }) => void;
+    onSessionPrepared?: (args: { session: PromptLabSessionRecord; paths: PromptLabArtifactPaths }) => void;
+}
+
+export interface PromptLabSelectableModelOption {
+    value: string;
+    label: string;
 }

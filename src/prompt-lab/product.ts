@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { addDiagnosticListener, removeDiagnosticListener, type DiagnosticListener } from '../diagnostics/logger';
 import { AgentError } from '../errors/agent-error';
+import { renderFlowDesignSnapshotAsReagraph } from '../graph/renderer';
 import { FlowDesignProduct } from '../product';
 import type { ProductDesignRunResult, ProductFlowSkill } from '../product/types';
 import { FakeLlmGateway, GeminiGateway, OpenAiGateway, type LlmGateway } from '../llm';
@@ -16,6 +17,7 @@ import type {
     PromptLabSessionConfig,
     PromptLabSessionRecord,
 } from './types';
+import yaml from 'js-yaml';
 
 export interface PromptLabProductOptions {
     productFactory?: (gateway: LlmGateway) => FlowDesignProduct;
@@ -54,9 +56,12 @@ function assertProviderConfiguration(config: PromptLabSessionConfig): void {
     if (config.provider === 'gemini') {
         const hasGeminiKey = Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
         if (!hasGeminiKey) {
-            throw new AgentError('Prompt Lab cannot start with Gemini because GEMINI_API_KEY or GOOGLE_API_KEY is missing.', {
-                code: 'PROMPT_LAB_GEMINI_NOT_CONFIGURED',
-            });
+            throw new AgentError(
+                'Prompt Lab cannot start with Gemini because GEMINI_API_KEY or GOOGLE_API_KEY is missing.',
+                {
+                    code: 'PROMPT_LAB_GEMINI_NOT_CONFIGURED',
+                },
+            );
         }
     }
 }
@@ -75,7 +80,12 @@ function createGateway(config: PromptLabSessionConfig): LlmGateway {
     return new FakeLlmGateway();
 }
 
-async function runFlowSkill(product: FlowDesignProduct, skillName: ProductFlowSkill, requirement: string, hooks?: PromptLabEventHooks) {
+async function runFlowSkill(
+    product: FlowDesignProduct,
+    skillName: ProductFlowSkill,
+    requirement: string,
+    hooks?: PromptLabEventHooks,
+) {
     if (skillName === 'flow-preflight-validator') {
         return await product.preflight(requirement, hooks);
     }
@@ -129,6 +139,14 @@ function renderSummaryMarkdown(args: {
         `- Summary: ${args.result.summary ?? 'n/a'}`,
         `- Success: ${String(args.result.success ?? false)}`,
         '',
+        '## Requirement Assessment',
+        '',
+        `- Execution Succeeded: ${String(args.result.requirementAssessment.executionSucceeded)}`,
+        `- Fulfillment Level: ${args.result.requirementAssessment.fulfillmentLevel}`,
+        `- Summary: ${args.result.requirementAssessment.summary}`,
+        ...(args.result.requirementAssessment.caveats.length > 0
+            ? ['', ...args.result.requirementAssessment.caveats.map(item => `- ${item}`), '']
+            : ['']),
         '## Self Review',
         '',
         args.selfReview.summary,
@@ -152,6 +170,9 @@ function buildArtifactPaths(sessionDir: string): PromptLabArtifactPaths {
         designPath: join(sessionDir, 'design-events.ndjson'),
         diagnosticsPath: join(sessionDir, 'diagnostics.ndjson'),
         resultPath: join(sessionDir, 'result.json'),
+        designedFlowPath: join(sessionDir, 'designed-flow.md'),
+        designedFlowYamlPath: join(sessionDir, 'designed-flow.yml'),
+        designedFlowGraphPath: join(sessionDir, 'designed-flow.reagraph.html'),
         selfReviewPath: join(sessionDir, 'self-review.json'),
         feedbackPath: join(sessionDir, 'user-feedback.txt'),
         promptJsonPath: join(sessionDir, 'codex-prompt.json'),
@@ -187,7 +208,9 @@ function formatFailureClipboard(args: {
     const message = args.error instanceof Error ? args.error.message : String(args.error);
     const stack = args.error instanceof Error && args.error.stack ? args.error.stack : '(no stack)';
     const causeMessage =
-        args.error instanceof Error && 'cause' in args.error && (args.error as Error & { cause?: unknown }).cause instanceof Error
+        args.error instanceof Error &&
+        'cause' in args.error &&
+        (args.error as Error & { cause?: unknown }).cause instanceof Error
             ? (args.error as Error & { cause?: Error }).cause?.message
             : undefined;
 
@@ -259,6 +282,7 @@ export class PromptLabProduct {
             });
 
             await writeJson(paths.resultPath, result);
+            await writeText(paths.designedFlowYamlPath, yaml.dump(result.finalFlow ?? null, { noRefs: true }));
             return { session, result, gateway };
         } catch (error) {
             const clipboardText = formatFailureClipboard({ session, paths, error });

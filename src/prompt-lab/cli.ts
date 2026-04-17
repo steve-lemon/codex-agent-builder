@@ -1,10 +1,20 @@
 import { createInterface } from 'node:readline/promises';
+import { emitKeypressEvents } from 'node:readline';
 import { stdin as input, stdout as output } from 'node:process';
 import { ensureProjectEnvLoaded } from '../env/project-env';
-import { getPromptLabLanguageCopy, getPromptLabManifest } from './manifest';
+import { getPromptLabLanguageCopy, getPromptLabManifest, getPromptLabModelOptions } from './manifest';
 import { PromptLabProduct, PromptLabRunError } from './product';
-import type { PromptLabArtifactPaths, PromptLabLanguage, PromptLabProvider, PromptLabSessionConfig } from './types';
+import type {
+    PromptLabArtifactPaths,
+    PromptLabLanguage,
+    PromptLabProvider,
+    PromptLabSelectableModelOption,
+    PromptLabSessionConfig,
+} from './types';
 import type { ProductFlowSkill } from '../product/types';
+import type { FlowDesignEvent } from '../flow/design-monitor';
+import type { UnifiedRunEvent } from '../observability/unified-timeline';
+import { writeText } from './files';
 
 function normalizeLanguage(value: string, fallback: PromptLabLanguage): PromptLabLanguage {
     const normalized = value.trim().toLowerCase();
@@ -47,7 +57,11 @@ function defaultLiteModel(provider: PromptLabProvider, mainModel: string): strin
     return 'fake-lite';
 }
 
-async function readMultilineFeedback(rl: ReturnType<typeof createInterface>, prompt: string, doneHint: string): Promise<string> {
+async function readMultilineFeedback(
+    rl: ReturnType<typeof createInterface>,
+    prompt: string,
+    doneHint: string,
+): Promise<string> {
     output.write(`${prompt}\n${doneHint}\n`);
     const lines: string[] = [];
     while (true) {
@@ -78,6 +92,9 @@ function printSessionHeader(sessionDir: string, paths: PromptLabArtifactPaths): 
     output.write(`timeline: ${paths.timelinePath}\n`);
     output.write(`design: ${paths.designPath}\n`);
     output.write(`diagnostics: ${paths.diagnosticsPath}\n`);
+    output.write(`designed flow: ${paths.designedFlowPath}\n`);
+    output.write(`designed flow yaml: ${paths.designedFlowYamlPath}\n`);
+    output.write(`designed flow graph: ${paths.designedFlowGraphPath}\n`);
     output.write(`failure text: ${paths.failureTextPath}\n`);
     output.write(`failure json: ${paths.failureJsonPath}\n`);
     output.write('==========================\n\n');
@@ -91,6 +108,354 @@ function printFailureClipboard(error: PromptLabRunError): void {
     output.write('=================================\n');
 }
 
+function summarizeTimelineEvent(event: UnifiedRunEvent): string {
+    if (event.source === 'trace') {
+        const toolName = typeof event.data?.toolName === 'string' ? event.data.toolName : undefined;
+        const stepId = typeof event.data?.stepId === 'string' ? event.data.stepId : undefined;
+        if (toolName) {
+            return `${event.type}: ${toolName}`;
+        }
+        if (stepId) {
+            return `${event.type}: ${stepId}`;
+        }
+    }
+
+    return `${event.source}:${event.type}`;
+}
+
+function summarizeDesignEvent(event: FlowDesignEvent): string {
+    if (event.data?.node && typeof event.data.node === 'object') {
+        const node = event.data.node as { label?: unknown; id?: unknown };
+        if (typeof node.label === 'string') {
+            return `${event.type}: ${node.label}`;
+        }
+        if (typeof node.id === 'string') {
+            return `${event.type}: ${node.id}`;
+        }
+    }
+
+    return event.type;
+}
+
+function createLiveStatusPrinter() {
+    let active = false;
+    let lastRenderedLength = 0;
+    let activity = 'idle';
+    let recentLog = '';
+
+    const render = () => {
+        const suffix = recentLog ? ` | ${recentLog}` : '';
+        const line = `[status] ${activity}${suffix}`;
+        const padded = line.padEnd(lastRenderedLength, ' ');
+        output.write(`\r${padded}`);
+        lastRenderedLength = Math.max(lastRenderedLength, line.length);
+        active = true;
+    };
+
+    return {
+        updateActivity(text: string, logMessage?: string) {
+            activity = text;
+            if (logMessage) {
+                recentLog = logMessage;
+            }
+            render();
+        },
+        updateLog(logMessage: string) {
+            recentLog = logMessage;
+            render();
+        },
+        clear() {
+            if (!active) {
+                return;
+            }
+            output.write(`\r${''.padEnd(lastRenderedLength, ' ')}\r`);
+            lastRenderedLength = 0;
+            active = false;
+        },
+        finish(text?: string) {
+            if (text) {
+                activity = text;
+                render();
+            }
+            if (active) {
+                output.write('\n');
+            }
+            lastRenderedLength = 0;
+            active = false;
+        },
+    };
+}
+
+interface SelectOption<TValue extends string> {
+    value: TValue;
+    label: string;
+}
+
+async function selectWithArrows<TValue extends string>(args: {
+    prompt: string;
+    options: Array<SelectOption<TValue>>;
+    defaultValue?: TValue;
+}): Promise<TValue> {
+    const options = args.options;
+    const defaultIndex = Math.max(
+        0,
+        args.defaultValue ? options.findIndex(option => option.value === args.defaultValue) : 0,
+    );
+    let selectedIndex = defaultIndex >= 0 ? defaultIndex : 0;
+
+    if (!input.isTTY || !output.isTTY) {
+        output.write(`${args.prompt}\n`);
+        options.forEach((option, index) => {
+            output.write(`${index === selectedIndex ? '*' : ' '} ${option.label}\n`);
+        });
+        return options[selectedIndex]!.value;
+    }
+
+    emitKeypressEvents(input);
+    const previousRawMode = input.isRaw;
+    input.setRawMode?.(true);
+
+    const render = () => {
+        output.write(`\n${args.prompt}\n`);
+        options.forEach((option, index) => {
+            output.write(`${index === selectedIndex ? '❯' : ' '} ${option.label}\n`);
+        });
+        output.write('\x1B[0J');
+        output.write(`\x1B[${options.length + 1}A`);
+    };
+
+    render();
+
+    const value = await new Promise<TValue>(resolve => {
+        const onKeypress = (_str: string, key: { name?: string; ctrl?: boolean }) => {
+            if (key.ctrl && key.name === 'c') {
+                input.off('keypress', onKeypress);
+                input.setRawMode?.(previousRawMode ?? false);
+                output.write('\n');
+                process.exit(130);
+            }
+
+            if (key.name === 'up') {
+                selectedIndex = (selectedIndex - 1 + options.length) % options.length;
+                render();
+                return;
+            }
+
+            if (key.name === 'down') {
+                selectedIndex = (selectedIndex + 1) % options.length;
+                render();
+                return;
+            }
+
+            if (key.name === 'return') {
+                input.off('keypress', onKeypress);
+                input.setRawMode?.(previousRawMode ?? false);
+                output.write(`\x1B[${options.length + 1}B`);
+                output.write(`${options[selectedIndex]!.label}\n`);
+                resolve(options[selectedIndex]!.value);
+            }
+        };
+
+        input.on('keypress', onKeypress);
+    });
+
+    return value;
+}
+
+async function selectModelWithCursor(args: {
+    prompt: string;
+    options: PromptLabSelectableModelOption[];
+    defaultValue: string;
+    rl: ReturnType<typeof createInterface>;
+}): Promise<string> {
+    const customValue = '__custom__';
+    const selected = await selectWithArrows({
+        prompt: `${args.prompt} (↑/↓ 후 Enter)`,
+        options: [
+            ...args.options,
+            {
+                value: customValue,
+                label: '직접 입력',
+            },
+        ],
+        defaultValue: args.options.find(option => option.value === args.defaultValue)?.value,
+    });
+
+    if (selected !== customValue) {
+        return selected;
+    }
+
+    return (await args.rl.question(`${args.prompt} > `)).trim() || args.defaultValue;
+}
+
+function renderFlowSnapshotMarkdown(event: FlowDesignEvent | undefined): string {
+    if (!event) {
+        return ['# Designed Flow', '', '_No design snapshot was captured for this run._', ''].join('\n');
+    }
+
+    const nodes = event.snapshot.nodes;
+    const edges = event.snapshot.edges;
+
+    return [
+        '# Designed Flow',
+        '',
+        `- Event: ${event.type}`,
+        `- Nodes: ${nodes.length}`,
+        `- Edges: ${edges.length}`,
+        '',
+        '## Nodes',
+        '',
+        ...(nodes.length > 0
+            ? nodes.map(
+                  node =>
+                      `- ${node.label} (\`${node.id}\`)` +
+                      `${node.blockId ? ` [${node.blockId}]` : ''}` +
+                      `${node.phase ? ` phase=${node.phase}` : ''}` +
+                      `${node.state ? ` state=${node.state}` : ''}`,
+              )
+            : ['- (none)']),
+        '',
+        '## Edges',
+        '',
+        ...(edges.length > 0
+            ? edges.map(
+                  edge =>
+                      `- \`${edge.source}\` -> \`${edge.target}\`` +
+                      `${edge.label ? ` (${edge.label})` : ''}` +
+                      `${edge.flowHint ? ` [${edge.flowHint}]` : ''}`,
+              )
+            : ['- (none)']),
+        '',
+    ].join('\n');
+}
+
+function printDesignedFlowSummary(event: FlowDesignEvent | undefined): void {
+    output.write('\n=== Final Designed Flow ===\n');
+    if (!event) {
+        output.write('No design snapshot was captured.\n');
+        output.write('===========================\n\n');
+        return;
+    }
+
+    const nodes = event.snapshot.nodes;
+    const edges = event.snapshot.edges;
+    output.write(`nodes: ${nodes.length}, edges: ${edges.length}\n`);
+    for (const node of nodes) {
+        output.write(
+            `- node ${node.label} (${node.id})${node.blockId ? ` [${node.blockId}]` : ''}${
+                node.phase ? ` phase=${node.phase}` : ''
+            }${node.state ? ` state=${node.state}` : ''}\n`,
+        );
+    }
+    for (const edge of edges) {
+        output.write(
+            `- edge ${edge.source} -> ${edge.target}${edge.label ? ` (${edge.label})` : ''}${
+                edge.flowHint ? ` [${edge.flowHint}]` : ''
+            }\n`,
+        );
+    }
+    output.write('===========================\n\n');
+}
+
+function printRequirementAssessment(args: {
+    executionSucceeded: boolean;
+    fulfillmentLevel: string;
+    summary: string;
+    caveats: string[];
+}): void {
+    output.write('=== Requirement Assessment ===\n');
+    output.write(`execution succeeded: ${String(args.executionSucceeded)}\n`);
+    output.write(`fulfillment level: ${args.fulfillmentLevel}\n`);
+    output.write(`${args.summary}\n`);
+    for (const caveat of args.caveats) {
+        output.write(`- ${caveat}\n`);
+    }
+    output.write('==============================\n\n');
+}
+
+function renderReagraphHtml(event: FlowDesignEvent | undefined): string {
+    const graph = event?.reagraph ?? { nodes: [], edges: [] };
+    return [
+        '<!doctype html>',
+        '<html lang="en">',
+        '<head>',
+        '  <meta charset="utf-8" />',
+        '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
+        '  <title>Prompt Lab Designed Flow</title>',
+        '  <style>',
+        '    html, body, #root { height: 100%; margin: 0; }',
+        '    body { font-family: ui-sans-serif, system-ui, sans-serif; background: #f6f4ef; color: #1f2937; }',
+        '    .shell { display: grid; grid-template-columns: 320px 1fr; height: 100%; }',
+        '    .panel { padding: 16px; border-right: 1px solid #d6d3d1; background: #fffdf8; overflow: auto; }',
+        '    .panel h1 { margin: 0 0 8px; font-size: 20px; }',
+        '    .panel p { margin: 0 0 16px; color: #57534e; line-height: 1.5; }',
+        '    .meta { font-size: 12px; color: #78716c; margin-bottom: 16px; }',
+        '    .list { margin: 0; padding-left: 18px; }',
+        '    .list li { margin: 0 0 8px; }',
+        '    .canvas { position: relative; }',
+        '  </style>',
+        '</head>',
+        '<body>',
+        '  <div class="shell">',
+        '    <aside class="panel">',
+        '      <h1>Designed Flow</h1>',
+        `      <p>${
+            event
+                ? `${event.snapshot.nodes.length} nodes, ${event.snapshot.edges.length} edges`
+                : 'No design snapshot captured.'
+        }</p>`,
+        `      <div class="meta">event=${event?.type ?? 'none'}</div>`,
+        '      <h2>Nodes</h2>',
+        '      <ul class="list">',
+        ...(event?.snapshot.nodes.length
+            ? event.snapshot.nodes.map(
+                  node =>
+                      `        <li><strong>${escapeHtml(node.label)}</strong> <code>${escapeHtml(node.id)}</code>${
+                          node.blockId ? ` [${escapeHtml(node.blockId)}]` : ''
+                      }</li>`,
+              )
+            : ['        <li>(none)</li>']),
+        '      </ul>',
+        '    </aside>',
+        '    <main class="canvas"><div id="root"></div></main>',
+        '  </div>',
+        '  <script type="module">',
+        "    import React from 'https://esm.sh/react@18';",
+        "    import { createRoot } from 'https://esm.sh/react-dom@18/client';",
+        "    import { GraphCanvas } from 'https://esm.sh/reagraph@4?external=react,react-dom';",
+        `    const graph = ${JSON.stringify(graph)};`,
+        '    const root = createRoot(document.getElementById("root"));',
+        '    root.render(',
+        '      React.createElement(GraphCanvas, {',
+        '        nodes: graph.nodes,',
+        '        edges: graph.edges,',
+        '        animated: true,',
+        '        draggable: true,',
+        '        layoutType: "forceDirected2d",',
+        '        labelType: "all",',
+        '        theme: {',
+        '          canvas: { background: "#f6f4ef" },',
+        '          node: { fill: "#0f766e", activeFill: "#115e59", opacity: 1 },',
+        '          edge: { fill: "#78716c", activeFill: "#0f172a", opacity: 0.9 }',
+        '        }',
+        '      })',
+        '    );',
+        '  </script>',
+        '</body>',
+        '</html>',
+        '',
+    ].join('\n');
+}
+
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 async function main() {
     ensureProjectEnvLoaded();
     const manifest = await getPromptLabManifest();
@@ -98,21 +463,44 @@ async function main() {
     const rl = createInterface({ input, output });
 
     try {
-        const languageInput = await rl.question(`${(await getPromptLabLanguageCopy(defaultLanguage)).languagePrompt} [${defaultLanguage}]: `);
-        const language = normalizeLanguage(languageInput, defaultLanguage);
+        const language = await selectWithArrows({
+            prompt: `${(await getPromptLabLanguageCopy(defaultLanguage)).languagePrompt} (↑/↓ 후 Enter)`,
+            options: [
+                { value: 'ko', label: '한국어 (기본)' },
+                { value: 'en', label: 'English' },
+            ],
+            defaultValue: defaultLanguage,
+        });
         const copy = await getPromptLabLanguageCopy(language);
 
         output.write(`${copy.welcome}\n`);
         const defaultProvider = resolveDefaultProvider(manifest.defaults.providerOrder);
-        const providerInput = await rl.question(`${copy.providerPrompt} [${defaultProvider}]: `);
-        const provider = (providerInput.trim().toLowerCase() || defaultProvider) as PromptLabProvider;
+        const provider = await selectWithArrows({
+            prompt: `${copy.providerPrompt} (↑/↓ 후 Enter)`,
+            options: manifest.defaults.providerOrder.map(value => ({ value, label: value })),
+            defaultValue: defaultProvider,
+        });
         const defaultSkill = manifest.defaults.skillName;
-        const skillInput = await rl.question(`${copy.skillPrompt} [${defaultSkill}]: `);
-        const skillName = normalizeSkill(skillInput, defaultSkill);
+        const skillName = await selectWithArrows({
+            prompt: `${copy.skillPrompt} (↑/↓ 후 Enter)`,
+            options: manifest.defaults.skillOrder.map(value => ({ value, label: value })),
+            defaultValue: defaultSkill,
+        });
         const mainModelDefault = defaultMainModel(provider);
-        const mainModel = (await rl.question(`${copy.mainModelPrompt} [${mainModelDefault}]: `)).trim() || mainModelDefault;
+        const modelOptions = await getPromptLabModelOptions(provider);
+        const mainModel = await selectModelWithCursor({
+            prompt: copy.mainModelPrompt,
+            options: modelOptions.main,
+            defaultValue: mainModelDefault,
+            rl,
+        });
         const liteModelDefault = defaultLiteModel(provider, mainModel);
-        const liteModel = (await rl.question(`${copy.liteModelPrompt} [${liteModelDefault}]: `)).trim() || liteModelDefault;
+        const liteModel = await selectModelWithCursor({
+            prompt: copy.liteModelPrompt,
+            options: modelOptions.lite,
+            defaultValue: liteModelDefault,
+            rl,
+        });
         const requirement = (await rl.question(`${copy.requirementPrompt}\n> `)).trim();
         if (!requirement) {
             throw new Error('Requirement is required.');
@@ -120,6 +508,9 @@ async function main() {
 
         output.write(`${copy.startMessage}\n`);
         const product = new PromptLabProduct();
+        const status = createLiveStatusPrinter();
+        let latestDesignEvent: FlowDesignEvent | undefined;
+        let latestPaths: PromptLabArtifactPaths | undefined;
         const config: PromptLabSessionConfig = {
             provider,
             mainModel,
@@ -134,10 +525,31 @@ async function main() {
             requirement,
             hooks: {
                 onSessionPrepared: ({ session, paths }) => {
+                    latestPaths = paths;
                     printSessionHeader(session.sessionDir, paths);
+                    status.updateActivity('session prepared');
+                },
+                onTimelineEvent: event => {
+                    status.updateActivity(summarizeTimelineEvent(event), event.message);
+                },
+                onDesignEvent: event => {
+                    latestDesignEvent = event;
+                    status.updateActivity(summarizeDesignEvent(event), event.message);
+                },
+                onDiagnosticEvent: entry => {
+                    status.updateLog(entry.event.message);
                 },
             },
         });
+        status.finish('agent execution completed');
+
+        if (latestPaths) {
+            await writeText(latestPaths.designedFlowPath, renderFlowSnapshotMarkdown(latestDesignEvent));
+            await writeText(latestPaths.designedFlowGraphPath, renderReagraphHtml(latestDesignEvent));
+        }
+        printDesignedFlowSummary(latestDesignEvent);
+        printRequirementAssessment(result.requirementAssessment);
+
         const selfReview = await product.createSelfReview({ session, result, gateway });
 
         output.write(`${copy.selfReviewMessage}\n`);

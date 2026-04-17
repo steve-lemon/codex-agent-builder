@@ -82,7 +82,8 @@ describe('final-result formatters', () => {
         ]);
 
         expect(result.success).toBe(true);
-        expect(result.summary).toContain('flow satisfied');
+        expect(result.summary).toContain('executed successfully');
+        expect(result.summary).toContain('satisfactory for the request');
         expect(result.payload).toEqual(
             expect.objectContaining({
                 kind: 'flow-designer',

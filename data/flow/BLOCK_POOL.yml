@@ -164,6 +164,14 @@ blocks:
         hint: text
         required: true
         defaultValue: mock-gpt
+      - id: systemPrompt
+        label: System Prompt
+        hint: text
+        defaultValue: ""
+      - id: promptTemplate
+        label: Prompt Template
+        hint: text
+        defaultValue: ""
       - id: jsonOutput
         label: JSON Output
         hint: checkbox

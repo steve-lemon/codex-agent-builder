@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { PromptLabProvider } from './types';
 
 const PromptLabLanguageCopySchema = z.object({
     locale: z.string().min(2),
@@ -18,6 +19,11 @@ const PromptLabLanguageCopySchema = z.object({
     completionMessage: z.string().min(1),
 });
 
+const PromptLabModelOptionSchema = z.object({
+    value: z.string().min(1),
+    label: z.string().min(1),
+});
+
 export const PromptLabManifestSchema = z.object({
     version: z.number().int().positive(),
     defaults: z.object({
@@ -29,6 +35,20 @@ export const PromptLabManifestSchema = z.object({
     }),
     cli: z.object({
         languages: z.record(PromptLabLanguageCopySchema),
+        models: z.object({
+            openai: z.object({
+                main: z.array(PromptLabModelOptionSchema).min(1),
+                lite: z.array(PromptLabModelOptionSchema).min(1),
+            }),
+            gemini: z.object({
+                main: z.array(PromptLabModelOptionSchema).min(1),
+                lite: z.array(PromptLabModelOptionSchema).min(1),
+            }),
+            fake: z.object({
+                main: z.array(PromptLabModelOptionSchema).min(1),
+                lite: z.array(PromptLabModelOptionSchema).min(1),
+            }),
+        }),
     }),
     selfReview: z.object({
         systemPrompt: z.string().min(1),
@@ -40,3 +60,8 @@ export const PromptLabManifestSchema = z.object({
 
 export type PromptLabManifestRecord = z.infer<typeof PromptLabManifestSchema>;
 export type PromptLabLanguageCopy = z.infer<typeof PromptLabLanguageCopySchema>;
+export type PromptLabModelOption = z.infer<typeof PromptLabModelOptionSchema>;
+export type PromptLabModelOptionsByProvider = Record<
+    PromptLabProvider,
+    { main: PromptLabModelOption[]; lite: PromptLabModelOption[] }
+>;

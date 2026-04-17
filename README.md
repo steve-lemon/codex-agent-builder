@@ -192,12 +192,27 @@ npm run prompt-lab
 `prompt-lab` starts an interactive CLI that:
 
 - chooses provider plus `main` and `lite` models
+- uses cursor-driven selection menus for language, provider, skill, and recommended model choices
 - chooses which flow skill to validate (`flow-preflight-validator`, `flow-designer`, or `node-config-designer`)
 - follows Korean by default, with English selectable
 - runs the real agent flow and records artifacts under `output/labs/`
+- shows a one-line live execution status while the agent is running
+- prints a final flow summary when a design snapshot is available
 - generates a self-review
 - accepts operator feedback
 - synthesizes a final Codex prompt for the next iteration
+
+Typical prompt-lab artifacts:
+
+- `timeline.ndjson`: merged runtime timeline
+- `design-events.ndjson`: live flow-design events
+- `diagnostics.ndjson`: diagnostic logger stream
+- `designed-flow.md`: final captured flow snapshot rendered as a readable node/edge summary
+- `designed-flow.yml`: final `FlowDocument` artifact with blocks, nodes, node config, ports, edges, and related flow metadata
+- `designed-flow.reagraph.html`: Reagraph-based interactive graph view for the final captured flow snapshot
+- `result.json`: normalized product result
+- `self-review.json`: structured self-review
+- `codex-prompt.md`: final synthesized Codex prompt
 
 All npm scripts are wrapped through [`scripts/with-project-node.sh`](./scripts/with-project-node.sh), which sources `nvm` and uses the version from [`.nvmrc`](./.nvmrc).
 The project targets Node.js `22.15.1` or newer and is intended to remain compatible with later major versions.

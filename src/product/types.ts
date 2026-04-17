@@ -10,8 +10,18 @@ import type {
 } from '../agent/types';
 import type { TraceEvent } from '../observability/types';
 import type { NodeConfigDesignDetailsDto } from '../flow/node-config/design/dto';
+import type { FlowDocument } from '../flow/types';
 
 export type ProductFlowSkill = 'flow-preflight-validator' | 'flow-designer' | 'node-config-designer';
+
+export type RequirementFulfillmentLevel = 'fulfilled' | 'uncertain' | 'partial' | 'not-fulfilled';
+
+export interface RequirementAssessment {
+    executionSucceeded: boolean;
+    fulfillmentLevel: RequirementFulfillmentLevel;
+    summary: string;
+    caveats: string[];
+}
 
 /** Optional per-call monitoring hooks for product-facing design runs. */
 export interface ProductMonitoringHooks {
@@ -26,6 +36,7 @@ export interface ProductDesignRunResult {
     status: RuntimeRunResult['status'];
     summary?: string;
     success?: boolean;
+    requirementAssessment: RequirementAssessment;
     nextActions: string[];
     finalResult?: FinalResult;
     flowDesign: FlowDesignDetailsDto;
@@ -35,6 +46,7 @@ export interface ProductDesignRunResult {
     nodeConfigPayload?: NodeConfigDesignerFinalPayload;
     waitingApproval?: PendingApproval;
     trace: TraceEvent[];
+    finalFlow?: FlowDocument;
 }
 
 /** Product-facing API for flow-related agent features. */

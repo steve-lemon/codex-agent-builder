@@ -38,8 +38,24 @@ describe('FlowDesignProduct', () => {
                 designPassCount: 3,
             }),
         );
+        expect(result.requirementAssessment).toEqual(
+            expect.objectContaining({
+                executionSucceeded: true,
+                fulfillmentLevel: expect.stringMatching(/fulfilled|uncertain/),
+                summary: expect.any(String),
+            }),
+        );
         expect(result.flowDesign.designPassCount).toBe(3);
         expect(result.nodeConfiguration.configuredNodeCount).toBeGreaterThanOrEqual(3);
+        expect(result.finalFlow?.nodes.some(node => node.blockId === 'ai-generate')).toBe(true);
+        expect(result.finalFlow?.nodes.every(node => node.blockId !== 'text-processor')).toBe(true);
+        const aiNode = result.finalFlow?.nodes.find(node => node.id === 'ai-node');
+        expect(aiNode?.config).toEqual(
+            expect.objectContaining({
+                systemPrompt: expect.any(String),
+                promptTemplate: expect.any(String),
+            }),
+        );
     });
 
     it('streams monitoring hooks through a per-call runtime', async () => {

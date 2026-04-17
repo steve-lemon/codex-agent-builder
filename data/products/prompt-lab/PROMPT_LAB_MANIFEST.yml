@@ -45,6 +45,36 @@ cli:
       selfReviewMessage: "Generated self-review."
       finalPromptMessage: "Final Codex prompt:"
       completionMessage: "Saved session artifacts to:"
+  models:
+    openai:
+      main:
+        - value: gpt-5-mini
+          label: GPT-5 mini (recommended)
+        - value: gpt-5.2
+          label: GPT-5.2
+      lite:
+        - value: gpt-4.1-mini
+          label: GPT-4.1 mini (recommended)
+        - value: gpt-5-mini
+          label: GPT-5 mini
+    gemini:
+      main:
+        - value: gemini-2.0-flash
+          label: Gemini 2.0 Flash (recommended)
+        - value: gemini-2.5-pro
+          label: Gemini 2.5 Pro
+      lite:
+        - value: gemini-2.0-flash
+          label: Gemini 2.0 Flash (recommended)
+        - value: gemini-2.5-flash-lite
+          label: Gemini 2.5 Flash Lite
+    fake:
+      main:
+        - value: fake-main
+          label: Fake main
+      lite:
+        - value: fake-lite
+          label: Fake lite
 selfReview:
   systemPrompt: |
     You are reviewing a Codex agent run. Read the session snapshot and produce a compact, honest self-review.

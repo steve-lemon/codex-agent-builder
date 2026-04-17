@@ -785,6 +785,16 @@ describe('tools modules', () => {
                         rationale: expect.arrayContaining([expect.stringContaining('observed block behavior')]),
                     }),
                     expect.objectContaining({
+                        nodeId: 'ai-node',
+                        strategyId: 'ai-generation',
+                        config: expect.objectContaining({
+                            model: 'mock-blog-gpt',
+                            jsonOutput: 'false',
+                            systemPrompt: expect.stringContaining('clear and catchy blog titles'),
+                            promptTemplate: expect.stringContaining('User request: 키워드를 줄테니 블로그 타이틀 여러개 만들기'),
+                        }),
+                    }),
+                    expect.objectContaining({
                         nodeId: 'prompt-input',
                         strategyId: 'prompt-input',
                         config: expect.objectContaining({
@@ -821,6 +831,57 @@ describe('tools modules', () => {
                 issues: [],
             },
         });
+    });
+
+    it('rejects unknown blocks before validating or configuring downstream flow tools', async () => {
+        const registry = await buildDefaultToolRegistry();
+        const fakeFlow = {
+            blocks: [
+                {
+                    id: 'text-processor',
+                    label: 'Text Processor',
+                    inputs: [],
+                    outputs: [],
+                },
+            ],
+            nodes: [
+                {
+                    id: 'node1',
+                    blockId: 'text-processor',
+                    label: 'Fake Processor',
+                    config: {},
+                    inputPorts: [],
+                    outputPorts: [],
+                },
+            ],
+            edges: [],
+        };
+
+        const validation = await registry.execute(
+            {
+                toolName: 'validateFlowDraft',
+                args: { flow: fakeFlow },
+            },
+            makeToolContext('unknown-flow-blocks-1'),
+        );
+
+        const configuration = await registry.execute(
+            {
+                toolName: 'designFlowNodeConfigurations',
+                args: {
+                    userRequest: '입력한 텍스트를 처리해줘',
+                    flow: fakeFlow,
+                    desiredCount: 1,
+                    wantsJson: false,
+                },
+            },
+            makeToolContext('unknown-flow-blocks-2'),
+        );
+
+        expect(validation.ok).toBe(false);
+        expect(validation.error).toContain('unknown blocks');
+        expect(configuration.ok).toBe(false);
+        expect(configuration.error).toContain('unknown blocks');
     });
 
     it('registerMany and listBySkills preserve registered tools by skill', () => {

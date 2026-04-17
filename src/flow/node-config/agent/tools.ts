@@ -1,8 +1,16 @@
 // Tools that expose the node-configuration design sub-agent to the runtime.
 import { z } from 'zod';
 import { NodeConfigDesignService } from '../design/core';
+import { getCatalogAvailableFlowBlocks } from '../../design/catalog';
 import { buildToolPackFromResource, loadToolPackResource } from '../../../tools/core/resources';
-import { type ToolContext, type ToolDefinition, type ToolPack, type ToolRepositoryBundle } from '../../../tools/core/types';
+import {
+    type ToolContext,
+    type ToolDefinition,
+    type ToolPack,
+    type ToolRepositoryBundle,
+} from '../../../tools/core/types';
+import type { FlowDocument } from '../../types';
+import { AgentError } from '../../../errors/agent-error';
 
 const service = new NodeConfigDesignService();
 
@@ -93,6 +101,31 @@ function defineNodeConfigToolExecutor<TArgs extends Record<string, unknown>>(
     };
 }
 
+async function normalizeKnownFlowDocument(flow: FlowDocument): Promise<FlowDocument> {
+    const availableBlocks = await getCatalogAvailableFlowBlocks();
+    const availableBlockMap = new Map(availableBlocks.map(block => [block.id, block]));
+    const unknownBlockIds = flow.nodes.map(node => node.blockId).filter(blockId => !availableBlockMap.has(blockId));
+
+    if (unknownBlockIds.length > 0) {
+        throw new AgentError(
+            `Flow document references unknown blocks: ${Array.from(new Set(unknownBlockIds)).join(', ')}`,
+            {
+                code: 'FLOW_UNKNOWN_BLOCKS',
+            },
+        );
+    }
+
+    return {
+        ...flow,
+        blocks:
+            flow.blocks.length > 0
+                ? flow.blocks
+                      .map(block => availableBlockMap.get(block.id))
+                      .filter((block): block is NonNullable<typeof block> => block !== undefined)
+                : availableBlocks,
+    };
+}
+
 const NODE_CONFIG_EXECUTE_IDS = {
     designFlowNodeConfigurations: 'node-config.design-flow-node-configurations',
     validateFlowNodeConfigurations: 'node-config.validate-flow-node-configurations',
@@ -158,7 +191,7 @@ function getNodeConfigToolExecutors() {
             }) =>
                 service.design({
                     userRequest,
-                    flow: flow as never,
+                    flow: (await normalizeKnownFlowDocument(flow as FlowDocument)) as never,
                     desiredCount,
                     wantsJson,
                     improvementNotes,
@@ -168,7 +201,7 @@ function getNodeConfigToolExecutors() {
                 }),
         ),
         [NODE_CONFIG_EXECUTE_IDS.validateFlowNodeConfigurations]: defineNodeConfigToolExecutor<{ flow: unknown }>(
-            async ({ flow }) => service.validate(flow as never),
+            async ({ flow }) => service.validate((await normalizeKnownFlowDocument(flow as FlowDocument)) as never),
         ),
     };
 }

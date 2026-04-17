@@ -243,6 +243,14 @@ export async function designFlowDraft(args: {
     const taskNodes = feasibility.taskGraph.nodes as TaskGraphNode[];
     const taskEdges = feasibility.taskGraph.edges as TaskGraphEdge[];
     const mapping = buildTaskGraphMapping(taskNodes);
+    const systemPrompt = await buildFlowDesignSystemPrompt(args.userRequest, improvementNotes);
+    const userPrompt = buildFlowDesignUserPrompt({
+        userRequest: args.userRequest,
+        sampleInput: args.sampleInput,
+        desiredCount: args.desiredCount,
+        wantsJson: args.wantsJson,
+        improvementNotes,
+    });
     let flow = createFlowDocument(availableBlocks);
 
     const monitor = args.designSession
@@ -268,7 +276,7 @@ export async function designFlowDraft(args: {
         nodeId: 'system-input',
         label: 'System Input',
         config: {
-            input: await buildFlowDesignSystemPrompt(args.userRequest, improvementNotes),
+            input: systemPrompt,
         },
     });
     monitor?.setNodePhase('system-input', 'ready', 'system-prompt-ready');
@@ -282,13 +290,7 @@ export async function designFlowDraft(args: {
         nodeId: 'prompt-input',
         label: mapping.promptInput?.label ?? 'Prompt Input',
         config: {
-            input: buildFlowDesignUserPrompt({
-                userRequest: args.userRequest,
-                sampleInput: args.sampleInput,
-                desiredCount: args.desiredCount,
-                wantsJson: args.wantsJson,
-                improvementNotes,
-            }),
+            input: userPrompt,
         },
     });
     monitor?.setNodePhase('prompt-input', 'ready', 'user-prompt-ready');
@@ -303,6 +305,8 @@ export async function designFlowDraft(args: {
         label: mapping.generate?.label ?? 'AI Generate',
         config: {
             model: await getFlowDesignDefaultModel(),
+            systemPrompt,
+            promptTemplate: userPrompt,
             jsonOutput: String(args.wantsJson),
         },
     });
@@ -359,20 +363,14 @@ export async function designFlowDraft(args: {
             nodeId: 'system-input',
             label: 'System Input',
             config: {
-                input: await buildFlowDesignSystemPrompt(args.userRequest, improvementNotes),
+                input: systemPrompt,
             },
         }).flow;
         flow = createFlowNode(flow, BuiltinFlowBlockIds.input, {
             nodeId: 'prompt-input',
             label: mapping.promptInput?.label ?? 'Prompt Input',
             config: {
-                input: buildFlowDesignUserPrompt({
-                    userRequest: args.userRequest,
-                    sampleInput: args.sampleInput,
-                    desiredCount: args.desiredCount,
-                    wantsJson: args.wantsJson,
-                    improvementNotes,
-                }),
+                input: userPrompt,
             },
         }).flow;
         flow = createFlowNode(flow, BuiltinFlowBlockIds.aiGenerate, {
@@ -380,6 +378,8 @@ export async function designFlowDraft(args: {
             label: mapping.generate?.label ?? 'AI Generate',
             config: {
                 model: await getFlowDesignDefaultModel(),
+                systemPrompt,
+                promptTemplate: userPrompt,
                 jsonOutput: String(args.wantsJson),
             },
         }).flow;

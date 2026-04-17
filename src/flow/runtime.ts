@@ -197,10 +197,17 @@ export class AiGenerateExecutableFlowNode extends ExecutableFlowNode {
         this.ensureValid(flow);
         const model = this.getRequiredConfig('model');
         const jsonOutput = (this.node.config?.jsonOutput ?? 'false').trim().toLowerCase() === 'true';
-        const promptPacket = this.requireInputPacket(flow, 'prompt');
+        const promptPort = this.getInputPort('prompt');
+        const promptPacket = this.controller.getPortById(flow, promptPort.id)?.packet;
         const systemPacket = this.controller.getPortById(flow, this.getInputPort('system').id)?.packet;
+        const configuredSystemPrompt = this.node.config?.systemPrompt?.trim() ?? '';
+        const configuredPromptTemplate = this.node.config?.promptTemplate?.trim() ?? '';
 
-        if (typeof promptPacket.value !== 'string') {
+        if (
+            promptPacket?.value !== undefined &&
+            promptPacket.value !== null &&
+            typeof promptPacket.value !== 'string'
+        ) {
             throw new AgentError(`AI generate prompt packet must be text on node ${this.node.id}`);
         }
         if (
@@ -211,10 +218,23 @@ export class AiGenerateExecutableFlowNode extends ExecutableFlowNode {
             throw new AgentError(`AI generate system packet must be text on node ${this.node.id}`);
         }
 
+        const prompt =
+            typeof promptPacket?.value === 'string' && promptPacket.value.trim().length > 0
+                ? promptPacket.value
+                : configuredPromptTemplate;
+        const system =
+            typeof systemPacket?.value === 'string' && systemPacket.value.trim().length > 0
+                ? systemPacket.value
+                : configuredSystemPrompt;
+
+        if (!prompt.trim()) {
+            throw new AgentError(`AI generate prompt text is missing on node ${this.node.id}`);
+        }
+
         const result = await this.aiGenerate({
             model,
-            system: typeof systemPacket?.value === 'string' ? systemPacket.value : '',
-            prompt: promptPacket.value,
+            system,
+            prompt,
             jsonOutput,
         });
 
