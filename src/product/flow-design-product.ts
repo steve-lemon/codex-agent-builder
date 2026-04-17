@@ -1,5 +1,6 @@
 // Product-facing facade for flow design, preflight, and node-config operations.
 import { AgentRuntime, type AgentRuntimeOptions } from '../agent';
+import { ensureProjectEnvLoaded } from '../env/project-env';
 import { CallbackFlowDesignConnection } from '../flow/design-monitor';
 import { CallbackUnifiedRunEventConnection } from '../observability/unified-timeline';
 import { FakeLlmGateway, GeminiGateway, OpenAiGateway } from '../llm';
@@ -20,6 +21,7 @@ export class FlowDesignProduct implements FlowDesignProductApi {
     private readonly baseRuntimeOptionsPromise: Promise<AgentRuntimeOptions>;
 
     constructor(private readonly options: FlowDesignProductOptions = {}) {
+        ensureProjectEnvLoaded();
         this.baseRuntimeOptionsPromise = options.runtime
             ? Promise.resolve(options.runtime.getOptions())
             : this.resolveRuntimeOptions(options.runtimeOptions);

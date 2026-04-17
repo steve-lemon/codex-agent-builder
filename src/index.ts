@@ -1,11 +1,13 @@
 // Runtime factory and public exports.
 import { AgentRuntime, type AgentRuntimeOptions } from './agent';
+import { ensureProjectEnvLoaded } from './env/project-env';
 import { FakeLlmGateway, GeminiGateway, OpenAiGateway } from './llm';
 import { InMemoryRunStateStore } from './state/memory-store';
 import { buildDefaultToolRegistry } from './tools';
 
 /** Creates the default runtime with fake, OpenAI, or Gemini-backed LLM wiring. */
 export async function createRuntime(options?: Partial<AgentRuntimeOptions>) {
+    ensureProjectEnvLoaded();
     const provider = String(process.env.LLM_PROVIDER ?? '').toLowerCase();
     const useRealOpenAi = String(process.env.USE_REAL_OPENAI ?? 'false').toLowerCase() === 'true';
     const useRealGemini = String(process.env.USE_REAL_GEMINI ?? 'false').toLowerCase() === 'true';

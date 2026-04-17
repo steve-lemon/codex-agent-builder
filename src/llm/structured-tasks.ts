@@ -1,6 +1,6 @@
 // Shared structured-generation request builders used by gateway plan/reflect/finalize flows.
-import { createOpenAiPlanResponseSchema, parsePlanResponse, ReflectorOutputSchema } from '../agent/schemas';
-import { FinalResultSchema } from '../agent/types';
+import { PlanResponseSchema, parsePlanResponse, ReflectorOutputSchema } from '../agent/schemas';
+import { FinalResultResponseSchema } from '../agent/types';
 import type { FinalizerInput, PlannerInput, ReflectorInput, StructuredGenerationInput } from './types';
 import { defineStructuredSchema } from './structured-schema';
 import { getFinalizeSystemPrompt, getPlanSystemPrompt, getReflectSystemPrompt } from './structured-task-resources';
@@ -25,7 +25,9 @@ export async function buildPlanStructuredRequest(input: PlannerInput): Promise<S
                 }),
             },
         ],
-        schema: defineStructuredSchema('plan', createOpenAiPlanResponseSchema(input.toolDefinitions)),
+        // OpenAI structured outputs are strict about optional object fields. Keep planner
+        // output generic here and let later runtime/tool validation enforce tool-specific args.
+        schema: defineStructuredSchema('plan', PlanResponseSchema),
     };
 }
 
@@ -54,6 +56,6 @@ export async function buildFinalizeStructuredRequest(input: FinalizerInput): Pro
             { role: 'system', content: await getFinalizeSystemPrompt() },
             { role: 'user', content: JSON.stringify(input) },
         ],
-        schema: defineStructuredSchema('final_result', FinalResultSchema),
+        schema: defineStructuredSchema('final_result', FinalResultResponseSchema),
     };
 }

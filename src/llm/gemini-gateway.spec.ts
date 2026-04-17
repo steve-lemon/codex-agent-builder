@@ -134,4 +134,39 @@ describe('GeminiGateway', () => {
         );
         expect(result).toEqual({ ok: true });
     });
+
+    it('surfaces a clearer error when the selected Gemini model does not exist', async () => {
+        const loadSdk = vi.fn(
+            async () =>
+                class FakeGoogleGenAI {
+                    models = {
+                        generateContent: vi.fn(async () => {
+                            throw new AgentError('Unknown model: gemini-9.9-test', {
+                                code: 'MODEL_NOT_FOUND',
+                            });
+                        }),
+                    };
+                },
+        );
+
+        const gateway = new GeminiGateway({
+            apiKey: 'test-key',
+            model: 'gemini-9.9-test',
+            loadSdk,
+        });
+
+        await expect(
+            gateway.plan({
+                userInput: '오타를 정정해줘',
+                skillName: 'flow-designer',
+                skillInstructions: 'Test',
+                allowedTools: [],
+                toolManifests: [],
+                toolDefinitions: [],
+            }),
+        ).rejects.toMatchObject({
+            code: 'GEMINI_MODEL_NOT_AVAILABLE',
+            message: expect.stringContaining('Gemini model is not available for plan: gemini-9.9-test'),
+        });
+    });
 });

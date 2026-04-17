@@ -1,8 +1,9 @@
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
+import { ensureProjectEnvLoaded } from '../env/project-env';
 import { getPromptLabLanguageCopy, getPromptLabManifest } from './manifest';
-import { PromptLabProduct } from './product';
-import type { PromptLabLanguage, PromptLabProvider, PromptLabSessionConfig } from './types';
+import { PromptLabProduct, PromptLabRunError } from './product';
+import type { PromptLabArtifactPaths, PromptLabLanguage, PromptLabProvider, PromptLabSessionConfig } from './types';
 import type { ProductFlowSkill } from '../product/types';
 
 function normalizeLanguage(value: string, fallback: PromptLabLanguage): PromptLabLanguage {
@@ -71,7 +72,27 @@ function normalizeSkill(value: string, fallback: ProductFlowSkill): ProductFlowS
     return fallback;
 }
 
+function printSessionHeader(sessionDir: string, paths: PromptLabArtifactPaths): void {
+    output.write('\n=== Prompt Lab Session ===\n');
+    output.write(`session: ${sessionDir}\n`);
+    output.write(`timeline: ${paths.timelinePath}\n`);
+    output.write(`design: ${paths.designPath}\n`);
+    output.write(`diagnostics: ${paths.diagnosticsPath}\n`);
+    output.write(`failure text: ${paths.failureTextPath}\n`);
+    output.write(`failure json: ${paths.failureJsonPath}\n`);
+    output.write('==========================\n\n');
+}
+
+function printFailureClipboard(error: PromptLabRunError): void {
+    output.write('\n=== Copy/Paste Failure Report ===\n');
+    output.write('```text\n');
+    output.write(`${error.clipboardText}\n`);
+    output.write('```\n');
+    output.write('=================================\n');
+}
+
 async function main() {
+    ensureProjectEnvLoaded();
     const manifest = await getPromptLabManifest();
     const defaultLanguage = manifest.defaults.language as PromptLabLanguage;
     const rl = createInterface({ input, output });
@@ -108,7 +129,15 @@ async function main() {
             outputRoot: manifest.defaults.outputRoot,
         };
 
-        const { session, result, gateway } = await product.runRequirement({ config, requirement });
+        const { session, result, gateway } = await product.runRequirement({
+            config,
+            requirement,
+            hooks: {
+                onSessionPrepared: ({ session, paths }) => {
+                    printSessionHeader(session.sessionDir, paths);
+                },
+            },
+        });
         const selfReview = await product.createSelfReview({ session, result, gateway });
 
         output.write(`${copy.selfReviewMessage}\n`);
@@ -126,6 +155,16 @@ async function main() {
         output.write(`${copy.finalPromptMessage}\n`);
         output.write(`${artifacts.codexPrompt.codexPrompt}\n\n`);
         output.write(`${copy.completionMessage} ${session.sessionDir}\n`);
+    } catch (error) {
+        if (error instanceof PromptLabRunError) {
+            printSessionHeader(error.session.sessionDir, error.paths);
+            printFailureClipboard(error);
+            output.write(`Prompt Lab failed: ${error.cause instanceof Error ? error.cause.message : error.message}\n`);
+        } else {
+            const message = error instanceof Error ? error.message : String(error);
+            output.write(`Prompt Lab failed: ${message}\n`);
+        }
+        process.exitCode = 1;
     } finally {
         rl.close();
     }

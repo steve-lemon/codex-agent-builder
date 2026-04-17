@@ -10,6 +10,7 @@ import {
     buildReflectStructuredRequest,
     parsePlanStructuredOutput,
 } from './structured-tasks';
+import { classifyStructuredGatewayError } from './structured-error-classifier';
 
 /** Configuration used to initialize the Gemini-backed gateway. */
 export interface GeminiGatewayOptions {
@@ -92,9 +93,11 @@ export class GeminiGateway implements LlmGateway {
             const parsedJson = JSON.parse(response.text);
             return schema.parse(parsedJson) as z.output<TSchema>;
         } catch (error) {
-            throw new AgentError(`Gemini structured response parsing failed for ${schemaName}`, {
-                cause: AgentError.rootCause(error),
-                code: 'GEMINI_STRUCTURED_PARSE_FAILED',
+            throw classifyStructuredGatewayError({
+                provider: 'gemini',
+                model,
+                schemaName,
+                error,
             });
         }
     }

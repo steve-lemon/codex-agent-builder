@@ -1,10 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { PromptLabProduct } from './product';
+import { PromptLabProduct, PromptLabRunError } from './product';
 
 describe('PromptLabProduct', () => {
+    afterEach(() => {
+        vi.unstubAllEnvs();
+    });
+
     it('runs a prompt-lab session, writes artifacts, and synthesizes a Codex prompt', async () => {
         const outputRoot = await mkdtemp(join(tmpdir(), 'prompt-lab-'));
         const product = new PromptLabProduct();
@@ -55,5 +59,47 @@ describe('PromptLabProduct', () => {
         expect(artifacts.result.skillName).toBe('flow-preflight-validator');
         expect(artifacts.result.preflightPayload?.feasible).toBe(false);
         expect(artifacts.codexPrompt.codexPrompt).toContain('Codex');
+    });
+
+    it('fails early with a clear error when OpenAI is selected without credentials or proxy', async () => {
+        vi.stubEnv('OPENAI_API_KEY', '');
+        vi.stubEnv('OPENAI_STRUCTURED_PROXY_URL', '');
+        const outputRoot = await mkdtemp(join(tmpdir(), 'prompt-lab-'));
+        const product = new PromptLabProduct();
+
+        await expect(
+            product.runRequirement({
+                config: {
+                    provider: 'openai',
+                    mainModel: 'gpt-4.1-mini',
+                    liteModel: 'gpt-4.1-mini',
+                    language: 'ko',
+                    skillName: 'flow-designer',
+                    outputRoot,
+                },
+                requirement: '입력한 텍스트의 오타를 정정해줘',
+            }),
+        ).rejects.toBeInstanceOf(PromptLabRunError);
+
+        try {
+            await product.runRequirement({
+                config: {
+                    provider: 'openai',
+                    mainModel: 'gpt-4.1-mini',
+                    liteModel: 'gpt-4.1-mini',
+                    language: 'ko',
+                    skillName: 'flow-designer',
+                    outputRoot,
+                },
+                requirement: '입력한 텍스트의 오타를 정정해줘',
+            });
+        } catch (error) {
+            expect(error).toBeInstanceOf(PromptLabRunError);
+            const runError = error as PromptLabRunError;
+            expect(runError.clipboardText).toContain('PROMPT_LAB_FAILURE');
+            expect(runError.paths.failureTextPath).toContain('failure.txt');
+            const failureText = await readFile(runError.paths.failureTextPath, 'utf8');
+            expect(failureText).toContain('OPENAI_API_KEY');
+        }
     });
 });

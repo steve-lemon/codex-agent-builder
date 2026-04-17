@@ -204,8 +204,8 @@ describe('agent schemas', () => {
                     mode: 'parallel-tools',
                     description: 'Load context',
                     toolCalls: [
-                        { toolName: 'getCustomerById', args: { customerId: 'c_1' } },
-                        { toolName: 'getOrdersByCustomer', args: { customerId: 'c_1' } },
+                        { toolName: 'getCustomerById', argsJson: '{"customerId":"c_1"}' },
+                        { toolName: 'getOrdersByCustomer', argsJson: '{"customerId":"c_1"}' },
                     ],
                     reasoning: null,
                 },
@@ -293,5 +293,21 @@ describe('agent schemas', () => {
                 mode: 'single-tool',
             }),
         );
+    });
+
+    it('rejects planner responses whose tool argsJson is not valid object JSON', () => {
+        expect(() =>
+            parsePlanResponse({
+                steps: [
+                    {
+                        id: 's1',
+                        mode: 'single-tool',
+                        description: 'broken args',
+                        toolCalls: [{ toolName: 'webSearch', argsJson: '"hello"' }],
+                        reasoning: null,
+                    },
+                ],
+            }),
+        ).toThrow(/Planner returned invalid tool args JSON/);
     });
 });

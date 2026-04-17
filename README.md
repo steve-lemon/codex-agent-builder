@@ -220,6 +220,8 @@ To use OpenAI:
 4. set `USE_REAL_OPENAI=true`
 5. optionally set `OPENAI_STRUCTURED_PROXY_URL` to route structured parsing through an external HTTP proxy
 
+The CLI/product entrypoints load `.env` from the project root automatically when present.
+
 Runtime selects gateway in [`src/index.ts`](./src/index.ts).
 The OpenAI gateway is implemented against the SDK `responses.parse` structured-output flow and expects `openai@^6.27.0`.
 When `OPENAI_STRUCTURED_PROXY_URL` is set, the gateway serializes the active schema and delegates the structured parse call over HTTP.

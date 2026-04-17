@@ -1,8 +1,18 @@
 // Vitest specs for the product-facing flow design facade.
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FlowDesignProduct } from './flow-design-product';
 
 describe('FlowDesignProduct', () => {
+    beforeEach(() => {
+        vi.stubEnv('LLM_PROVIDER', 'fake');
+        vi.stubEnv('USE_REAL_OPENAI', 'false');
+        vi.stubEnv('USE_REAL_GEMINI', 'false');
+    });
+
+    afterEach(() => {
+        vi.unstubAllEnvs();
+    });
+
     it('runs explicit preflight without relying on selector wording', async () => {
         const product = new FlowDesignProduct();
         const result = await product.preflight('이메일을 확인해서 답장 해줘');

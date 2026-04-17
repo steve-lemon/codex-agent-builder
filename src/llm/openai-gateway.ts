@@ -20,6 +20,7 @@ import {
     buildReflectStructuredRequest,
     parsePlanStructuredOutput,
 } from './structured-tasks';
+import { classifyStructuredGatewayError } from './structured-error-classifier';
 
 /** Configuration used to initialize the OpenAI-backed gateway. */
 export interface OpenAiGatewayOptions {
@@ -91,9 +92,11 @@ export class OpenAiGateway implements LlmGateway {
 
             return schema.parse(output);
         } catch (error) {
-            throw new AgentError(`Structured response parsing failed for ${schema.name}`, {
-                cause: AgentError.rootCause(error),
-                code: 'OPENAI_STRUCTURED_PARSE_FAILED',
+            throw classifyStructuredGatewayError({
+                provider: 'openai',
+                model: purpose === 'lite' ? this.liteModel : this.model,
+                schemaName: schema.name,
+                error,
             });
         }
     }

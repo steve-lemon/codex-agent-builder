@@ -98,11 +98,7 @@ export class FakeLlmGateway implements LlmGateway {
                 strengths: ['Captured execution output and persisted the run artifacts.'],
                 weaknesses: ['Tighten instructions around evaluation criteria and retry behavior.'],
                 improvements: ['Ask the agent to validate output quality before finalizing.'],
-                recommendedPromptFocus: [
-                    'execution logging',
-                    'self-review criteria',
-                    'user-feedback incorporation',
-                ],
+                recommendedPromptFocus: ['execution logging', 'self-review criteria', 'user-feedback incorporation'],
             });
         }
 

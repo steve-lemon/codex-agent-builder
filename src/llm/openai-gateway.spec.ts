@@ -135,7 +135,7 @@ describe('OpenAiGateway', () => {
                 userInput: 'done?',
                 stepResults: [],
             }),
-        ).rejects.toThrowError(/Structured response parsing failed for reflector_output/);
+        ).rejects.toThrowError(/OpenAI structured response parsing failed for reflector_output/);
     });
 
     it('raises AgentError when the OpenAI SDK loader fails during local execution', async () => {
@@ -184,5 +184,33 @@ describe('OpenAiGateway', () => {
         });
 
         expect(result).toEqual({ ok: true });
+    });
+
+    it('surfaces a clearer error when the selected OpenAI model does not exist', async () => {
+        const parser = {
+            parse: vi.fn(async () => {
+                throw new AgentError('The model `gpt-5.2-mini` does not exist', {
+                    code: 'model_not_found',
+                });
+            }),
+        };
+        const gateway = new OpenAiGateway({
+            model: 'gpt-5.2-mini',
+            parser,
+        });
+
+        await expect(
+            gateway.plan({
+                userInput: '오타를 정정해줘',
+                skillName: 'flow-designer',
+                skillInstructions: 'Test',
+                allowedTools: [],
+                toolManifests: [],
+                toolDefinitions: [],
+            }),
+        ).rejects.toMatchObject({
+            code: 'OPENAI_MODEL_NOT_AVAILABLE',
+            message: expect.stringContaining('OpenAI model is not available for plan: gpt-5.2-mini'),
+        });
     });
 });

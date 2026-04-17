@@ -202,6 +202,120 @@ export const FinalResultSchema = z.object({
         .optional(),
 });
 
+const FlowDesignDetailsDtoResponseSchema = z.object({
+    improvements: z.array(z.string()),
+    feasible: z.boolean(),
+    missingCapabilities: z.array(z.string()),
+    designPassCount: z.number().int().nonnegative(),
+    taskGraphRefinementCount: z.number().int().nonnegative(),
+});
+
+const NodeConfigurationDetailsDtoResponseSchema = z.object({
+    improvements: z.array(z.string()),
+    appliedStrategies: z.array(z.string()),
+    nodeStrategyAssignments: z.array(
+        z.object({
+            nodeId: z.string(),
+            strategyId: z.string(),
+        }),
+    ),
+    configuredNodeCount: z.number().int().nonnegative(),
+    probeInsightCount: z.number().int().nonnegative(),
+});
+
+/** OpenAI-safe final-result response schema with required fields and nullable nested objects. */
+export const FinalResultResponseSchema = z.object({
+    summary: z.string(),
+    success: z.boolean(),
+    nextActions: z.array(z.string()),
+    designDetails: z
+        .object({
+            flowDesignImprovements: z.array(z.string()),
+            nodeConfigStrategyImprovements: z.array(z.string()),
+            flowDesign: FlowDesignDetailsDtoResponseSchema.nullable(),
+            nodeConfiguration: NodeConfigurationDetailsDtoResponseSchema.nullable(),
+            appliedNodeConfigStrategies: z.array(z.string()),
+            nodeStrategyAssignments: z.array(
+                z.object({
+                    nodeId: z.string(),
+                    strategyId: z.string(),
+                }),
+            ),
+            configuredNodeCount: z.number().int().nonnegative(),
+            probeInsightCount: z.number().int().nonnegative(),
+        })
+        .nullable(),
+    payload: z
+        .discriminatedUnion('kind', [
+            z.object({
+                kind: z.literal('flow-designer'),
+                feasible: z.boolean(),
+                designPassCount: z.number().int().nonnegative(),
+                taskGraphRefinementCount: z.number().int().nonnegative(),
+                configuredNodeCount: z.number().int().nonnegative(),
+                probeInsightCount: z.number().int().nonnegative(),
+                missingCapabilities: z.array(z.string()),
+            }),
+            z.object({
+                kind: z.literal('flow-preflight-validator'),
+                feasible: z.boolean(),
+                missingCapabilities: z.array(z.string()),
+                proposedBlockIds: z.array(z.string()),
+            }),
+            z.object({
+                kind: z.literal('node-config-designer'),
+                requiresExistingFlowDraft: z.boolean(),
+                suggestedNextTools: z.array(z.string()),
+            }),
+        ])
+        .nullable(),
+});
+
+/** Normalizes an OpenAI-safe final-result payload into the runtime FinalResult shape. */
+export function parseFinalResultResponse(input: unknown): FinalResult {
+    const normalized = normalizeFinalResultResponseInput(input);
+    const parsed = FinalResultResponseSchema.parse(normalized);
+    return FinalResultSchema.parse({
+        ...parsed,
+        designDetails: parsed.designDetails
+            ? {
+                  ...parsed.designDetails,
+                  flowDesign: parsed.designDetails.flowDesign ?? undefined,
+                  nodeConfiguration: parsed.designDetails.nodeConfiguration ?? undefined,
+              }
+            : undefined,
+        payload: parsed.payload ?? undefined,
+    });
+}
+
+function normalizeFinalResultResponseInput(input: unknown): unknown {
+    if (!input || typeof input !== 'object') {
+        return input;
+    }
+
+    const record = input as Record<string, unknown>;
+    const designDetailsInput =
+        record.designDetails && typeof record.designDetails === 'object'
+            ? (record.designDetails as Record<string, unknown>)
+            : undefined;
+
+    return {
+        ...record,
+        designDetails: designDetailsInput
+            ? {
+                  ...designDetailsInput,
+                  flowDesign: designDetailsInput.flowDesign ?? null,
+                  nodeConfiguration: designDetailsInput.nodeConfiguration ?? null,
+                  appliedNodeConfigStrategies: designDetailsInput.appliedNodeConfigStrategies ?? [],
+                  nodeStrategyAssignments: designDetailsInput.nodeStrategyAssignments ?? [],
+                  configuredNodeCount: designDetailsInput.configuredNodeCount ?? 0,
+                  probeInsightCount: designDetailsInput.probeInsightCount ?? 0,
+              }
+            : record.designDetails ?? null,
+        payload: record.payload ?? null,
+    };
+}
+
 /** Execution metadata passed into step execution. */
 export interface ExecuteStepContext {
     runId: string;

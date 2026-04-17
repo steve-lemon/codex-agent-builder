@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { addDiagnosticListener, removeDiagnosticListener, type DiagnosticListener } from '../diagnostics/logger';
+import { AgentError } from '../errors/agent-error';
 import { FlowDesignProduct } from '../product';
 import type { ProductDesignRunResult, ProductFlowSkill } from '../product/types';
 import { FakeLlmGateway, GeminiGateway, OpenAiGateway, type LlmGateway } from '../llm';
@@ -7,6 +8,7 @@ import { appendNdjson, createPromptLabSession, writeJson, writeText } from './fi
 import { getPromptLabManifest } from './manifest';
 import { buildPromptLabCodexPromptRequest, buildPromptLabSelfReviewRequest } from './requests';
 import type {
+    PromptLabArtifactPaths,
     PromptLabCodexPrompt,
     PromptLabEventHooks,
     PromptLabRunArtifacts,
@@ -19,7 +21,49 @@ export interface PromptLabProductOptions {
     productFactory?: (gateway: LlmGateway) => FlowDesignProduct;
 }
 
+export class PromptLabRunError extends AgentError {
+    constructor(
+        message: string,
+        public readonly session: PromptLabSessionRecord,
+        public readonly paths: PromptLabArtifactPaths,
+        public readonly clipboardText: string,
+        options?: { cause?: unknown; code?: string },
+    ) {
+        super(message, {
+            cause: options?.cause,
+            code: options?.code ?? 'PROMPT_LAB_RUN_FAILED',
+        });
+    }
+}
+
+function assertProviderConfiguration(config: PromptLabSessionConfig): void {
+    if (config.provider === 'openai') {
+        const hasApiKey = Boolean(process.env.OPENAI_API_KEY);
+        const hasProxy = Boolean(process.env.OPENAI_STRUCTURED_PROXY_URL);
+        if (!hasApiKey && !hasProxy) {
+            throw new AgentError(
+                'Prompt Lab cannot start with OpenAI because neither OPENAI_API_KEY nor OPENAI_STRUCTURED_PROXY_URL is configured.',
+                {
+                    code: 'PROMPT_LAB_OPENAI_NOT_CONFIGURED',
+                },
+            );
+        }
+        return;
+    }
+
+    if (config.provider === 'gemini') {
+        const hasGeminiKey = Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+        if (!hasGeminiKey) {
+            throw new AgentError('Prompt Lab cannot start with Gemini because GEMINI_API_KEY or GOOGLE_API_KEY is missing.', {
+                code: 'PROMPT_LAB_GEMINI_NOT_CONFIGURED',
+            });
+        }
+    }
+}
+
 function createGateway(config: PromptLabSessionConfig): LlmGateway {
+    assertProviderConfiguration(config);
+
     if (config.provider === 'openai') {
         return new OpenAiGateway({ model: config.mainModel, liteModel: config.liteModel });
     }
@@ -102,7 +146,7 @@ function renderSummaryMarkdown(args: {
     ].join('\n');
 }
 
-function buildArtifactPaths(sessionDir: string) {
+function buildArtifactPaths(sessionDir: string): PromptLabArtifactPaths {
     return {
         timelinePath: join(sessionDir, 'timeline.ndjson'),
         designPath: join(sessionDir, 'design-events.ndjson'),
@@ -114,7 +158,58 @@ function buildArtifactPaths(sessionDir: string) {
         promptMarkdownPath: join(sessionDir, 'codex-prompt.md'),
         summaryPath: join(sessionDir, 'summary.md'),
         artifactsPath: join(sessionDir, 'artifacts.json'),
+        failureJsonPath: join(sessionDir, 'failure.json'),
+        failureTextPath: join(sessionDir, 'failure.txt'),
     };
+}
+
+function serializeError(error: unknown): unknown {
+    if (!(error instanceof Error)) {
+        return {
+            message: String(error),
+        };
+    }
+
+    return {
+        name: error.name,
+        message: error.message,
+        code: error instanceof AgentError ? error.code : undefined,
+        stack: error.stack,
+        cause: 'cause' in error ? serializeError((error as Error & { cause?: unknown }).cause) : undefined,
+    };
+}
+
+function formatFailureClipboard(args: {
+    session: PromptLabSessionRecord;
+    paths: PromptLabArtifactPaths;
+    error: unknown;
+}): string {
+    const message = args.error instanceof Error ? args.error.message : String(args.error);
+    const stack = args.error instanceof Error && args.error.stack ? args.error.stack : '(no stack)';
+    const causeMessage =
+        args.error instanceof Error && 'cause' in args.error && (args.error as Error & { cause?: unknown }).cause instanceof Error
+            ? (args.error as Error & { cause?: Error }).cause?.message
+            : undefined;
+
+    return [
+        'PROMPT_LAB_FAILURE',
+        `sessionDir=${args.session.sessionDir}`,
+        `skill=${args.session.config.skillName}`,
+        `provider=${args.session.config.provider}`,
+        `mainModel=${args.session.config.mainModel}`,
+        `liteModel=${args.session.config.liteModel}`,
+        `requirement=${args.session.requirement}`,
+        `timeline=${args.paths.timelinePath}`,
+        `design=${args.paths.designPath}`,
+        `diagnostics=${args.paths.diagnosticsPath}`,
+        `failureJson=${args.paths.failureJsonPath}`,
+        `failureText=${args.paths.failureTextPath}`,
+        `error=${message}`,
+        `cause=${causeMessage ?? '(none)'}`,
+        'stack<<EOF',
+        stack,
+        'EOF',
+    ].join('\n');
 }
 
 export class PromptLabProduct {
@@ -130,25 +225,29 @@ export class PromptLabProduct {
         gateway: LlmGateway;
     }> {
         const session = await createPromptLabSession(args.config, args.requirement);
-        const gateway = createGateway(args.config);
-        const product =
-            this.options.productFactory?.(gateway) ??
-            new FlowDesignProduct({
-                runtimeOptions: {
-                    llm: gateway,
-                },
-            });
         const paths = buildArtifactPaths(session.sessionDir);
+        args.hooks?.onSessionPrepared?.({ session, paths });
 
-        const diagnosticListener: DiagnosticListener = (level, event) => {
-            void appendNdjson(paths.diagnosticsPath, { level, event });
-            args.hooks?.onDiagnosticEvent?.({ level, event });
-        };
+        let gateway: LlmGateway | undefined;
+        let diagnosticListener: DiagnosticListener | undefined;
 
-        addDiagnosticListener(diagnosticListener);
-        let result: ProductDesignRunResult;
         try {
-            result = await runFlowSkill(product, args.config.skillName, args.requirement, {
+            gateway = createGateway(args.config);
+            const product =
+                this.options.productFactory?.(gateway) ??
+                new FlowDesignProduct({
+                    runtimeOptions: {
+                        llm: gateway,
+                    },
+                });
+
+            diagnosticListener = (level, event) => {
+                void appendNdjson(paths.diagnosticsPath, { level, event });
+                args.hooks?.onDiagnosticEvent?.({ level, event });
+            };
+            addDiagnosticListener(diagnosticListener);
+
+            const result = await runFlowSkill(product, args.config.skillName, args.requirement, {
                 onTimelineEvent: event => {
                     void appendNdjson(paths.timelinePath, event);
                     args.hooks?.onTimelineEvent?.(event);
@@ -158,12 +257,28 @@ export class PromptLabProduct {
                     args.hooks?.onDesignEvent?.(event);
                 },
             });
-        } finally {
-            removeDiagnosticListener(diagnosticListener);
-        }
 
-        await writeJson(paths.resultPath, result);
-        return { session, result, gateway };
+            await writeJson(paths.resultPath, result);
+            return { session, result, gateway };
+        } catch (error) {
+            const clipboardText = formatFailureClipboard({ session, paths, error });
+            await writeJson(paths.failureJsonPath, {
+                error: serializeError(error),
+                session,
+                paths,
+            });
+            await writeText(paths.failureTextPath, `${clipboardText}\n`);
+            await writeJson(paths.artifactsPath, paths);
+
+            throw new PromptLabRunError('Prompt Lab execution failed.', session, paths, clipboardText, {
+                cause: error,
+                code: error instanceof AgentError ? error.code : 'PROMPT_LAB_RUN_FAILED',
+            });
+        } finally {
+            if (diagnosticListener) {
+                removeDiagnosticListener(diagnosticListener);
+            }
+        }
     }
 
     async createSelfReview(args: {
