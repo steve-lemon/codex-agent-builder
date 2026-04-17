@@ -207,15 +207,15 @@ The Gemini SDK requires Node.js 20 or newer for real API execution, and this pro
 - `USE_REAL_GEMINI`: `true` or `false`
 - `USE_REAL_OPENAI`: `true` or `false`
 - `CODEX_RESOURCE_ROOT`: optional shared resource root; defaults to `/Users/dujung/Documents/Codex/data`
-- `CODEX_RESOURCE_PROFILE`: optional resource profile suffix; if set to `staging`, the loader will prefer files such as `FLOW_DESIGN_MANIFEST.staging.json` when they exist inside the resource root
+- `CODEX_RESOURCE_PROFILE`: optional resource profile suffix; if set to `staging`, the loader will prefer files such as `FLOW_DESIGN_MANIFEST.staging.yml` when they exist inside the resource root
 
 Resource loading notes:
 
-- JSON-backed defaults, skill knowledge, and deterministic fake copy are loaded through a shared cached resource layer.
+- YAML-backed manifests are loaded through a shared async resource layer.
 - Today the default source is the local filesystem.
 - The resource boundary is intentionally abstracted so the same modules can later be backed by a remote config service, database, or managed manifest store without rewriting the design cores.
 - The runtime now expects one shared resource root rather than per-file override paths.
-- Each major resource consumer reads through a manifest surface:
+- Each major resource consumer reads through an id-based resource registry and manifest surface:
   - `flow-design`: `getFlowDesignManifest()`
   - `node-config-design`: `getNodeConfigDesignManifest()`
   - `llm/runtime`: `getLlmRuntimeManifest()`
@@ -225,19 +225,19 @@ Expected resource root structure:
 ```text
 <CODEX_RESOURCE_ROOT>/
 ├─ runtime/
-│  └─ LLM_RUNTIME_MANIFEST.json
+│  └─ LLM_RUNTIME_MANIFEST.yml
 └─ skills/
    ├─ flow-designer/
-   │  └─ FLOW_DESIGN_MANIFEST.json
+   │  └─ FLOW_DESIGN_MANIFEST.yml
    └─ node-config-designer/
-      └─ NODE_CONFIG_MANIFEST.json
+      └─ NODE_CONFIG_MANIFEST.yml
 ```
 
 Profile-specific variants follow the same layout by inserting the profile name before the extension. Examples:
 
-- `skills/flow-designer/FLOW_DESIGN_MANIFEST.staging.json`
-- `skills/node-config-designer/NODE_CONFIG_MANIFEST.production.json`
-- `runtime/LLM_RUNTIME_MANIFEST.dev.json`
+- `skills/flow-designer/FLOW_DESIGN_MANIFEST.staging.yml`
+- `skills/node-config-designer/NODE_CONFIG_MANIFEST.production.yml`
+- `runtime/LLM_RUNTIME_MANIFEST.dev.yml`
 
 ## Future Extensions
 

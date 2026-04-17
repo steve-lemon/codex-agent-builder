@@ -1,0 +1,57 @@
+structuredTaskPrompts:
+  planSystemPrompt: >-
+    Return a concise executable plan for an agent runtime. Use only provided tools and generate tool args that satisfy
+    each tool parameter schema.
+  reflectSystemPrompt: Decide whether run is complete.
+  finalizeSystemPrompt: Return final concise agent result.
+fakeCopy:
+  plan:
+    research:
+      collectFactsDescription: Collect research facts
+      synthesizeDescription: Synthesize findings
+      synthesizeReasoning: Summarize key themes and caveats.
+      finalizeDescription: Finalize response
+    ops:
+      readContextDescription: Read policy and context in parallel
+      notifyDescription: Notify channel
+      statusQuery: ops status
+      slackMessage: Daily automation summary ready.
+      finalizeDescription: Finalize response
+    flowPreflight:
+      inferTaskGraphDescription: Infer the task graph from the request
+      analyzeCompatibilityDescription: Analyze graph compatibility against current blocks
+      proposeMissingBlocksDescription: Draft any missing blocks implied by the graph
+      prevalidateDescription: Produce a full preflight validation summary
+      finalizeDescription: Finalize preflight validation response
+    nodeConfig:
+      reasoningDescription: Explain how node configuration design is applied
+      reasoning: This sub-agent configures an existing flow draft after the main flow structure already exists.
+      finalizeDescription: Finalize node-configuration guidance
+    flowDesigner:
+      analyzeIntentDescription: Analyze request intent for flow design
+      prevalidateDescription: Run graph-based preflight validation before flow design
+      infeasibleStopDescription: Stop before design because required capabilities are missing
+      infeasibleStopReasoning: Do not force a flow design when critical capabilities such as email access are unavailable.
+      infeasibleFinalizeDescription: Finalize capability-gap response
+      probeDescription: Probe the AI block behavior before using it
+      finalizeDescription: Finalize flow design response
+    customerSupport:
+      loadContextDescription: Load customer context in parallel
+      evaluateActionDescription: Evaluate support action
+      evaluateActionReasoning: Use policy and order history to decide whether escalation/refund is needed.
+      approvalActionDescription: Execute approval-required action
+      escalationReason: Escalation requested by agent
+      finalizeDescription: Finalize response
+  final:
+    nodeConfigDesigner:
+      summary: >-
+        Handled with skill node-config-designer. This sub-agent configures an existing flow draft after the main flow
+        structure has been created.
+      nextActions:
+        - Run this skill after flow-designer has produced a concrete flow draft.
+        - Use designFlowNodeConfigurations and validateFlowNodeConfigurations on the draft flow.
+      improvements:
+        - Apply this sub-agent after the graph structure is stable.
+        - Review block-specific strategies before executing the draft.
+    generic:
+      reviewTraceLogs: Review trace logs if needed

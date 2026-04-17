@@ -1,34 +1,14 @@
-// Aggregated flow-design manifest that pulls together catalogs and classifier prompts.
-import { join } from 'node:path';
-import { CachedJsonFileResource } from '../resources/json-file';
-import { resolveJsonResourcePath } from '../resources/path-resolver';
-import {
-    FlowDesignClassifierPromptsSchema,
-    FlowDesignDefaultsSchema,
-    FlowDesignKnowledgeManifestSchema,
-    FlowDesignTaskTypeCatalogSchema,
-    TaskGraphCatalogSchema,
-    type FlowDesignClassifierPromptsRecord,
-    type FlowDesignDefaultsRecord,
-    type FlowDesignKnowledgeManifestRecord,
-    type FlowDesignTaskGraphTemplateRecord,
-    type FlowDesignTaskTypeDefinitionRecord,
+// Aggregated flow-design manifest that combines catalogs, prompts, defaults, and knowledge.
+import { loadResource } from '../resources/loader';
+import type {
+    FlowDesignClassifierPromptsRecord,
+    FlowDesignDefaultsRecord,
+    FlowDesignManifestRecord,
+    FlowDesignKnowledgeManifestRecord,
+    FlowDesignTaskGraphTemplateRecord,
+    FlowDesignTaskTypeDefinitionRecord,
 } from './manifest-schemas';
 
-const taskTypeCatalogResource = new CachedJsonFileResource(
-    resolveJsonResourcePath({
-        fallbackRoot: join(process.cwd(), 'data'),
-        relativePath: join('skills', 'flow-designer', 'FLOW_DESIGN_MANIFEST.json'),
-    }),
-    FlowDesignTaskTypeCatalogSchema.extend({
-        taskGraphTemplates: TaskGraphCatalogSchema.shape.templates,
-        classifierPrompts: FlowDesignClassifierPromptsSchema,
-        defaults: FlowDesignDefaultsSchema,
-        knowledge: FlowDesignKnowledgeManifestSchema,
-    }),
-);
-
-/** Combined metadata surface for flow-design task classification, graph templates, and classifier prompts. */
 export interface FlowDesignManifest {
     taskTypes: FlowDesignTaskTypeDefinitionRecord[];
     taskGraphTemplates: FlowDesignTaskGraphTemplateRecord[];
@@ -37,9 +17,10 @@ export interface FlowDesignManifest {
     knowledge: FlowDesignKnowledgeManifestRecord;
 }
 
-/** Loads the aggregated flow-design manifest from the shared resource root. */
 export async function getFlowDesignManifest(): Promise<FlowDesignManifest> {
-    const manifest = await taskTypeCatalogResource.load();
+    // TODO(flow-design): If this manifest grows further, split the typed view from the raw
+    // resource payload so consumers can request only the sections they need.
+    const manifest: FlowDesignManifestRecord = await loadResource('flow-design.manifest');
 
     return {
         taskTypes: manifest.taskTypes,

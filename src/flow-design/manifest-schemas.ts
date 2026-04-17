@@ -9,10 +9,6 @@ export const FlowDesignTaskTypeDefinitionSchema = z.object({
     signals: z.array(z.string()),
 });
 
-export const FlowDesignTaskTypeCatalogSchema = z.object({
-    taskTypes: z.array(FlowDesignTaskTypeDefinitionSchema),
-});
-
 export const TaskGraphNodeSchema = z.object({
     id: z.string(),
     label: z.string().optional(),
@@ -36,10 +32,6 @@ export const TaskGraphTemplateSchema = z.object({
         nodes: z.array(TaskGraphNodeSchema),
         edges: z.array(TaskGraphEdgeSchema),
     }),
-});
-
-export const TaskGraphCatalogSchema = z.object({
-    templates: z.array(TaskGraphTemplateSchema),
 });
 
 export const FlowDesignClassifierPromptsSchema = z.object({
@@ -85,11 +77,18 @@ export const FlowDesignKnowledgeManifestSchema = z.object({
     reflectionNotes: z.array(z.string()).optional(),
 });
 
+export const FlowDesignManifestSchema = z.object({
+    taskTypes: z.array(FlowDesignTaskTypeDefinitionSchema),
+    taskGraphTemplates: z.array(TaskGraphTemplateSchema),
+    classifierPrompts: FlowDesignClassifierPromptsSchema,
+    defaults: FlowDesignDefaultsSchema,
+    knowledge: FlowDesignKnowledgeManifestSchema,
+});
+
 export type FlowDesignTaskTypeDefinitionRecord = z.infer<typeof FlowDesignTaskTypeDefinitionSchema>;
-export type FlowDesignTaskTypeCatalogRecord = z.infer<typeof FlowDesignTaskTypeCatalogSchema>;
 export type FlowDesignTaskGraphTemplateRecord = z.infer<typeof TaskGraphTemplateSchema>;
-export type FlowDesignTaskGraphCatalogRecord = z.infer<typeof TaskGraphCatalogSchema>;
 export type FlowDesignClassifierPromptsRecord = z.infer<typeof FlowDesignClassifierPromptsSchema>;
 export type FlowDesignDefaultsRecord = z.infer<typeof FlowDesignDefaultsSchema>;
 export type FlowDesignKnowledgeConditionalNotesRecord = z.infer<typeof FlowDesignKnowledgeConditionalNotesSchema>;
 export type FlowDesignKnowledgeManifestRecord = z.infer<typeof FlowDesignKnowledgeManifestSchema>;
+export type FlowDesignManifestRecord = z.infer<typeof FlowDesignManifestSchema>;
