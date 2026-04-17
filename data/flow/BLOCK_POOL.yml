@@ -70,6 +70,32 @@ blocks:
         direction: output
         dataType: text
         description: User-entered text payload.
+  - id: json-input
+    label: JSON Input
+    description: Accepts structured JSON text and emits it as a JSON packet for downstream processing.
+    capabilities:
+      - json-input
+    nodeConfigStrategyId: generic-text-input
+    nodeConfigGuidance:
+      sharedNotes:
+        - Keep JSON input labels descriptive so the upstream payload shape is obvious in the editor.
+    configs:
+      - id: label
+        label: Prompt Label
+        hint: text
+        defaultValue: JSON Input
+      - id: input
+        label: JSON Payload
+        hint: text
+        required: true
+        defaultValue: "{}"
+    inputs: []
+    outputs:
+      - localId: json
+        label: JSON
+        direction: output
+        dataType: json
+        description: Structured JSON payload.
   - id: input
     label: Input
     description: Emits the configured input string as a packet on the output port.

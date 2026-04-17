@@ -17,16 +17,24 @@ export type ProductFlowSkill = 'flow-preflight-validator' | 'flow-designer' | 'n
 
 export type RequirementFulfillmentLevel = 'fulfilled' | 'uncertain' | 'partial' | 'not-fulfilled';
 
-export type RequirementAssessmentReasonCategory = 'execution' | 'capability' | 'classification' | 'output-contract' | 'runtime';
+export type RequirementAssessmentReasonCategory =
+    | 'execution'
+    | 'capability'
+    | 'classification'
+    | 'output-contract'
+    | 'runtime'
+    | 'evidence';
 
 export type RequirementAssessmentReasonCode =
     | 'execution-failed'
+    | 'execution-completed-without-solution'
     | 'missing-capabilities'
     | 'generic-task-graph-fallback'
     | 'mock-model-config'
     | 'json-contract-not-preserved'
     | 'json-schema-missing'
-    | 'plain-text-format-drift';
+    | 'plain-text-format-drift'
+    | 'synthetic-sample-validation';
 
 export interface RequirementAssessmentReason {
     category: RequirementAssessmentReasonCategory;

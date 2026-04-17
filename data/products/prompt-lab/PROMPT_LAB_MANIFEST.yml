@@ -94,6 +94,7 @@ codexPrompt:
     You are synthesizing a new Codex working prompt.
     Use the run result, self-review, and explicit user feedback.
     Return a practical natural-language working prompt.
+    Never leak Prompt Lab's own wrapper fields such as title, summary, codexPrompt, or usageNotes into the user task requirements.
     Do not add new task requirements that were not explicitly requested.
     Do not introduce examples, error-output formats, fallback behaviors, extra validation rules, or additional deliverables unless the original requirement or user feedback explicitly asks for them.
     Keep the prompt scoped to the requested task, concrete input/output behavior, and only the minimum necessary constraints.
@@ -103,6 +104,7 @@ codexPrompt:
     You are rewriting a generated Codex prompt that drifted into code or implementation detail.
     Rewrite it into a natural-language working prompt.
     Preserve the task constraints, input/output expectations, and validation requirements.
+    Remove any Prompt Lab wrapper fields such as title, summary, codexPrompt, or usageNotes if they leaked into the task output requirements.
     Remove any examples, error-output formats, fallback behaviors, or extra constraints that were not explicitly requested.
     Do not output source code, pseudocode, function definitions, code comments, or markdown code fences.
     Return a reusable task instruction that Codex can follow directly.

@@ -293,6 +293,18 @@ export function sanitizeCodexPromptText(
             return false;
         }
 
+        if (/codexprompt|usage\s*notes|usagenotes/.test(normalized)) {
+            return false;
+        }
+
+        if (
+            /['"]title['"].*['"]summary['"]|['"]summary['"].*['"]codexprompt['"]|['"]title['"].*['"]usagenotes['"]/i.test(
+                normalized,
+            )
+        ) {
+            return false;
+        }
+
         return true;
     });
 
@@ -330,6 +342,8 @@ function localizeAssessmentSummary(language: 'ko' | 'en', summary: string): stri
     const mapping: Record<string, string> = {
         'The run did not complete successfully, so the requirement is not yet fulfilled.':
             '실행이 성공적으로 완료되지 않았으므로, 요구사항은 아직 충족되지 않았습니다.',
+        'The run completed, but the requirement is still not fulfilled because the run completed but did not produce the requested result.':
+            '실행은 완료되었지만, 요청된 결과를 실제로 만들어내지 못해 요구사항은 아직 충족되지 않았습니다.',
         'The run completed, but the requirement is only partially covered because some capabilities are still missing.':
             '실행은 완료되었지만, 일부 capability가 아직 부족하여 요구사항을 부분적으로만 충족합니다.',
         'The run completed successfully, but requirement fulfillment is still uncertain because the design relied on a generic task-graph fallback and the final flow still uses mock execution settings.':
@@ -344,9 +358,13 @@ function localizeAssessmentSummary(language: 'ko' | 'en', summary: string): stri
             '실행은 성공적으로 완료되었지만, 구조화된 JSON 출력에 필요한 명시적 스키마가 아직 없어 요구사항 충족 여부는 아직 불확실합니다.',
         'The run completed successfully, but requirement fulfillment is still uncertain because the flow output format drifted away from the requested plain-text preference.':
             '실행은 성공적으로 완료되었지만, 최종 flow의 출력 형식이 요청된 평문 선호에서 벗어나 요구사항 충족 여부는 아직 불확실합니다.',
+        'The run completed successfully, but requirement fulfillment is still uncertain because validation relied on a synthetic sample input (synthetic-graph-json).':
+            '실행은 성공적으로 완료되었지만, synthetic graph JSON 샘플 기반으로만 검증되었기 때문에 요구사항 충족 여부는 아직 불확실합니다.',
         'The run completed successfully and the current design appears to fulfill the requirement.':
             '실행은 성공적으로 완료되었고, 현재 설계는 요구사항을 충족하는 것으로 보입니다.',
         'the run did not complete successfully': '실행이 성공적으로 완료되지 않았습니다.',
+        'the run completed but did not produce the requested result':
+            '실행은 완료되었지만 요청된 결과를 만들어내지 못했습니다.',
         'some capabilities are still missing': '일부 capability가 아직 부족합니다.',
         'the design relied on a generic task-graph fallback': '설계가 일반 task graph fallback에 의존했습니다.',
         'the final flow still uses mock execution settings': '최종 flow가 아직 mock 실행 설정을 사용하고 있습니다.',
@@ -355,6 +373,8 @@ function localizeAssessmentSummary(language: 'ko' | 'en', summary: string): stri
             '구조화된 JSON 출력에 필요한 명시적 스키마가 아직 없습니다.',
         'the flow output format drifted away from the requested plain-text preference':
             '출력 형식이 요청된 평문 선호에서 벗어났습니다.',
+        'validation relied on a synthetic sample input (synthetic-graph-json)':
+            'synthetic graph JSON 샘플 기반으로만 검증되었습니다.',
     };
 
     return mapping[summary] ?? summary;
@@ -376,6 +396,8 @@ function localizeAssessmentCaveat(language: 'ko' | 'en', caveat: string): string
             '최종 flow가 JSON 출력을 사용하지만 출력 스키마를 정의하지 않았습니다.',
         'The final flow switched to JSON output even though the request preferred plain text.':
             '최종 flow가 요청된 평문 선호와 달리 JSON 출력으로 바뀌었습니다.',
+        'Validation relied on a synthetic sample input (synthetic-graph-json).':
+            '검증이 synthetic graph JSON 샘플 입력에 의존했습니다.',
     };
 
     return mapping[caveat] ?? caveat;
@@ -392,6 +414,7 @@ function localizeAssessmentReasonCategory(language: 'ko' | 'en', category: strin
         classification: '분류',
         'output-contract': '출력 계약',
         runtime: '런타임',
+        evidence: '검증 근거',
     };
 
     return mapping[category] ?? category;
@@ -598,6 +621,9 @@ function renderSummaryMarkdown(args: {
             ? [
                   `## ${sections.executionTiming}`,
                   '',
+                  `- ${isKorean ? 'Advisor timing 상태' : 'Advisor Timing Status'}: ${
+                      args.executionTiming.advisorTimingStatus
+                  }`,
                   `- ${isKorean ? '전체 실행 시간(ms)' : 'Total Run Duration (ms)'}: ${
                       args.executionTiming.totalDurationMs
                   }`,
@@ -606,12 +632,25 @@ function renderSummaryMarkdown(args: {
                       args.executionTiming.advisorTotalDurationMs
                   }`,
                   `- ${isKorean ? 'Advisor 시간 비중' : 'Advisor Time Share'}: ${
-                      args.executionTiming.advisorTimeShare
+                      args.executionTiming.advisorTimeShare ?? 'not-observed'
                   }`,
+                  ...(args.executionTiming.advisorTimingStatus === 'not-observed'
+                      ? [
+                            `- ${
+                                isKorean
+                                    ? '이번 실행에서는 advisor timing 이벤트가 관측되지 않았습니다.'
+                                    : 'Advisor timing events were not observed during this run.'
+                            }`,
+                        ]
+                      : []),
                   '',
                   ...args.executionTiming.advisors.map(
                       advisor =>
                           `- ${advisor.advisorId}: callCount=${advisor.callCount}, totalDurationMs=${advisor.totalDurationMs}, averageDurationMs=${advisor.averageDurationMs}, maxDurationMs=${advisor.maxDurationMs}`,
+                  ),
+                  ...args.executionTiming.stages.map(
+                      stage =>
+                          `- ${isKorean ? '단계' : 'Stage'} ${stage.stageId}: durationMs=${stage.durationMs}`,
                   ),
                   '',
               ]

@@ -62,6 +62,21 @@ describe('FlowDesignProduct', () => {
         );
     });
 
+    it('marks synthetic graph-sample validation as uncertain instead of fulfilled', async () => {
+        const product = new FlowDesignProduct();
+        const result = await product.design('그래프(json)를 보고 이게 뭐하는 것인지 설명(md) 해줘');
+
+        expect(result.requirementAssessment.executionSucceeded).toBe(true);
+        expect(result.requirementAssessment.fulfillmentLevel).toBe('uncertain');
+        expect(result.requirementAssessment.reasons).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    code: 'synthetic-sample-validation',
+                }),
+            ]),
+        );
+    });
+
     it('streams monitoring hooks through a per-call runtime', async () => {
         const product = new FlowDesignProduct();
         const designEvents: string[] = [];

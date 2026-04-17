@@ -66,6 +66,45 @@ describe('Planner', () => {
         execute: async () => ({ flow: {} }),
     });
 
+    const feasibilityTool = defineTool({
+        name: 'assessFlowFeasibility',
+        description: 'Assess whether a requested flow is feasible',
+        parameters: z.object({
+            userRequest: z.string(),
+        }),
+        riskLevel: 'read-only',
+        allowedSkills: ['flow-designer'],
+        requiresConfirmation: false,
+        parallelSafe: true,
+        execute: async () => ({ feasible: true, missingCapabilities: [], taskGraph: { nodes: [], edges: [] } }),
+    });
+
+    const designDraftTool = defineTool({
+        name: 'designFlowDraft',
+        description: 'Design a flow draft',
+        parameters: z.object({
+            userRequest: z.string(),
+            sampleInput: z.string().optional(),
+            desiredCount: z.number().optional(),
+            wantsJson: z.boolean().optional(),
+            preflight: z
+                .object({
+                    feasible: z.boolean(),
+                    missingCapabilities: z.array(z.string()),
+                    taskGraph: z.object({
+                        nodes: z.array(z.unknown()),
+                        edges: z.array(z.unknown()),
+                    }),
+                })
+                .optional(),
+        }),
+        riskLevel: 'read-only',
+        allowedSkills: ['flow-designer'],
+        requiresConfirmation: false,
+        parallelSafe: true,
+        execute: async () => ({ flow: {} }),
+    });
+
     it('passes grounded tool manifests to the gateway and returns a validated plan', async () => {
         const planMock: LlmGateway['plan'] = async input => {
             expect(input.allowedTools).toEqual(['getCustomerById', 'refundOrder']);
@@ -281,17 +320,6 @@ describe('Planner', () => {
     });
 
     it('repairs inline flow payloads by pointing at the nearest previous flow-producing step', async () => {
-        const designDraftTool = defineTool({
-            name: 'designFlowDraft',
-            description: 'Design a flow draft',
-            parameters: z.object({ userRequest: z.string() }),
-            riskLevel: 'read-only',
-            allowedSkills: ['flow-designer'],
-            requiresConfirmation: false,
-            parallelSafe: true,
-            execute: async () => ({ flow: {} }),
-        });
-
         const llm: LlmGateway = {
             plan: async () => ({
                 steps: [
@@ -341,6 +369,68 @@ describe('Planner', () => {
             flow: {
                 $fromStep: 'design_draft',
                 path: 'toolResults.0.data.flow',
+            },
+        });
+    });
+
+    it('repairs inline designFlowDraft preflight payloads by pointing at the nearest previous feasibility step', async () => {
+        const llm: LlmGateway = {
+            plan: async () => ({
+                steps: [
+                    {
+                        id: 'assess_feasibility',
+                        mode: 'single-tool',
+                        description: 'Assess feasibility',
+                        toolCalls: [{ toolName: 'assessFlowFeasibility', args: { userRequest: '그래프 설명' } }],
+                    },
+                    {
+                        id: 'design_draft',
+                        mode: 'single-tool',
+                        description: 'Design draft',
+                        toolCalls: [
+                            {
+                                toolName: 'designFlowDraft',
+                                args: {
+                                    userRequest: '그래프 설명',
+                                    sampleInput: '{}',
+                                    desiredCount: 1,
+                                    wantsJson: false,
+                                    preflight: {
+                                        feasible: false,
+                                        missingCapabilities: [],
+                                        taskGraph: { nodes: [], edges: [] },
+                                    },
+                                },
+                            },
+                        ],
+                    },
+                ],
+            }),
+            reflect: async () => ({ isComplete: true, reason: 'ok', missingItems: [] }),
+            finalize: async () => ({ summary: 'done', success: true, nextActions: [] }),
+            generateStructured: async () => {
+                throw new Error('unused generateStructured mock');
+            },
+        };
+
+        const planner = new Planner(llm);
+        const plan = await planner.createPlan({
+            userInput: '그래프 설명',
+            skillName: 'flow-designer',
+            skillInstructions: 'Use flow tools only.',
+            allowedTools: ['assessFlowFeasibility', 'designFlowDraft'],
+            toolManifests: [buildToolManifest(feasibilityTool), buildToolManifest(designDraftTool)],
+            toolDefinitions: [feasibilityTool, designDraftTool],
+        });
+
+        expect(plan.steps[1]?.toolCalls?.[0]?.args).toEqual({
+            userRequest: '그래프 설명',
+            sampleInput: '{}',
+            desiredCount: 1,
+            wantsJson: false,
+            preflight: {
+                $fromStep: 'assess_feasibility',
+                path: 'toolResults.0.data',
             },
         });
     });
@@ -420,17 +510,6 @@ describe('Planner', () => {
     });
 
     it('rejects referenced flow tool calls that omit other required args', async () => {
-        const designDraftTool = defineTool({
-            name: 'designFlowDraft',
-            description: 'Design a flow draft',
-            parameters: z.object({ userRequest: z.string() }),
-            riskLevel: 'read-only',
-            allowedSkills: ['flow-designer'],
-            requiresConfirmation: false,
-            parallelSafe: true,
-            execute: async () => ({ flow: {} }),
-        });
-
         const llm: LlmGateway = {
             plan: async () => ({
                 steps: [

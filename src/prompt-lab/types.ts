@@ -70,12 +70,19 @@ export interface PromptLabAdvisorTimingDetail {
     maxDurationMs: number;
 }
 
+export interface PromptLabStageTimingDetail {
+    stageId: string;
+    durationMs: number;
+}
+
 export interface PromptLabExecutionTimingSummary {
+    advisorTimingStatus: 'observed' | 'not-observed';
     totalDurationMs: number;
     advisorCallCount: number;
     advisorTotalDurationMs: number;
-    advisorTimeShare: number;
+    advisorTimeShare: number | null;
     advisors: PromptLabAdvisorTimingDetail[];
+    stages: PromptLabStageTimingDetail[];
 }
 
 export interface PromptLabRunArtifacts {

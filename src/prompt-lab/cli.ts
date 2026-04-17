@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { existsSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { emitKeypressEvents } from 'node:readline';
 import { stdin as input, stdout as output } from 'node:process';
@@ -94,24 +95,30 @@ function printSessionHeader(
         includeFlowArtifacts?: boolean;
     } = {},
 ): void {
+    const showIfExists = (label: string, path: string) => {
+        if (existsSync(path)) {
+            output.write(`${label}: ${path}\n`);
+        }
+    };
+
     output.write('\n=== Prompt Lab Session ===\n');
     output.write(`session: ${sessionDir}\n`);
     output.write(`timeline: ${paths.timelinePath}\n`);
-    output.write(`design: ${paths.designPath}\n`);
-    output.write(`diagnostics: ${paths.diagnosticsPath}\n`);
-    output.write(`execution timing: ${paths.executionTimingJsonPath}\n`);
+    showIfExists('design', paths.designPath);
+    showIfExists('diagnostics', paths.diagnosticsPath);
+    showIfExists('execution timing', paths.executionTimingJsonPath);
     if (options.includeFlowArtifacts !== false) {
-        output.write(`designed flow: ${paths.designedFlowPath}\n`);
-        output.write(`designed flow yaml: ${paths.designedFlowYamlPath}\n`);
-        output.write(`designed flow graph: ${paths.designedFlowGraphPath}\n`);
+        showIfExists('designed flow', paths.designedFlowPath);
+        showIfExists('designed flow yaml', paths.designedFlowYamlPath);
+        showIfExists('designed flow graph', paths.designedFlowGraphPath);
     }
     if (options.includeAdvisorArtifacts) {
-        output.write(`advisor evaluation: ${paths.advisorEvaluationMarkdownPath}\n`);
-        output.write(`advisor evaluation json: ${paths.advisorEvaluationJsonPath}\n`);
+        showIfExists('advisor evaluation', paths.advisorEvaluationMarkdownPath);
+        showIfExists('advisor evaluation json', paths.advisorEvaluationJsonPath);
     }
     if (options.includeFailureArtifacts) {
-        output.write(`failure text: ${paths.failureTextPath}\n`);
-        output.write(`failure json: ${paths.failureJsonPath}\n`);
+        showIfExists('failure text', paths.failureTextPath);
+        showIfExists('failure json', paths.failureJsonPath);
     } else {
         output.write('failure artifacts: generated only on failure\n');
     }
@@ -233,6 +240,7 @@ function summarizeExecutionTiming(args: {
     startedAt: string;
     diagnostics: PromptLabDiagnosticEntry[];
     completedAt?: string;
+    stages?: Array<{ stageId: string; startedAt: string; completedAt: string }>;
 }): PromptLabExecutionTimingSummary {
     const totalDurationMs = Math.max(
         0,
@@ -290,15 +298,24 @@ function summarizeExecutionTiming(args: {
     const advisorTotalDurationMs = Number(
         advisors.reduce((sum, advisor) => sum + advisor.totalDurationMs, 0).toFixed(3),
     );
+    const advisorTimingStatus = advisors.length > 0 ? 'observed' : 'not-observed';
     const advisorTimeShare =
-        totalDurationMs > 0 ? Number((advisorTotalDurationMs / totalDurationMs).toFixed(3)) : 0;
+        advisorTimingStatus === 'observed' && totalDurationMs > 0
+            ? Number((advisorTotalDurationMs / totalDurationMs).toFixed(3))
+            : null;
+    const stages = (args.stages ?? []).map(stage => ({
+        stageId: stage.stageId,
+        durationMs: Math.max(0, new Date(stage.completedAt).getTime() - new Date(stage.startedAt).getTime()),
+    }));
 
     return {
+        advisorTimingStatus,
         totalDurationMs,
         advisorCallCount,
         advisorTotalDurationMs,
         advisorTimeShare,
         advisors,
+        stages,
     };
 }
 
@@ -311,20 +328,34 @@ function printExecutionTimingSummary(args: {
     output.write(
         `${isKorean ? '전체 실행 시간(ms)' : 'Total run duration (ms)'}: ${args.executionTiming.totalDurationMs}\n`,
     );
-    output.write(
-        `${isKorean ? 'Advisor 호출 수' : 'Advisor call count'}: ${args.executionTiming.advisorCallCount}\n`,
-    );
+    output.write(`${isKorean ? 'Advisor 호출 수' : 'Advisor call count'}: ${args.executionTiming.advisorCallCount}\n`);
     output.write(
         `${isKorean ? 'Advisor 총 시간(ms)' : 'Advisor total duration (ms)'}: ${
             args.executionTiming.advisorTotalDurationMs
         }\n`,
     );
     output.write(
-        `${isKorean ? 'Advisor 시간 비중' : 'Advisor time share'}: ${args.executionTiming.advisorTimeShare}\n`,
+        `${isKorean ? 'Advisor 시간 비중' : 'Advisor time share'}: ${
+            args.executionTiming.advisorTimeShare ?? 'not-observed'
+        }\n`,
     );
+    if (args.executionTiming.advisorTimingStatus === 'not-observed') {
+        output.write(
+            `${
+                isKorean
+                    ? '이번 실행에서는 advisor timing 이벤트가 관측되지 않았습니다.'
+                    : 'Advisor timing events were not observed during this run.'
+            }\n`,
+        );
+    }
     for (const advisor of args.executionTiming.advisors) {
         output.write(
             `- ${advisor.advisorId}: callCount=${advisor.callCount}, totalDurationMs=${advisor.totalDurationMs}, averageDurationMs=${advisor.averageDurationMs}, maxDurationMs=${advisor.maxDurationMs}\n`,
+        );
+    }
+    for (const stage of args.executionTiming.stages) {
+        output.write(
+            `- ${isKorean ? '단계' : 'Stage'} ${stage.stageId}: durationMs=${stage.durationMs}\n`,
         );
     }
     output.write(`${isKorean ? '=================' : '======================='}\n\n`);
@@ -674,6 +705,10 @@ function localizeAssessmentInline(text: string, isKorean: boolean): string {
             '실행이 성공적으로 끝나지 않아 아직 요구사항을 충족하지 못했습니다.',
         ],
         [
+            'The run completed, but the requirement is still not fulfilled because the run completed but did not produce the requested result.',
+            '실행은 완료되었지만 요청된 결과를 만들어내지 못해 아직 요구사항을 충족하지 못했습니다.',
+        ],
+        [
             'The run completed successfully and the current design appears to fulfill the requirement.',
             '실행이 성공적으로 완료되었고, 현재 설계는 요구사항을 충족하는 것으로 보입니다.',
         ],
@@ -697,6 +732,10 @@ function localizeAssessmentInline(text: string, isKorean: boolean): string {
             '출력 형식이 요청된 평문 선호에서 벗어났습니다.',
         ],
         ['the run did not complete successfully', '실행이 성공적으로 완료되지 않았습니다.'],
+        [
+            'the run completed but did not produce the requested result',
+            '실행은 완료되었지만 요청된 결과를 만들어내지 못했습니다.',
+        ],
     ];
 
     if (text.startsWith('some capabilities are still missing (')) {
@@ -1035,6 +1074,7 @@ async function main() {
             return;
         }
 
+        const agentRunStartedAt = new Date().toISOString();
         const { session, result, gateway } = await product.runRequirement({
             config,
             requirement,
@@ -1058,11 +1098,7 @@ async function main() {
             },
         });
         status.finish('agent execution completed');
-        const executionTiming = summarizeExecutionTiming({
-            startedAt: session.startedAt,
-            completedAt: new Date().toISOString(),
-            diagnostics: diagnosticEntries,
-        });
+        const agentRunCompletedAt = new Date().toISOString();
 
         if (latestPaths) {
             await writeText(latestPaths.designedFlowPath, renderFlowSnapshotMarkdown(latestDesignEvent));
@@ -1075,23 +1111,63 @@ async function main() {
             language,
             ...result.requirementAssessment,
         });
+        const selfReviewStartedAt = new Date().toISOString();
+        const selfReview = await product.createSelfReview({ session, result, gateway });
+        const selfReviewCompletedAt = new Date().toISOString();
+        const executionTiming = summarizeExecutionTiming({
+            startedAt: session.startedAt,
+            completedAt: selfReviewCompletedAt,
+            diagnostics: diagnosticEntries,
+            stages: [
+                {
+                    stageId: 'agent-run',
+                    startedAt: agentRunStartedAt,
+                    completedAt: agentRunCompletedAt,
+                },
+                {
+                    stageId: 'self-review',
+                    startedAt: selfReviewStartedAt,
+                    completedAt: selfReviewCompletedAt,
+                },
+            ],
+        });
         printExecutionTimingSummary({
             language,
             executionTiming,
         });
 
-        const selfReview = await product.createSelfReview({ session, result, gateway });
-
         output.write(`${copy.selfReviewMessage}\n`);
         output.write(`${selfReview.summary}\n`);
         const feedback = await readMultilineFeedback(rl, copy.feedbackPrompt, copy.feedbackDoneHint);
 
+        const finalizeStartedAt = new Date().toISOString();
         const artifacts = await product.finalizeSession({
             session,
             result,
             selfReview,
             userFeedback: feedback,
-            executionTiming,
+            executionTiming: summarizeExecutionTiming({
+                startedAt: session.startedAt,
+                completedAt: new Date().toISOString(),
+                diagnostics: diagnosticEntries,
+                stages: [
+                    {
+                        stageId: 'agent-run',
+                        startedAt: agentRunStartedAt,
+                        completedAt: agentRunCompletedAt,
+                    },
+                    {
+                        stageId: 'self-review',
+                        startedAt: selfReviewStartedAt,
+                        completedAt: selfReviewCompletedAt,
+                    },
+                    {
+                        stageId: 'prompt-finalize',
+                        startedAt: finalizeStartedAt,
+                        completedAt: new Date().toISOString(),
+                    },
+                ],
+            }),
             gateway,
         });
 

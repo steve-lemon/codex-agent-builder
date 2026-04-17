@@ -41,6 +41,23 @@ taskTypes:
       - 소개
     hints:
       fallbackWhenPlainText: true
+  - id: graph-explanation
+    label: Graph Explanation
+    description: Analyze a provided graph-shaped JSON structure and explain its purpose or flow in natural language or markdown.
+    examples:
+      - 그래프(json)를 보고 이게 뭐하는 것인지 설명(md) 해줘
+      - explain what this graph json does in markdown
+    signals:
+      - graph
+      - json
+      - explain
+      - markdown
+      - md
+      - 그래프
+      - 설명
+      - 마크다운
+    hints:
+      fallbackWhenPlainText: true
 taskGraphTemplates:
   - id: email-reply
     label: Email Reply Workflow
@@ -204,6 +221,62 @@ taskGraphTemplates:
         - source: generate-output
           target: review-output
           label: generated response
+  - id: graph-explanation
+    label: Graph Explanation Workflow
+    description: Capture graph JSON, generate a markdown explanation, and review the output.
+    examples:
+      - 그래프(json)를 보고 이게 뭐하는 것인지 설명(md) 해줘
+      - explain what this graph json does in markdown
+    signals:
+      - graph
+      - json
+      - explain
+      - markdown
+      - md
+      - 그래프
+      - 설명
+      - 마크다운
+    graph:
+      nodes:
+        - id: capture-graph-json
+          label: Capture Graph JSON
+          data:
+            operation: capture-json
+            expectedInputs:
+              - graph json payload
+            expectedOutputs:
+              - graph json
+            requiredCapabilities:
+              - json-input
+        - id: explain-graph
+          label: Explain Graph
+          data:
+            operation: explain-graph
+            expectedInputs:
+              - graph json
+              - explanation preference
+            expectedOutputs:
+              - markdown explanation
+            requiredCapabilities:
+              - ai-generation
+              - text-output
+        - id: review-output
+          label: Review Output
+          data:
+            operation: log-output
+            expectedInputs:
+              - markdown explanation
+            expectedOutputs:
+              - execution log
+            requiredCapabilities:
+              - view-log
+      edges:
+        - source: capture-graph-json
+          target: explain-graph
+          label: graph json
+        - source: explain-graph
+          target: review-output
+          label: explanation
 classifierPrompts:
   taskTypeSystemPrompt: >-
     Choose the best flow-design task type for the request. Use only one of the provided taskType ids and explain the
@@ -217,11 +290,24 @@ defaults:
     keywordDriven: 생산성 향상
     byTaskType:
       blog-title-generation: 원격 근무
+      graph-explanation: |-
+        {
+          "nodes": [
+            { "id": "input-node", "blockId": "json-input", "label": "Graph Input" },
+            { "id": "ai-node", "blockId": "ai-generate", "label": "Explain Graph" },
+            { "id": "view-node", "blockId": "view", "label": "Review Explanation" }
+          ],
+          "edges": [
+            { "sourceNodeId": "input-node", "targetNodeId": "ai-node", "label": "graph json" },
+            { "sourceNodeId": "ai-node", "targetNodeId": "view-node", "label": "markdown explanation" }
+          ]
+        }
       json-generation: 샘플 입력
       text-generation: 샘플 입력
       unknown: 샘플 입력
   systemPrompts:
     blog-title-generation: You generate clear and catchy blog titles based on one keyword.
+    graph-explanation: You explain graph-shaped JSON structures clearly in Korean markdown.
     json-generation: You return concise structured output that can be safely parsed as JSON.
     text-generation: You transform text requests into concise useful outputs.
     unknown: You transform text requests into concise useful outputs.

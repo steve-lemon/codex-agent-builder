@@ -18,34 +18,63 @@ import {
 import { z, ZodFirstPartyTypeKind } from 'zod';
 
 const REFERENCE_ONLY_TOOL_ARGS: Readonly<Record<string, readonly string[]>> = {
+    designFlowDraft: ['preflight'],
     validateFlowDraft: ['flow'],
     runFlowSample: ['flow'],
     designFlowNodeConfigurations: ['flow'],
     validateFlowNodeConfigurations: ['flow'],
 };
 
-const FLOW_REFERENCE_PRODUCERS: Readonly<Record<string, readonly string[]>> = {
-    designFlowNodeConfigurations: ['designFlowDraft'],
-    validateFlowNodeConfigurations: ['designFlowNodeConfigurations', 'designFlowDraft'],
-    validateFlowDraft: ['designFlowNodeConfigurations', 'designFlowDraft'],
-    runFlowSample: ['designFlowNodeConfigurations', 'designFlowDraft'],
+const REFERENCE_ARG_PRODUCERS: Readonly<
+    Record<string, Partial<Record<string, { toolNames: readonly string[]; path: string }>>>
+> = {
+    designFlowDraft: {
+        preflight: {
+            toolNames: ['prevalidateFlowDesignRequest', 'assessFlowFeasibility'],
+            path: 'toolResults.0.data',
+        },
+    },
+    designFlowNodeConfigurations: {
+        flow: {
+            toolNames: ['designFlowDraft'],
+            path: 'toolResults.0.data.flow',
+        },
+    },
+    validateFlowNodeConfigurations: {
+        flow: {
+            toolNames: ['designFlowNodeConfigurations', 'designFlowDraft'],
+            path: 'toolResults.0.data.flow',
+        },
+    },
+    validateFlowDraft: {
+        flow: {
+            toolNames: ['designFlowNodeConfigurations', 'designFlowDraft'],
+            path: 'toolResults.0.data.flow',
+        },
+    },
+    runFlowSample: {
+        flow: {
+            toolNames: ['designFlowNodeConfigurations', 'designFlowDraft'],
+            path: 'toolResults.0.data.flow',
+        },
+    },
 };
 
-function findPreviousFlowReference(
+function findPreviousReference(
     steps: PlanStep[],
     currentStepIndex: number,
-    toolNames: readonly string[],
+    config: { toolNames: readonly string[]; path: string },
 ): StepResultReference | undefined {
     for (let index = currentStepIndex - 1; index >= 0; index -= 1) {
         const step = steps[index];
         if (!step) {
             continue;
         }
-        const matchingToolCall = step.toolCalls?.find(toolCall => toolNames.includes(toolCall.toolName));
+        const matchingToolCall = step.toolCalls?.find(toolCall => config.toolNames.includes(toolCall.toolName));
         if (matchingToolCall) {
             return {
                 $fromStep: step.id,
-                path: 'toolResults.0.data.flow',
+                path: config.path,
             };
         }
     }
@@ -66,13 +95,17 @@ function validateReferenceOnlyArgs(
 
     for (const argName of requiredReferenceArgs) {
         const value = args[argName];
+        if (value === undefined) {
+            continue;
+        }
         if (isStepResultReference(value)) {
             continue;
         }
 
-        const producers = FLOW_REFERENCE_PRODUCERS[toolName];
-        const repairedReference =
-            argName === 'flow' && producers ? findPreviousFlowReference(steps, currentStepIndex, producers) : undefined;
+        const producerConfig = REFERENCE_ARG_PRODUCERS[toolName]?.[argName];
+        const repairedReference = producerConfig
+            ? findPreviousReference(steps, currentStepIndex, producerConfig)
+            : undefined;
         if (repairedReference) {
             args[argName] = repairedReference;
             continue;

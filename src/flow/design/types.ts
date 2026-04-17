@@ -19,6 +19,8 @@ export interface FlowDesignIntent {
     wantsMultiple: boolean;
     desiredCount: number;
     sampleInput: string;
+    sampleInputSource?: 'default' | 'synthetic-graph-json';
+    sampleInputReadyForDesign?: boolean;
 }
 
 /** Validation summary for a designed flow draft. */

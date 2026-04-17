@@ -166,8 +166,11 @@ export class InputExecutableFlowNode extends ExecutableFlowNode {
     override async execute(flow: FlowDocument): Promise<FlowDocument> {
         this.ensureValid(flow);
         const input = this.getRequiredConfig('input');
+        const outputPort = this.node.outputPorts[0];
+        const outputLocalId = outputPort?.localId ?? 'output';
+        const packetValue = outputPort?.dataType === 'json' ? JSON.parse(input) : input;
 
-        return this.writeOutputPacket(flow, 'output', this.controller.createPacket(input));
+        return this.writeOutputPacket(flow, outputLocalId, this.controller.createPacket(packetValue));
     }
 }
 
@@ -314,6 +317,7 @@ export class DefaultExecutableFlowNodeFactory extends ExecutableFlowNodeFactory 
         };
 
         switch (block.id) {
+            case BuiltinFlowBlockIds.jsonInput:
             case BuiltinFlowBlockIds.input:
                 return new InputExecutableFlowNode(node, block, services);
             case BuiltinFlowBlockIds.buffer:

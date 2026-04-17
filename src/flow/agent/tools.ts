@@ -458,7 +458,16 @@ export async function createFlowDesignToolBundle(
                     wantsMultiple: intent.wantsMultiple,
                     desiredCount: intent.desiredCount,
                     sampleInput: intent.sampleInput,
+                    sampleInputSource: intent.sampleInputSource ?? 'default',
+                    sampleInputReadyForDesign: intent.sampleInputReadyForDesign ?? true,
                     constraints: ['Use only available blocks from the repository.'],
+                    guidanceNotes:
+                        intent.sampleInputSource === 'synthetic-graph-json'
+                            ? [
+                                  'A synthetic graph JSON sample is already available for drafting and sample validation.',
+                                  'Do not stop early just because the user did not paste the concrete graph JSON yet; use the synthetic sample to continue the design pass.',
+                              ]
+                            : [],
                     successCriteria:
                         intent.desiredCount > 1
                             ? [`Produce ${intent.desiredCount} useful outputs.`]

@@ -77,7 +77,7 @@ export async function inferFlowDesignTaskType(args: {
 
 /** Builds the deterministic sample input used to probe a designed flow. */
 export async function buildFlowDesignSampleInput(taskType: FlowDesignTaskType, userRequest: string): Promise<string> {
-    return await getFlowDesignSampleInputDefaults(taskType, userRequest);
+    return (await getFlowDesignSampleInputDefaults(taskType, userRequest)).sampleInput;
 }
 
 /** Produces a normalized intent object from a raw user request. */
@@ -95,6 +95,7 @@ export async function analyzeFlowRequest(
         taskTypeAdvisor: options.taskTypeAdvisor,
         taskTypes: options.taskTypes,
     });
+    const sampleInputDefaults = await getFlowDesignSampleInputDefaults(taskTypeRecommendation.taskType, userRequest);
 
     return {
         userRequest,
@@ -106,16 +107,18 @@ export async function analyzeFlowRequest(
         wantsJson: outputContract.wantsJson,
         wantsMultiple: outputContract.wantsMultiple,
         desiredCount: outputContract.desiredCount,
-        sampleInput: await buildFlowDesignSampleInput(taskTypeRecommendation.taskType, userRequest),
+        sampleInput: sampleInputDefaults.sampleInput,
+        sampleInputSource: sampleInputDefaults.source,
+        sampleInputReadyForDesign: sampleInputDefaults.readyForDesign,
     };
 }
 
 /** Builds the system prompt used by the default AI generation node. */
 export async function buildFlowDesignSystemPrompt(userRequest: string, improvementNotes: string[]): Promise<string> {
-    const lowered = userRequest.toLowerCase();
+    const outputContract = inferFlowOutputContract(userRequest);
     const taskTypeRecommendation = await inferFlowDesignTaskType({
         userRequest,
-        wantsJson: lowered.includes('json'),
+        wantsJson: outputContract.wantsJson,
     });
     const basePrompt = await getFlowDesignSystemPromptDefault(taskTypeRecommendation.taskType);
 
@@ -177,6 +180,21 @@ export function ensureRequiredFlowBlocks(availableBlocks: FlowBlockDefinition[],
     }
 }
 
+function shouldRecomputeFeasibility(preflight: FlowFeasibilityAssessment | undefined): boolean {
+    if (!preflight) {
+        return true;
+    }
+
+    if (preflight.feasible) {
+        return false;
+    }
+
+    // Planner-provided inline preflight payloads can drift from the actual feasibility
+    // result. If an infeasible payload has no concrete missing capabilities, recompute
+    // from the current request instead of failing on obviously incomplete metadata.
+    return preflight.missingCapabilities.length === 0;
+}
+
 /** Creates the shared default flow draft used by flow-designer style wrappers. */
 export async function designFlowDraft(args: {
     userRequest: string;
@@ -200,7 +218,9 @@ export async function designFlowDraft(args: {
         BuiltinFlowBlockIds.view,
     ]);
 
-    const feasibility = args.preflight ?? (await assessFlowFeasibility(args.userRequest));
+    const feasibility = shouldRecomputeFeasibility(args.preflight)
+        ? await assessFlowFeasibility(args.userRequest)
+        : (args.preflight as FlowFeasibilityAssessment);
     if (!feasibility.feasible) {
         throw new AgentError(
             `Flow design is not feasible with current blocks. Missing capabilities: ${feasibility.missingCapabilities.join(

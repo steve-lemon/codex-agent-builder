@@ -3,19 +3,94 @@ import { resolveRuntimeModelAlias } from '../../llm/runtime-model-alias';
 import type { FlowDesignTaskType } from './types';
 import { getFlowDesignManifest } from './manifest';
 
+export interface FlowDesignSampleInputDefaults {
+    sampleInput: string;
+    source: 'default' | 'synthetic-graph-json';
+    readyForDesign: boolean;
+}
+
+function buildSyntheticGraphJsonSample(): string {
+    return JSON.stringify(
+        {
+            nodes: [
+                {
+                    id: 'input-node',
+                    blockId: 'json-input',
+                    label: 'Graph Input',
+                    config: {
+                        label: 'Flow Graph JSON',
+                    },
+                },
+                {
+                    id: 'ai-node',
+                    blockId: 'ai-generate',
+                    label: 'Explain Graph',
+                    config: {
+                        jsonOutput: 'false',
+                    },
+                },
+                {
+                    id: 'view-node',
+                    blockId: 'view',
+                    label: 'Review Explanation',
+                    config: {},
+                },
+            ],
+            edges: [
+                {
+                    sourceNodeId: 'input-node',
+                    targetNodeId: 'ai-node',
+                    label: 'graph json',
+                },
+                {
+                    sourceNodeId: 'ai-node',
+                    targetNodeId: 'view-node',
+                    label: 'markdown explanation',
+                },
+            ],
+        },
+        null,
+        2,
+    );
+}
+
 /** Returns the manifest-backed default sample input for a task type and request. */
 export async function getFlowDesignSampleInputDefaults(
     taskType: FlowDesignTaskType,
     userRequest: string,
-): Promise<string> {
+): Promise<FlowDesignSampleInputDefaults> {
     const { defaults } = await getFlowDesignManifest();
     const lowered = userRequest.toLowerCase();
 
-    if (lowered.includes('keyword') || lowered.includes('키워드')) {
-        return defaults.sampleInputs.keywordDriven;
+    if (
+        (lowered.includes('graph') || lowered.includes('그래프')) &&
+        lowered.includes('json') &&
+        (lowered.includes('explain') ||
+            lowered.includes('설명') ||
+            lowered.includes('markdown') ||
+            lowered.includes('(md)') ||
+            lowered.includes('md'))
+    ) {
+        return {
+            sampleInput: buildSyntheticGraphJsonSample(),
+            source: 'synthetic-graph-json',
+            readyForDesign: true,
+        };
     }
 
-    return defaults.sampleInputs.byTaskType[taskType] ?? defaults.sampleInputs.default;
+    if (lowered.includes('keyword') || lowered.includes('키워드')) {
+        return {
+            sampleInput: defaults.sampleInputs.keywordDriven,
+            source: 'default',
+            readyForDesign: true,
+        };
+    }
+
+    return {
+        sampleInput: defaults.sampleInputs.byTaskType[taskType] ?? defaults.sampleInputs.default,
+        source: 'default',
+        readyForDesign: true,
+    };
 }
 
 /** Returns the manifest-backed default system prompt for a task type. */

@@ -6,6 +6,7 @@ import type { FlowBlockPoolRecord } from './resource-schemas';
 
 export const BuiltinFlowBlockIds = {
     textInput: 'text-input',
+    jsonInput: 'json-input',
     input: 'input',
     buffer: 'buffer',
     view: 'view',

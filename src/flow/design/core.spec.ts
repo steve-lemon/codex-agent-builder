@@ -30,7 +30,27 @@ describe('flow-design core', () => {
             wantsMultiple: true,
             desiredCount: 5,
             sampleInput: '생산성 향상',
+            sampleInputSource: 'default',
+            sampleInputReadyForDesign: true,
         });
+    });
+
+    it('treats json input plus markdown explanation requests as plain-text output intent', async () => {
+        const intent = await analyzeFlowRequest('그래프(json)를 보고 이게 뭐하는 것인지 설명(md) 해줘');
+
+        expect(intent.taskType).toBe('graph-explanation');
+        expect(intent.outputContract).toEqual({
+            format: 'plain-text',
+            explicitFormat: true,
+            desiredCount: 1,
+            wantsMultiple: false,
+            wantsJson: false,
+        });
+        expect(intent.wantsJson).toBe(false);
+        expect(intent.sampleInputSource).toBe('synthetic-graph-json');
+        expect(intent.sampleInputReadyForDesign).toBe(true);
+        expect(intent.sampleInput).toContain('"nodes"');
+        expect(intent.sampleInput).toContain('"edges"');
     });
 
     it('creates and validates a deterministic draft flow from preflight-backed inputs', async () => {
@@ -56,6 +76,36 @@ describe('flow-design core', () => {
             expect.objectContaining({
                 isValid: true,
                 issues: [],
+            }),
+        );
+    });
+
+    it('recomputes feasibility when an infeasible preflight payload has no concrete missing capabilities', async () => {
+        const availableFlowBlocks = await getCatalogAvailableFlowBlocks();
+
+        const draft = await designFlowDraft({
+            userRequest: '그래프(json)를 보고 이게 뭐하는 것인지 설명(md) 해줘',
+            sampleInput: '{"nodes":[],"edges":[]}',
+            desiredCount: 1,
+            wantsJson: false,
+            availableBlocks: availableFlowBlocks,
+            preflight: {
+                feasible: false,
+                taskGraph: { nodes: [], edges: [] },
+                nodeAnalyses: [],
+                requiredCapabilities: [],
+                availableCapabilities: [],
+                missingCapabilities: [],
+                proposedBlocks: [],
+                reason: 'planner-inline-placeholder',
+                recommendedAction: 'none',
+            },
+        });
+
+        expect(draft.preflightSummary.feasible).toBe(true);
+        expect(validateDesignedFlow(draft.flow)).toEqual(
+            expect.objectContaining({
+                isValid: true,
             }),
         );
     });

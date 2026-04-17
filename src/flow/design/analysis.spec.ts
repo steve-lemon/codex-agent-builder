@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeTaskGraph, assessTaskGraphFeasibility } from './analysis';
+import { analyzeTaskGraph, assessFlowFeasibility, assessTaskGraphFeasibility } from './analysis';
 import type { FlowAiDelegationAdvisor } from './ai-delegation';
 
 describe('flow design analysis', () => {
@@ -98,5 +98,24 @@ describe('flow design analysis', () => {
             }),
         );
         expect(analyses[0]?.reasons[0]).toContain('No block currently provides any of the required capabilities');
+    });
+
+    it('uses deterministic fast-path prevalidation before model-backed task-graph inference for strong matches', async () => {
+        const explodingTaskGraphAdvisor = {
+            async recommend() {
+                throw new Error('model-backed task-graph advisor should not be called for fast-path requests');
+            },
+        };
+
+        const feasibility = await assessFlowFeasibility('그래프(json)를 보고 이게 뭐하는 것인지 설명(md) 해줘', {
+            taskGraphAdvisor: explodingTaskGraphAdvisor as any,
+        });
+
+        expect(feasibility.feasible).toBe(true);
+        expect(feasibility.taskGraph.nodes.map(node => node.id)).toEqual([
+            'capture-graph-json',
+            'explain-graph',
+            'review-output',
+        ]);
     });
 });

@@ -64,6 +64,56 @@ describe('PromptLabProduct', () => {
         expect(Array.isArray(designedFlow.blocks)).toBe(true);
     });
 
+    it('writes stage timing details when execution timing is supplied during finalization', async () => {
+        const outputRoot = await mkdtemp(join(tmpdir(), 'prompt-lab-'));
+        const product = new PromptLabProduct();
+        const { session, result, gateway } = await product.runRequirement({
+            config: {
+                mode: 'run',
+                provider: 'fake',
+                mainModel: 'fake-main',
+                liteModel: 'fake-lite',
+                language: 'ko',
+                skillName: 'flow-designer',
+                outputRoot,
+            },
+            requirement: '키워드를 주면 블로그 제목 여러 개를 만들어줘.',
+        });
+        const selfReview = await product.createSelfReview({ session, result, gateway });
+        const artifacts = await product.finalizeSession({
+            session,
+            result,
+            selfReview,
+            userFeedback: '',
+            gateway,
+            executionTiming: {
+                advisorTimingStatus: 'not-observed',
+                totalDurationMs: 1234,
+                advisorCallCount: 0,
+                advisorTotalDurationMs: 0,
+                advisorTimeShare: null,
+                advisors: [],
+                stages: [
+                    { stageId: 'agent-run', durationMs: 900 },
+                    { stageId: 'self-review', durationMs: 200 },
+                    { stageId: 'prompt-finalize', durationMs: 134 },
+                ],
+            },
+        });
+
+        const executionTiming = JSON.parse(
+            await readFile(join(artifacts.session.sessionDir, 'execution-timing.json'), 'utf8'),
+        );
+        expect(Array.isArray(executionTiming.stages)).toBe(true);
+        expect(executionTiming.stages).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ stageId: 'agent-run' }),
+                expect.objectContaining({ stageId: 'self-review' }),
+                expect.objectContaining({ stageId: 'prompt-finalize' }),
+            ]),
+        );
+    });
+
     it('can validate preflight runs through the same prompt-lab workflow', async () => {
         const outputRoot = await mkdtemp(join(tmpdir(), 'prompt-lab-'));
         const product = new PromptLabProduct();
@@ -206,6 +256,54 @@ describe('PromptLabProduct', () => {
         expect(sanitized).toContain('JSON 객체 하나로만 반환');
         expect(sanitized).toContain('{"consonants": 정수, "vowels": 정수}');
         expect(sanitized).toContain('설명이나 추가 텍스트는 포함하지 마세요');
+    });
+
+    it('removes leaked prompt-lab wrapper field requirements from the final Codex prompt', () => {
+        const sanitized = sanitizeCodexPromptText(
+            '그래프(json)를 보고 이게 뭐하는 것인지 설명(md) 해줘',
+            '',
+            "사용자가 제공한 그래프를 분석해 한국어 마크다운으로 설명하세요. 결과는 반드시 JSON 형식으로, 'title', 'summary', 'codexPrompt', 'usageNotes' 형태로 출력하세요.",
+            {
+                skillName: 'flow-designer',
+                runId: 'run_2',
+                status: 'failed',
+                requirementAssessment: {
+                    executionSucceeded: false,
+                    fulfillmentLevel: 'not-fulfilled',
+                    summary: 'The run did not complete successfully, so the requirement is not yet fulfilled.',
+                    caveats: [],
+                    reasons: [],
+                },
+                outputContract: {
+                    format: 'plain-text',
+                    explicitFormat: true,
+                    desiredCount: 1,
+                    wantsMultiple: false,
+                    wantsJson: false,
+                },
+                nextActions: [],
+                flowDesign: {
+                    feasible: false,
+                    missingCapabilities: [],
+                    improvements: [],
+                    designPassCount: 0,
+                    taskGraphRefinementCount: 0,
+                },
+                nodeConfiguration: {
+                    improvements: [],
+                    appliedStrategies: [],
+                    nodeStrategyAssignments: [],
+                    configuredNodeCount: 0,
+                    probeInsightCount: 0,
+                },
+                trace: [],
+            },
+        );
+
+        expect(sanitized).toContain('한국어 마크다운으로 설명');
+        expect(sanitized).not.toContain('codexPrompt');
+        expect(sanitized).not.toContain('usageNotes');
+        expect(sanitized).not.toContain("'title'");
     });
 
     it('can run advisor evaluation as a separate prompt-lab mode', async () => {

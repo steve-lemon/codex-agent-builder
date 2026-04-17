@@ -27,12 +27,19 @@ describe('flow block pool', () => {
 
     it('loads built-in blocks from the YAML block pool resource', async () => {
         const aiGenerateBlock = await getBuiltinFlowBlock(BuiltinFlowBlockIds.aiGenerate);
+        const jsonInputBlock = await getBuiltinFlowBlock(BuiltinFlowBlockIds.jsonInput);
         const matchingPolicy = await getFlowBlockMatchingPolicy();
 
         expect(aiGenerateBlock).toEqual(
             expect.objectContaining({
                 id: 'ai-generate',
                 capabilities: expect.arrayContaining(['ai-generation', 'structured-output']),
+            }),
+        );
+        expect(jsonInputBlock).toEqual(
+            expect.objectContaining({
+                id: 'json-input',
+                capabilities: expect.arrayContaining(['json-input']),
             }),
         );
         expect(matchingPolicy).toEqual(

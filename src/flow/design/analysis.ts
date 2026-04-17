@@ -1,4 +1,5 @@
 // Shared flow-analysis helpers used by flow design core and skill/tool wrappers.
+import { logDebug } from '../../diagnostics/logger';
 import { matchFlowBlocksByCapabilities } from '../block-matching';
 import { BuiltinFlowBlockIds, getBuiltinFlowBlocks } from '../block-pool';
 import type { DirectedGraph } from '../../graph/types';
@@ -54,6 +55,8 @@ export interface TaskGraphRefinementInput {
     improvementNotes: string[];
     triggeredRuleIds?: string[];
 }
+
+const DETERMINISTIC_FAST_PATH_CONFIDENCE = 0.8;
 
 /** Derives graph-level required capabilities from the inferred task graph itself. */
 export function deriveRequiredCapabilitiesFromTaskGraph(taskGraph: DirectedGraph): string[] {
@@ -263,10 +266,33 @@ export async function assessFlowFeasibility(
         taskGraphAdvisor?: FlowDesignTaskGraphAdvisor;
     } = {},
 ): Promise<FlowFeasibilityAssessment> {
+    const templates = await getFlowDesignTaskGraphCatalog();
+    const deterministicRecommendation = await defaultFlowDesignTaskGraphAdvisor.recommend({
+        userRequest,
+        templates,
+    });
+
+    if (deterministicRecommendation.confidence >= DETERMINISTIC_FAST_PATH_CONFIDENCE) {
+        logDebug({
+            scope: 'flow-design',
+            action: 'prevalidate_fast_path',
+            message: 'Used deterministic fast-path prevalidation before invoking advisor-based task-graph inference.',
+            data: {
+                templateId: deterministicRecommendation.templateId,
+                confidence: deterministicRecommendation.confidence,
+            },
+        });
+        return await assessTaskGraphFeasibility(userRequest, deterministicRecommendation.graph, {
+            aiDelegationAdvisor: defaultFlowAiDelegationAdvisor,
+            taskGraphAdvisor: defaultFlowDesignTaskGraphAdvisor,
+        });
+    }
+
     return assessTaskGraphFeasibility(
         userRequest,
         await inferTaskGraph(userRequest, {
             taskGraphAdvisor: options.taskGraphAdvisor ?? defaultFlowDesignTaskGraphAdvisor,
+            taskGraphTemplates: templates,
         }),
         options,
     );

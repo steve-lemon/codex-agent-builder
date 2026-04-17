@@ -22,10 +22,14 @@ function buildRunSnapshot(
         status: result.status,
         summary: result.summary,
         success: result.success,
+        requirementAssessment: result.requirementAssessment,
         nextActions: result.nextActions,
         flowDesign: result.flowDesign,
         nodeConfiguration: result.nodeConfiguration,
         outputContract: result.outputContract,
+        syntheticValidationUsed: result.requirementAssessment.reasons.some(
+            reason => reason.code === 'synthetic-sample-validation',
+        ),
         payload: result.finalResult?.payload,
         trace: result.trace.slice(-20),
         advisorEvaluation: advisorEvaluation

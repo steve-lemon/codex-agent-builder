@@ -16,6 +16,23 @@ import type {
     RequirementAssessmentReason,
 } from './types';
 
+function detectSyntheticSampleSource(args: { userInput: string; finalFlow?: FlowDocument }): string | undefined {
+    const lowered = args.userInput.toLowerCase();
+    if (
+        args.finalFlow &&
+        (lowered.includes('graph') || lowered.includes('그래프')) &&
+        lowered.includes('json') &&
+        (lowered.includes('explain') ||
+            lowered.includes('설명') ||
+            lowered.includes('markdown') ||
+            lowered.includes('(md)') ||
+            lowered.includes('md'))
+    ) {
+        return 'synthetic-graph-json';
+    }
+    return undefined;
+}
+
 function buildRequirementAssessmentSummary(args: {
     executionSucceeded: boolean;
     fulfillmentLevel: RequirementAssessment['fulfillmentLevel'];
@@ -23,6 +40,11 @@ function buildRequirementAssessmentSummary(args: {
 }): string {
     if (!args.executionSucceeded) {
         return 'The run did not complete successfully, so the requirement is not yet fulfilled.';
+    }
+
+    if (args.fulfillmentLevel === 'not-fulfilled') {
+        const reasonMessages = args.reasons.map(reason => reason.message.toLowerCase());
+        return `The run completed, but the requirement is still not fulfilled because ${reasonMessages.join(' and ')}.`;
     }
 
     if (args.fulfillmentLevel === 'partial') {
@@ -49,7 +71,8 @@ function collectRequirementAssessment(args: {
     const finalResult = args.result.finalResult;
     const flowDesign = finalResult?.designDetails?.flowDesign;
     const payload = finalResult?.payload;
-    const executionSucceeded = args.result.status === 'completed' && finalResult?.success === true;
+    const runCompleted = args.result.status === 'completed';
+    const executionSucceeded = runCompleted;
     const missingCapabilities =
         flowDesign?.missingCapabilities ??
         (payload && 'missingCapabilities' in payload ? payload.missingCapabilities : []) ??
@@ -67,6 +90,14 @@ function collectRequirementAssessment(args: {
     const primaryAiNode = args.finalFlow?.nodes.find(node => node.blockId === 'ai-generate');
     const actualJsonOutput = primaryAiNode?.config?.jsonOutput?.trim().toLowerCase() === 'true';
     const outputSchema = primaryAiNode?.config?.outputSchema?.trim() ?? '';
+    const userInput =
+        args.result.trace.find(event => event.type === 'run_start')?.data?.userInput ??
+        args.result.trace[0]?.data?.userInput ??
+        '';
+    const sampleInputSource = detectSyntheticSampleSource({
+        userInput: String(userInput),
+        finalFlow: args.finalFlow,
+    });
     const caveats: string[] = [];
     const reasons: RequirementAssessmentReason[] = [];
 
@@ -120,8 +151,16 @@ function collectRequirementAssessment(args: {
             message: `some capabilities are still missing (${missingCapabilities.join(', ')})`,
         });
     }
+    if (sampleInputSource && sampleInputSource !== 'default') {
+        caveats.push(`Validation relied on a synthetic sample input (${sampleInputSource}).`);
+        reasons.push({
+            category: 'evidence',
+            code: 'synthetic-sample-validation',
+            message: `validation relied on a synthetic sample input (${sampleInputSource})`,
+        });
+    }
 
-    if (!executionSucceeded) {
+    if (!runCompleted) {
         reasons.unshift({
             category: 'execution',
             code: 'execution-failed',
@@ -132,6 +171,25 @@ function collectRequirementAssessment(args: {
             fulfillmentLevel: 'not-fulfilled',
             summary: buildRequirementAssessmentSummary({
                 executionSucceeded: false,
+                fulfillmentLevel: 'not-fulfilled',
+                reasons,
+            }),
+            caveats,
+            reasons,
+        };
+    }
+
+    if (finalResult?.success === false) {
+        reasons.unshift({
+            category: 'execution',
+            code: 'execution-completed-without-solution',
+            message: 'the run completed but did not produce the requested result',
+        });
+        return {
+            executionSucceeded: true,
+            fulfillmentLevel: 'not-fulfilled',
+            summary: buildRequirementAssessmentSummary({
+                executionSucceeded: true,
                 fulfillmentLevel: 'not-fulfilled',
                 reasons,
             }),
@@ -170,10 +228,10 @@ function collectRequirementAssessment(args: {
 
     return {
         executionSucceeded: true,
-        fulfillmentLevel: 'fulfilled',
+        fulfillmentLevel: sampleInputSource ? 'uncertain' : 'fulfilled',
         summary: buildRequirementAssessmentSummary({
             executionSucceeded: true,
-            fulfillmentLevel: 'fulfilled',
+            fulfillmentLevel: sampleInputSource ? 'uncertain' : 'fulfilled',
             reasons,
         }),
         caveats,
