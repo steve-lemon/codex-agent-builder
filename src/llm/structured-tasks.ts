@@ -8,6 +8,7 @@ import { getFinalizeSystemPrompt, getPlanSystemPrompt, getReflectSystemPrompt } 
 /** Builds the common structured request used for planner execution. */
 export async function buildPlanStructuredRequest(input: PlannerInput): Promise<StructuredGenerationInput> {
     return {
+        purpose: 'main',
         input: [
             {
                 role: 'system',
@@ -36,6 +37,7 @@ export function parsePlanStructuredOutput(output: unknown) {
 /** Builds the common structured request used for reflector execution. */
 export async function buildReflectStructuredRequest(input: ReflectorInput): Promise<StructuredGenerationInput> {
     return {
+        purpose: 'lite',
         input: [
             { role: 'system', content: await getReflectSystemPrompt() },
             { role: 'user', content: JSON.stringify(input) },
@@ -47,6 +49,7 @@ export async function buildReflectStructuredRequest(input: ReflectorInput): Prom
 /** Builds the common structured request used for finalizer execution. */
 export async function buildFinalizeStructuredRequest(input: FinalizerInput): Promise<StructuredGenerationInput> {
     return {
+        purpose: 'lite',
         input: [
             { role: 'system', content: await getFinalizeSystemPrompt() },
             { role: 'user', content: JSON.stringify(input) },

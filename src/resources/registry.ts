@@ -7,6 +7,7 @@ import {
 import { type LlmRuntimeManifestRecord, LlmRuntimeManifestSchema } from '../llm/runtime-manifest-schemas';
 import { type ToolPackResourceRecord, ToolPackResourceSchema } from '../tools/core/resource-schemas';
 import { type FlowBlockPoolRecord, FlowBlockPoolSchema } from '../flow/resource-schemas';
+import { type PromptLabManifestRecord, PromptLabManifestSchema } from '../prompt-lab/manifest-schemas';
 
 export interface ResourceDefinition<T> {
     id: string;
@@ -18,6 +19,7 @@ export interface ResourceSchemaMap {
     'flow-design.manifest': FlowDesignManifestRecord;
     'node-config-design.manifest': NodeConfigDesignManifestRecord;
     'llm.runtime.manifest': LlmRuntimeManifestRecord;
+    'prompt-lab.manifest': PromptLabManifestRecord;
     'flow.block-pool': FlowBlockPoolRecord;
     'tools.sample-tools.set': ToolPackResourceRecord;
     'tools.flow-design.set': ToolPackResourceRecord;
@@ -44,6 +46,11 @@ export const RESOURCE_DEFINITIONS: {
         id: 'llm.runtime.manifest',
         relativePath: 'runtime/LLM_RUNTIME_MANIFEST.yml',
         schema: LlmRuntimeManifestSchema,
+    },
+    'prompt-lab.manifest': {
+        id: 'prompt-lab.manifest',
+        relativePath: 'products/prompt-lab/PROMPT_LAB_MANIFEST.yml',
+        schema: PromptLabManifestSchema,
     },
     'flow.block-pool': {
         id: 'flow.block-pool',

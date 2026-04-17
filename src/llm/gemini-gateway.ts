@@ -15,6 +15,7 @@ import {
 export interface GeminiGatewayOptions {
     apiKey?: string;
     model?: string;
+    liteModel?: string;
     loadSdk?: GeminiSdkLoader;
 }
 
@@ -23,11 +24,13 @@ export class GeminiGateway implements LlmGateway {
     private client?: GeminiClientLike;
     private readonly apiKey?: string;
     private readonly model: string;
+    private readonly liteModel: string;
     private readonly loadSdk: GeminiSdkLoader;
 
     constructor(options: GeminiGatewayOptions = {}) {
         this.apiKey = options.apiKey ?? process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY;
         this.model = options.model ?? process.env.GEMINI_MODEL ?? 'gemini-2.0-flash';
+        this.liteModel = options.liteModel ?? process.env.GEMINI_LITE_MODEL ?? this.model;
         this.loadSdk = options.loadSdk ?? loadGeminiSdk;
     }
 
@@ -49,6 +52,7 @@ export class GeminiGateway implements LlmGateway {
         request: StructuredGenerationInput<TSchema>,
     ): Promise<z.output<TSchema>> {
         return this.generateStructuredContent(
+            request.purpose === 'lite' ? this.liteModel : this.model,
             request.input.find(message => message.role === 'system')?.content ?? '',
             request.input.find(message => message.role === 'user')?.content
                 ? JSON.parse(request.input.find(message => message.role === 'user')!.content)
@@ -60,6 +64,7 @@ export class GeminiGateway implements LlmGateway {
 
     /** Uses Gemini JSON schema structured output and validates the response payload locally. */
     private async generateStructuredContent<TSchema extends z.ZodTypeAny>(
+        model: string,
         systemInstruction: string,
         payload: unknown,
         schema: TSchema,
@@ -68,7 +73,7 @@ export class GeminiGateway implements LlmGateway {
         try {
             const client = await this.getClient();
             const response = await client.models.generateContent({
-                model: this.model,
+                model,
                 contents: JSON.stringify(payload),
                 config: {
                     systemInstruction,

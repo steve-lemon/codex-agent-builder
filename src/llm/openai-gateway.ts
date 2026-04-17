@@ -25,6 +25,7 @@ import {
 export interface OpenAiGatewayOptions {
     apiKey?: string;
     model?: string;
+    liteModel?: string;
     proxyUrl?: string;
     fetchImpl?: typeof fetch;
     loadSdk?: OpenAiSdkLoader;
@@ -35,10 +36,12 @@ export interface OpenAiGatewayOptions {
 /** Real LLM gateway that delegates structured generation through a pluggable parser strategy. */
 export class OpenAiGateway implements LlmGateway {
     private readonly model: string;
+    private readonly liteModel: string;
     private readonly parser: StructuredResponseParser;
 
     constructor(options: OpenAiGatewayOptions = {}) {
         this.model = options.model ?? process.env.OPENAI_MODEL ?? 'gpt-4.1-mini';
+        this.liteModel = options.liteModel ?? process.env.OPENAI_LITE_MODEL ?? this.model;
         this.parser =
             options.parser ??
             (options.proxyUrl ?? process.env.OPENAI_STRUCTURED_PROXY_URL
@@ -70,17 +73,18 @@ export class OpenAiGateway implements LlmGateway {
     async generateStructured<TSchema extends z.ZodTypeAny>(
         request: StructuredGenerationInput<TSchema>,
     ): Promise<z.output<TSchema>> {
-        return this.parseStructuredResponse(request.input, request.schema);
+        return this.parseStructuredResponse(request.input, request.schema, request.purpose);
     }
 
     /** Normalizes parser errors and re-validates output against the requested schema. */
     private async parseStructuredResponse<TSchema extends z.ZodTypeAny>(
         input: Array<{ role: 'system' | 'user'; content: string }>,
         schema: StructuredSchema<TSchema>,
+        purpose: 'main' | 'lite' = 'main',
     ): Promise<z.output<TSchema>> {
         try {
             const output = await this.parser.parse({
-                model: this.model,
+                model: purpose === 'lite' ? this.liteModel : this.model,
                 input,
                 schema,
             });

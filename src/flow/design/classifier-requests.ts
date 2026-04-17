@@ -30,6 +30,7 @@ export async function buildTaskTypeClassificationRequest(args: {
     taskTypes: FlowDesignTaskTypeDefinition[];
 }): Promise<StructuredGenerationInput<typeof FlowDesignTaskTypeClassificationSchema>> {
     return {
+        purpose: 'lite',
         input: [
             {
                 role: 'system',
@@ -59,6 +60,7 @@ export async function buildTaskGraphClassificationRequest(args: {
     templates: FlowDesignTaskGraphTemplate[];
 }): Promise<StructuredGenerationInput<typeof FlowDesignTaskGraphClassificationSchema>> {
     return {
+        purpose: 'lite',
         input: [
             {
                 role: 'system',

@@ -92,6 +92,33 @@ export class FakeLlmGateway implements LlmGateway {
             });
         }
 
+        if (request.schema.name === 'prompt_lab_self_review') {
+            return request.schema.parse({
+                summary: 'The run completed and produced enough signal to refine the operating prompt.',
+                strengths: ['Captured execution output and persisted the run artifacts.'],
+                weaknesses: ['Tighten instructions around evaluation criteria and retry behavior.'],
+                improvements: ['Ask the agent to validate output quality before finalizing.'],
+                recommendedPromptFocus: [
+                    'execution logging',
+                    'self-review criteria',
+                    'user-feedback incorporation',
+                ],
+            });
+        }
+
+        if (request.schema.name === 'prompt_lab_codex_prompt') {
+            return request.schema.parse({
+                title: 'Codex Prompt Draft',
+                summary: 'A synthesized Codex prompt built from run output, self-review, and user feedback.',
+                codexPrompt: [
+                    'You are Codex operating a flow-design improvement loop.',
+                    'Record execution artifacts, state assumptions, and review results before finalizing.',
+                    'Incorporate explicit operator feedback into the next revision plan.',
+                ].join('\n'),
+                usageNotes: ['Use this prompt as the next working Codex prompt for follow-up tasks.'],
+            });
+        }
+
         throw new AgentError(`Fake gateway does not support generic structured schema: ${request.schema.name}`, {
             code: 'FAKE_GATEWAY_UNSUPPORTED_STRUCTURED_SCHEMA',
         });

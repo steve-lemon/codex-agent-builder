@@ -2,6 +2,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AgentError } from '../errors/agent-error';
 import { OpenAiGateway } from './openai-gateway';
+import { defineStructuredSchema } from './structured-schema';
+import { z } from 'zod';
 
 describe('OpenAiGateway', () => {
     it('routes structured parsing through the HTTP proxy with serialized schema metadata', async () => {
@@ -150,5 +152,37 @@ describe('OpenAiGateway', () => {
                 stepResults: [],
             }),
         ).rejects.toThrowError(AgentError);
+    });
+
+    it('uses the lite model when structured generation is marked as lite purpose', async () => {
+        const parser = {
+            parse: vi.fn(async ({ model }) => {
+                expect(model).toBe('gpt-4.1-nano');
+                return {
+                    ok: true,
+                };
+            }),
+        };
+        const gateway = new OpenAiGateway({
+            model: 'gpt-4.1',
+            liteModel: 'gpt-4.1-nano',
+            parser,
+        });
+
+        const result = await gateway.generateStructured({
+            purpose: 'lite',
+            input: [
+                { role: 'system', content: 'test' },
+                { role: 'user', content: '{}' },
+            ],
+            schema: defineStructuredSchema(
+                'openai_lite_test',
+                z.object({
+                    ok: z.boolean(),
+                }),
+            ),
+        });
+
+        expect(result).toEqual({ ok: true });
     });
 });

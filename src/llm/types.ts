@@ -32,6 +32,7 @@ export interface FinalizerInput {
 export interface StructuredGenerationInput<TSchema extends z.ZodTypeAny = z.ZodTypeAny> {
     input: Array<{ role: 'system' | 'user'; content: string }>;
     schema: StructuredSchema<TSchema>;
+    purpose?: 'main' | 'lite';
 }
 
 /** LLM abstraction used by the runtime for plan, reflect, finalize, and generic structured generation. */

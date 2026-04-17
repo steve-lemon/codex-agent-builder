@@ -11,7 +11,8 @@
         "typecheck": "tsc --noEmit",
         "test": "vitest run",
         "test:watch": "vitest watch",
-        "demo": "tsx src/demo.ts"
+        "demo": "tsx src/demo.ts",
+        "prompt-lab": "tsx src/prompt-lab/cli.ts"
     },
     "keywords": [
         "agent",

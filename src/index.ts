@@ -37,3 +37,5 @@ export * from './llm';
 export * from './product';
 // Observability and live runtime monitoring.
 export * from './observability';
+// Prompt improvement lab with interactive CLI-oriented product workflow.
+export * from './prompt-lab';

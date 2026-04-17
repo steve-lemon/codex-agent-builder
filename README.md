@@ -34,13 +34,15 @@ Layered structure:
    Flow-design extension layer: intent analysis, task-graph reasoning, draft composition, sample execution, reflection, DTOs, provider boundary, deterministic mocks, and a manifest-backed resource surface.
 4. `src/flow/node-config/design/*`
    Node-configuration design core: block-family strategies, validation, DTOs, and a manifest-backed defaults/knowledge surface plus metadata-backed strategy guidance.
-5. `src/tools/*`
+5. `src/prompt-lab/*`
+   Interactive prompt-improvement workflow: real LLM-backed execution, artifact capture, self-review, user feedback collection, and final Codex prompt synthesis.
+6. `src/tools/*`
    Shared tool infrastructure only: registry, repository, type contracts, and resource-backed pack loading.
-6. `src/flow/agent/*`, `src/flow/node-config/agent/*`
+7. `src/flow/agent/*`, `src/flow/node-config/agent/*`
    Skill-oriented flow wrappers plus the flow-owned runtime tool implementations.
-7. `src/agent/sample-tools.ts`
+8. `src/agent/sample-tools.ts`
    Sample/demo tool pack implementation kept outside `tools/core` so shared tool infrastructure stays small.
-8. `src/llm/fake-*.ts`
+9. `src/llm/fake-*.ts`
    Deterministic fake planning, reflection, and final formatting helpers used by tests and demos.
 
 Architecture sketch:
@@ -91,6 +93,7 @@ import { buildFlowDesignerPlan } from './src/llm';
 import { designFlowDraft } from './src/flow/design';
 import { NodeConfigDesignService } from './src/flow/node-config/design';
 import { UnifiedRunEventBus } from './src/observability';
+import { PromptLabProduct } from './src/prompt-lab';
 ```
 
 That split mirrors the current architecture:
@@ -146,6 +149,7 @@ const runtime = await createRuntime();
 │  │     ├─ design/
 │  │     └─ agent/
 │  ├─ llm/
+│  ├─ prompt-lab/
 │  ├─ tools/
 │  ├─ policy/
 │  ├─ resilience/
@@ -153,6 +157,7 @@ const runtime = await createRuntime();
 │  └─ observability/
 ├─ data/
 │  ├─ flow/
+│  ├─ products/
 │  ├─ runtime/
 │  ├─ skills/
 │  └─ tools/
@@ -177,6 +182,22 @@ npm test
 ```bash
 npm run demo
 ```
+
+## Run Prompt Lab
+
+```bash
+npm run prompt-lab
+```
+
+`prompt-lab` starts an interactive CLI that:
+
+- chooses provider plus `main` and `lite` models
+- chooses which flow skill to validate (`flow-preflight-validator`, `flow-designer`, or `node-config-designer`)
+- follows Korean by default, with English selectable
+- runs the real agent flow and records artifacts under `output/labs/`
+- generates a self-review
+- accepts operator feedback
+- synthesizes a final Codex prompt for the next iteration
 
 All npm scripts are wrapped through [`scripts/with-project-node.sh`](./scripts/with-project-node.sh), which sources `nvm` and uses the version from [`.nvmrc`](./.nvmrc).
 The project targets Node.js `22.15.1` or newer and is intended to remain compatible with later major versions.
@@ -217,10 +238,12 @@ The Gemini SDK requires Node.js 20 or newer for real API execution, and this pro
 
 - `OPENAI_API_KEY`: API key for real gateway
 - `OPENAI_MODEL`: model name (default: `gpt-4.1-mini`)
+- `OPENAI_LITE_MODEL`: lite model name for lower-cost structured tasks and prompt synthesis
 - `OPENAI_STRUCTURED_PROXY_URL`: optional HTTP endpoint for proxied structured parsing
 - `GEMINI_API_KEY`: API key for Gemini API
 - `GOOGLE_API_KEY`: alternative Gemini API key env var
 - `GEMINI_MODEL`: model name (default: `gemini-2.0-flash`)
+- `GEMINI_LITE_MODEL`: lite model name for lower-cost structured tasks and prompt synthesis
 - `LLM_PROVIDER`: `fake`, `openai`, or `gemini`
 - `USE_REAL_GEMINI`: `true` or `false`
 - `USE_REAL_OPENAI`: `true` or `false`
@@ -247,6 +270,10 @@ Expected resource root structure:
 ├─ flow/
 │  ├─ BLOCK_POOL.yml
 │  └─ RESOURCE.md
+├─ products/
+│  └─ prompt-lab/
+│     ├─ PROMPT_LAB_MANIFEST.yml
+│     └─ RESOURCE.md
 ├─ runtime/
 │  └─ LLM_RUNTIME_MANIFEST.yml
 ├─ skills/
