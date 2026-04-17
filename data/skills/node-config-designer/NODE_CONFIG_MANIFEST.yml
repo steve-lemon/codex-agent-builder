@@ -5,9 +5,36 @@ defaults:
     text-generation: You transform text requests into concise useful outputs.
     unknown: You transform text requests into concise useful outputs.
   aiModelProfiles:
-    default: mock-flow-model
-    blog-title-generation: mock-blog-gpt
-    structured-output: mock-structured-gpt
+    default: runtime-main-model
+    blog-title-generation: runtime-blog-model
+    structured-output: runtime-structured-model
+  outputSchemaTemplates:
+    defaultStructuredObject: |
+      type: object
+      properties:
+        result:
+          type: string
+      required:
+        - result
+    stringList: |
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: string
+      required:
+        - items
+    consonantVowelCounts: |
+      type: object
+      properties:
+        consonants:
+          type: integer
+        vowels:
+          type: integer
+      required:
+        - consonants
+        - vowels
   modelSelection:
     defaultProfileId: default
     jsonPreferredProfileId: structured-output

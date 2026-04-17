@@ -226,10 +226,10 @@ defaults:
     text-generation: You transform text requests into concise useful outputs.
     unknown: You transform text requests into concise useful outputs.
   aiNodeDefaults:
-    model: mock-flow-model
+    model: runtime-main-model
   probeDefaults:
     sampleConfig:
-      model: mock-flow-model
+      model: runtime-main-model
     sampleInputs:
       system: You generate clear and catchy blog titles based on one keyword.
       prompt: 'User request: sample. Sample input: 샘플 입력. Return one result. Return plain text.'

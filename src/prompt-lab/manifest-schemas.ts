@@ -55,6 +55,7 @@ export const PromptLabManifestSchema = z.object({
     }),
     codexPrompt: z.object({
         systemPrompt: z.string().min(1),
+        rewriteSystemPrompt: z.string().min(1),
     }),
 });
 

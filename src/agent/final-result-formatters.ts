@@ -1,6 +1,7 @@
 // Skill-specific final-result formatters used by gateway implementations.
 import { createEmptyFlowDesignDetailsDto, toFlowDesignDetailsDto } from '../flow/design/dto';
 import { createEmptyNodeConfigDesignDetailsDto, toNodeConfigDesignDetailsDto } from '../flow/node-config/design/dto';
+import type { FlowOutputContract } from '../flow/output-contract';
 import { getFakeFinalCopy } from '../llm/fake-copy';
 import { buildFinalResultDesignDetails } from './design-details';
 import {
@@ -28,10 +29,21 @@ interface ReflectionData {
 }
 
 interface NodeConfigurationData {
+    flow?: {
+        nodes?: Array<{
+            blockId?: string;
+            config?: Record<string, string>;
+        }>;
+    };
     suggestions?: Array<{ nodeId: string }>;
     appliedStrategyIds?: string[];
     nodeStrategyAssignments?: Array<{ nodeId: string; strategyId: string }>;
     probeInsightsApplied?: string[];
+}
+
+interface IntentData {
+    outputContract?: FlowOutputContract;
+    wantsJson?: boolean;
 }
 
 function findToolData<T>(stepResults: StepResult[], toolName: string): T | undefined {
@@ -47,6 +59,50 @@ function findAllToolData<T>(stepResults: StepResult[], toolName: string): T[] {
         .filter(result => JSON.stringify(result).includes(`"toolName":"${toolName}"`))
         .map(result => (result as { toolResults?: Array<{ data?: T }> }).toolResults?.[0]?.data)
         .filter((value): value is T => value !== undefined);
+}
+
+function findPrimaryAiNodeConfiguration(nodeConfiguration?: NodeConfigurationData) {
+    return nodeConfiguration?.flow?.nodes?.find(node => node.blockId === 'ai-generate');
+}
+
+function describeOutputContractState(
+    outputContract: FlowOutputContract | undefined,
+    nodeConfiguration?: NodeConfigurationData,
+): {
+    summarySuffix?: string;
+    nextAction?: string;
+} {
+    if (!outputContract) {
+        return {};
+    }
+
+    const aiNode = findPrimaryAiNodeConfiguration(nodeConfiguration);
+    const jsonOutputEnabled = aiNode?.config?.jsonOutput?.trim().toLowerCase() === 'true';
+    const outputSchema = aiNode?.config?.outputSchema?.trim() ?? '';
+
+    if (outputContract.format === 'json') {
+        if (!jsonOutputEnabled) {
+            return {
+                summarySuffix: ' The configured flow did not preserve the requested JSON output contract.',
+                nextAction: 'Align the AI node output mode with the requested JSON contract.',
+            };
+        }
+        if (!outputSchema) {
+            return {
+                summarySuffix: ' The configured flow enables JSON output but still lacks an explicit output schema.',
+                nextAction: 'Add an explicit output schema for the requested JSON response.',
+            };
+        }
+    }
+
+    if (outputContract.format === 'plain-text' && jsonOutputEnabled) {
+        return {
+            summarySuffix: ' The configured flow drifted toward JSON output even though the request preferred plain text.',
+            nextAction: 'Restore the plain-text output mode requested by the user.',
+        };
+    }
+
+    return {};
 }
 
 /** Formats the final result for a `flow-preflight-validator` run. */
@@ -153,6 +209,8 @@ export async function formatFlowDesignerFinalResult(stepResults: StepResult[]): 
 
     const latestReflection = reflections[reflections.length - 1];
     const latestConfiguration = nodeConfigurations[nodeConfigurations.length - 1];
+    const analyzedIntent = findToolData<IntentData>(stepResults, 'analyzeFlowRequest');
+    const outputContractState = describeOutputContractState(analyzedIntent?.outputContract, latestConfiguration);
     const latestNodeConfigImprovements = latestReflection?.nodeConfigSkillImprovements ?? [];
     const designPassCount = Math.max(reflections.length, 1);
     const taskGraphRefinementCount = refinedGraphs.length;
@@ -169,6 +227,7 @@ export async function formatFlowDesignerFinalResult(stepResults: StepResult[]): 
             summary: `Handled with skill flow-designer. The flow still needs improvement after ${designPassCount} design pass(es) while configuring ${configuredNodeCount} node(s).`,
             success: false,
             nextActions: [
+                ...(outputContractState.nextAction ? [outputContractState.nextAction] : []),
                 ...(latestReflection.issues ?? []).slice(0, 2).map(issue => `Address issue: ${issue}`),
                 ...(latestReflection.improvementNotes ?? []).slice(0, 2).map(note => `Retry with improvement: ${note}`),
                 ...latestNodeConfigImprovements.slice(0, 2).map(note => `Update node-config strategy: ${note}`),
@@ -197,12 +256,18 @@ export async function formatFlowDesignerFinalResult(stepResults: StepResult[]): 
         return {
             summary: `Handled with skill flow-designer. The flow executed successfully after ${designPassCount} design pass(es), ${taskGraphRefinementCount} task-graph refinement step(s), and ${configuredNodeCount} configured node(s)${
                 probeInsightCount > 0 ? ` informed by ${probeInsightCount} probe insight(s)` : ''
-            }. The current reflection judged the result satisfactory for the request based on the available sample validation.`,
+            }. The current reflection judged the result satisfactory for the request based on the available sample validation.${outputContractState.summarySuffix ?? ''}`,
             success: true,
             nextActions:
                 designPassCount > 1
-                    ? ['Review the revised flow draft and keep the applied improvement notes for future runs']
-                    : ['Review the generated flow and sample output'],
+                    ? [
+                          ...(outputContractState.nextAction ? [outputContractState.nextAction] : []),
+                          'Review the revised flow draft and keep the applied improvement notes for future runs',
+                      ]
+                    : [
+                          ...(outputContractState.nextAction ? [outputContractState.nextAction] : []),
+                          'Review the generated flow and sample output',
+                      ],
             payload: buildFlowDesignerPayload({
                 feasible: true,
                 designPassCount,
@@ -224,9 +289,9 @@ export async function formatFlowDesignerFinalResult(stepResults: StepResult[]): 
     }
 
     return {
-        summary: 'Handled with skill flow-designer. No reflection result was produced.',
+        summary: `Handled with skill flow-designer. No reflection result was produced.${outputContractState.summarySuffix ?? ''}`,
         success: true,
-        nextActions: [fakeFinalCopy.generic.reviewTraceLogs],
+        nextActions: [...(outputContractState.nextAction ? [outputContractState.nextAction] : []), fakeFinalCopy.generic.reviewTraceLogs],
         payload: buildFlowDesignerPayload({
             feasible: true,
             designPassCount,

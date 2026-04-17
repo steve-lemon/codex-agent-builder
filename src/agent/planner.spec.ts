@@ -46,6 +46,26 @@ describe('Planner', () => {
         execute: async () => ({ valid: true }),
     });
 
+    const nodeConfigDesignTool = defineTool({
+        name: 'designFlowNodeConfigurations',
+        description: 'Design node configurations for a drafted flow',
+        parameters: z.object({
+            userRequest: z.string(),
+            flow: z.object({
+                blocks: z.array(z.unknown()),
+                nodes: z.array(z.unknown()),
+                edges: z.array(z.unknown()),
+            }),
+            desiredCount: z.number(),
+            wantsJson: z.boolean(),
+        }),
+        riskLevel: 'read-only',
+        allowedSkills: ['flow-designer'],
+        requiresConfirmation: false,
+        parallelSafe: true,
+        execute: async () => ({ flow: {} }),
+    });
+
     it('passes grounded tool manifests to the gateway and returns a validated plan', async () => {
         const planMock: LlmGateway['plan'] = async input => {
             expect(input.allowedTools).toEqual(['getCustomerById', 'refundOrder']);
@@ -397,5 +417,65 @@ describe('Planner', () => {
         });
 
         expect(plan.steps.map(step => step.mode)).toEqual(['reasoning', 'finalize']);
+    });
+
+    it('rejects referenced flow tool calls that omit other required args', async () => {
+        const designDraftTool = defineTool({
+            name: 'designFlowDraft',
+            description: 'Design a flow draft',
+            parameters: z.object({ userRequest: z.string() }),
+            riskLevel: 'read-only',
+            allowedSkills: ['flow-designer'],
+            requiresConfirmation: false,
+            parallelSafe: true,
+            execute: async () => ({ flow: {} }),
+        });
+
+        const llm: LlmGateway = {
+            plan: async () => ({
+                steps: [
+                    {
+                        id: 'design_draft',
+                        mode: 'single-tool',
+                        description: 'Design draft',
+                        toolCalls: [{ toolName: 'designFlowDraft', args: { userRequest: '자음과 모음을 나눠줘' } }],
+                    },
+                    {
+                        id: 'configure_nodes',
+                        mode: 'single-tool',
+                        description: 'Configure nodes',
+                        toolCalls: [
+                            {
+                                toolName: 'designFlowNodeConfigurations',
+                                args: {
+                                    flow: {
+                                        $fromStep: 'design_draft',
+                                        path: 'toolResults.0.data.flow',
+                                    },
+                                },
+                            },
+                        ],
+                    },
+                ],
+            }),
+            reflect: async () => ({ isComplete: true, reason: 'ok', missingItems: [] }),
+            finalize: async () => ({ summary: 'done', success: true, nextActions: [] }),
+            generateStructured: async () => {
+                throw new Error('unused generateStructured mock');
+            },
+        };
+
+        const planner = new Planner(llm);
+
+        await expect(
+            planner.createPlan({
+                userInput: 'Configure drafted flow',
+                skillName: 'flow-designer',
+                skillInstructions: 'Use flow tools only.',
+                allowedTools: ['designFlowDraft', 'designFlowNodeConfigurations'],
+                toolManifests: [buildToolManifest(designDraftTool), buildToolManifest(nodeConfigDesignTool)],
+                toolDefinitions: [designDraftTool, nodeConfigDesignTool],
+            }),
+        ).rejects.toThrow(/Planner returned invalid args for designFlowNodeConfigurations/);
     });
 });

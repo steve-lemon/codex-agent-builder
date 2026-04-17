@@ -28,6 +28,11 @@ describe('node-config knowledge sources', () => {
                     'blog-title-generation': 'blog-model',
                     'structured-output': 'structured-model',
                 },
+                outputSchemaTemplates: {
+                    defaultStructuredObject: 'type: object',
+                    stringList: 'type: object',
+                    consonantVowelCounts: 'type: object',
+                },
                 modelSelection: {
                     defaultProfileId: 'default',
                     jsonPreferredProfileId: 'structured-output',

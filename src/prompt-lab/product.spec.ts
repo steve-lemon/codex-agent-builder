@@ -3,7 +3,7 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import yaml from 'js-yaml';
-import { PromptLabProduct, PromptLabRunError } from './product';
+import { PromptLabProduct, PromptLabRunError, sanitizeCodexPromptText } from './product';
 
 describe('PromptLabProduct', () => {
     afterEach(() => {
@@ -43,6 +43,7 @@ describe('PromptLabProduct', () => {
 
         expect(summary).toContain('Prompt Lab 세션');
         expect(summary).toContain('요구 충족도 평가');
+        expect(summary).toContain('판단 근거');
         expect(promptMarkdown).toContain('## Prompt');
         expect(resultJson.skillName).toBe('flow-designer');
         expect(resultJson.requirementAssessment).toEqual(
@@ -50,6 +51,7 @@ describe('PromptLabProduct', () => {
                 executionSucceeded: true,
                 fulfillmentLevel: expect.any(String),
                 summary: expect.any(String),
+                reasons: expect.any(Array),
             }),
         );
         if (resultJson.requirementAssessment.fulfillmentLevel !== 'fulfilled') {
@@ -122,5 +124,82 @@ describe('PromptLabProduct', () => {
             const failureText = await readFile(runError.paths.failureTextPath, 'utf8');
             expect(failureText).toContain('OPENAI_API_KEY');
         }
+    });
+
+    it('removes unrequested examples and error-output instructions from the final Codex prompt', () => {
+        const sanitized = sanitizeCodexPromptText(
+            '자음과 모음의 개수를 분리해서 json으로 출력해',
+            '',
+            '입력된 한글 문자열에서 자음과 모음의 개수를 각각 계산하세요. 예시 입력과 출력도 포함해 주세요. 오류가 나면 오류 메시지를 JSON으로 반환하세요.',
+        );
+
+        expect(sanitized).toContain('입력된 한글 문자열에서 자음과 모음의 개수를 각각 계산하세요.');
+        expect(sanitized).not.toContain('예시 입력과 출력');
+        expect(sanitized).not.toContain('오류 메시지');
+    });
+
+    it('restores a json-only contract when the designed flow expects structured JSON output', () => {
+        const sanitized = sanitizeCodexPromptText(
+            '자음과 모음의 개수를 분리해서 json으로 출력해',
+            '',
+            '입력된 한국어 문장에서 각 글자의 자음과 모음을 분리하여 자음의 총 개수와 모음의 총 개수를 계산해 주세요. 출력은 자음 개수와 모음 개수를 명확히 구분하여 알려 주세요.',
+            {
+                skillName: 'flow-designer',
+                runId: 'run_1',
+                status: 'completed',
+                requirementAssessment: {
+                    executionSucceeded: true,
+                    fulfillmentLevel: 'uncertain',
+                    summary: 'The run completed successfully, but requirement fulfillment is still uncertain.',
+                    caveats: [],
+                    reasons: [],
+                },
+                outputContract: {
+                    format: 'json',
+                    explicitFormat: true,
+                    desiredCount: 1,
+                    wantsMultiple: false,
+                    wantsJson: true,
+                },
+                nextActions: [],
+                flowDesign: {
+                    feasible: true,
+                    missingCapabilities: [],
+                    improvements: [],
+                    designPassCount: 0,
+                    taskGraphRefinementCount: 0,
+                },
+                nodeConfiguration: {
+                    improvements: [],
+                    appliedStrategies: [],
+                    nodeStrategyAssignments: [],
+                    configuredNodeCount: 0,
+                    probeInsightCount: 0,
+                },
+                trace: [],
+                finalFlow: {
+                    blocks: [],
+                    nodes: [
+                        {
+                            id: 'ai-node',
+                            blockId: 'ai-generate',
+                            label: 'AI Generate',
+                            config: {
+                                jsonOutput: 'true',
+                                outputSchema:
+                                    'type: object\nproperties:\n  consonants:\n    type: integer\n  vowels:\n    type: integer\nrequired:\n  - consonants\n  - vowels\n',
+                            },
+                            inputPorts: [],
+                            outputPorts: [],
+                        },
+                    ],
+                    edges: [],
+                },
+            },
+        );
+
+        expect(sanitized).toContain('JSON 객체 하나로만 반환');
+        expect(sanitized).toContain('{"consonants": 정수, "vowels": 정수}');
+        expect(sanitized).toContain('설명이나 추가 텍스트는 포함하지 마세요');
     });
 });

@@ -371,18 +371,20 @@ function printRequirementAssessment(args: {
     fulfillmentLevel: string;
     summary: string;
     caveats: string[];
+    reasons: Array<{ category: string; message: string }>;
 }): void {
     const isKorean = args.language === 'ko';
     const title = isKorean ? '=== 요구 충족도 평가 ===' : '=== Requirement Assessment ===';
     const executionLabel = isKorean ? '실행 성공' : 'execution succeeded';
     const fulfillmentLabel = isKorean ? '충족도 수준' : 'fulfillment level';
+    const reasonsLabel = isKorean ? '판단 근거' : 'assessment signals';
     const normalizedLevel = isKorean
-        ? ({
+        ? {
               fulfilled: '충족',
               uncertain: '불확실',
               partial: '부분 충족',
               'not-fulfilled': '미충족',
-          }[args.fulfillmentLevel] ?? args.fulfillmentLevel)
+          }[args.fulfillmentLevel] ?? args.fulfillmentLevel
         : args.fulfillmentLevel;
     const footer = isKorean ? '=========================' : '==============================';
     const localizeAssessmentText = (text: string): string => {
@@ -392,8 +394,16 @@ function printRequirementAssessment(args: {
 
         const replacements: Array<[string, string]> = [
             [
-                'The run completed successfully, but requirement fulfillment is still uncertain because the design relied on generic fallback or mock execution settings.',
-                '실행은 성공했지만, 설계가 일반 fallback이나 mock 실행 설정에 의존해서 요구 충족 여부는 아직 불확실합니다.',
+                'The run completed successfully, but requirement fulfillment is still uncertain because the design relied on a generic task-graph fallback and the final flow still uses mock execution settings.',
+                '실행은 성공했지만, 설계가 일반 task graph fallback에 의존하고 최종 flow도 mock 실행 설정을 사용해서 요구 충족 여부는 아직 불확실합니다.',
+            ],
+            [
+                'The run completed successfully, but requirement fulfillment is still uncertain because the design relied on a generic task-graph fallback.',
+                '실행은 성공했지만, 설계가 일반 task graph fallback에 의존해서 요구 충족 여부는 아직 불확실합니다.',
+            ],
+            [
+                'The run completed successfully, but requirement fulfillment is still uncertain because the final flow still uses mock execution settings.',
+                '실행은 성공했지만, 최종 flow가 아직 mock 실행 설정을 사용하고 있어 요구 충족 여부는 아직 불확실합니다.',
             ],
             [
                 'The run completed, but the requirement is only partially covered because some capabilities are still missing.',
@@ -415,7 +425,35 @@ function printRequirementAssessment(args: {
                 'The final flow still uses a mock AI model configuration.',
                 '최종 flow가 아직 mock AI 모델 설정을 사용하고 있습니다.',
             ],
+            [
+                'the design relied on a generic task-graph fallback',
+                '설계가 일반 task graph fallback에 의존했습니다.',
+            ],
+            [
+                'the final flow still uses mock execution settings',
+                '최종 flow가 아직 mock 실행 설정을 사용하고 있습니다.',
+            ],
+            [
+                'the requested JSON output contract was not preserved',
+                '요청된 JSON 출력 계약이 유지되지 않았습니다.',
+            ],
+            [
+                'structured JSON output still lacks an explicit output schema',
+                '구조화된 JSON 출력에 필요한 명시적 스키마가 아직 없습니다.',
+            ],
+            [
+                'the flow output format drifted away from the requested plain-text preference',
+                '출력 형식이 요청된 평문 선호에서 벗어났습니다.',
+            ],
+            [
+                'the run did not complete successfully',
+                '실행이 성공적으로 완료되지 않았습니다.',
+            ],
         ];
+
+        if (text.startsWith('some capabilities are still missing (')) {
+            return text.replace('some capabilities are still missing', '일부 capability가 아직 부족합니다');
+        }
 
         const matched = replacements.find(([source]) => source === text);
         return matched?.[1] ?? text;
@@ -425,6 +463,21 @@ function printRequirementAssessment(args: {
     output.write(`${executionLabel}: ${String(args.executionSucceeded)}\n`);
     output.write(`${fulfillmentLabel}: ${normalizedLevel}\n`);
     output.write(`${localizeAssessmentText(args.summary)}\n`);
+    if (args.reasons.length > 0) {
+        output.write(`${reasonsLabel}:\n`);
+        for (const reason of args.reasons) {
+            const category = isKorean
+                ? {
+                      execution: '실행',
+                      capability: '기능',
+                      classification: '분류',
+                      'output-contract': '출력 계약',
+                      runtime: '런타임',
+                  }[reason.category] ?? reason.category
+                : reason.category;
+            output.write(`- [${category}] ${localizeAssessmentText(reason.message)}\n`);
+        }
+    }
     for (const caveat of args.caveats) {
         output.write(`- ${localizeAssessmentText(caveat)}\n`);
     }

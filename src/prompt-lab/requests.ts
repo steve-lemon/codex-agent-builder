@@ -20,8 +20,21 @@ function buildRunSnapshot(session: PromptLabSessionRecord, result: ProductDesign
         nextActions: result.nextActions,
         flowDesign: result.flowDesign,
         nodeConfiguration: result.nodeConfiguration,
+        outputContract: result.outputContract,
         payload: result.finalResult?.payload,
         trace: result.trace.slice(-20),
+    };
+}
+
+function derivePromptGuardrails(requirement: string, userFeedback: string) {
+    const combined = `${requirement}\n${userFeedback}`.toLowerCase();
+    const includesAny = (...patterns: RegExp[]) => patterns.some(pattern => pattern.test(combined));
+
+    return {
+        allowExamples: includesAny(/예시/, /\bexample\b/, /샘플/),
+        allowErrorOutput: includesAny(/오류/, /\berror\b/, /에러/, /exception/),
+        allowFallbackRules: includesAny(/fallback/i, /폴백/, /대체 규칙/, /예외 처리/),
+        preferJsonOnly: includesAny(/json/, /json만/, /json으로만/, /오직 json/, /only json/, /json object/),
     };
 }
 
@@ -74,9 +87,46 @@ export async function buildPromptLabCodexPromptRequest(args: {
                     run: buildRunSnapshot(args.session, args.result),
                     selfReview: args.selfReview,
                     userFeedback: args.userFeedback,
+                    guardrails: derivePromptGuardrails(args.session.requirement, args.userFeedback),
+                    outputContract: args.result.outputContract,
                 }),
             },
         ],
         schema: defineStructuredSchema('prompt_lab_codex_prompt', PromptLabCodexPromptSchema),
+    };
+}
+
+export async function buildPromptLabCodexPromptRewriteRequest(args: {
+    session: PromptLabSessionRecord;
+    result: ProductDesignRunResult;
+    selfReview: PromptLabSelfReview;
+    userFeedback: string;
+    language: PromptLabLanguage;
+    draftPrompt: string;
+}): Promise<StructuredGenerationInput<typeof PromptLabCodexPromptSchema>> {
+    const manifest = await getPromptLabManifest();
+
+    return {
+        purpose: 'lite',
+        input: [
+            {
+                role: 'system',
+                content: manifest.codexPrompt.rewriteSystemPrompt,
+            },
+            {
+                role: 'user',
+                content: JSON.stringify({
+                    language: args.language,
+                    requirement: args.session.requirement,
+                    run: buildRunSnapshot(args.session, args.result),
+                    selfReview: args.selfReview,
+                    userFeedback: args.userFeedback,
+                    draftPrompt: args.draftPrompt,
+                    guardrails: derivePromptGuardrails(args.session.requirement, args.userFeedback),
+                    outputContract: args.result.outputContract,
+                }),
+            },
+        ],
+        schema: defineStructuredSchema('prompt_lab_codex_prompt_rewrite', PromptLabCodexPromptSchema),
     };
 }

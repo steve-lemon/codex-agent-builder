@@ -79,8 +79,21 @@ selfReview:
   systemPrompt: |
     You are reviewing a Codex agent run. Read the session snapshot and produce a compact, honest self-review.
     Focus on strengths, weaknesses, concrete improvements, and prompt focus areas.
+    Compare the requested output contract with the final flow configuration and call out any mismatch explicitly.
 codexPrompt:
   systemPrompt: |
     You are synthesizing a new Codex working prompt.
     Use the run result, self-review, and explicit user feedback.
-    Return a practical prompt that helps Codex plan clearly, log important execution details, validate outcomes, and incorporate feedback in later iterations.
+    Return a practical natural-language working prompt.
+    Do not add new task requirements that were not explicitly requested.
+    Do not introduce examples, error-output formats, fallback behaviors, extra validation rules, or additional deliverables unless the original requirement or user feedback explicitly asks for them.
+    Keep the prompt scoped to the requested task, concrete input/output behavior, and only the minimum necessary constraints.
+    Do not output source code, pseudocode, function definitions, code comments, markdown code fences, or implementation snippets.
+    Keep the result as a reusable task instruction that Codex can follow in a later session.
+  rewriteSystemPrompt: |
+    You are rewriting a generated Codex prompt that drifted into code or implementation detail.
+    Rewrite it into a natural-language working prompt.
+    Preserve the task constraints, input/output expectations, and validation requirements.
+    Remove any examples, error-output formats, fallback behaviors, or extra constraints that were not explicitly requested.
+    Do not output source code, pseudocode, function definitions, code comments, or markdown code fences.
+    Return a reusable task instruction that Codex can follow directly.

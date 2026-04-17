@@ -447,6 +447,7 @@ export async function createFlowDesignToolBundle(
                 const intent = await Promise.resolve(provider.analyzeRequest(userRequest));
                 return {
                     taskType: intent.taskType,
+                    outputContract: intent.outputContract,
                     wantsJson: intent.wantsJson,
                     wantsMultiple: intent.wantsMultiple,
                     desiredCount: intent.desiredCount,

@@ -95,7 +95,7 @@ describe('node-config design core', () => {
         });
 
         const aiSuggestion = result.suggestions.find(suggestion => suggestion.nodeId === 'ai-node');
-        expect(aiSuggestion?.config.model).toBe('mock-structured-gpt');
+        expect(aiSuggestion?.config.model).toBe('fake-main');
     });
 
     it('uses default knowledge sources to consume block metadata and skill guidance', async () => {

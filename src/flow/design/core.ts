@@ -1,6 +1,7 @@
 // Shared flow-design core used by skill wrappers, tools, and mock/example agents.
 import { AgentError } from '../../errors/agent-error';
 import { BuiltinFlowBlockIds } from '../block-pool';
+import { buildFlowOutputFormatInstruction, inferFlowOutputContract, parseDesiredCount } from '../output-contract';
 import { FlowDesignSession, type FlowDesignConnection } from '../design-monitor';
 import {
     connectFlowPorts,
@@ -54,31 +55,6 @@ interface TaskGraphEdge {
     data?: Record<string, unknown>;
 }
 
-/** Parses repeated-output intent from a natural-language request. */
-export function parseDesiredCount(userRequest: string): number {
-    const digitMatch = userRequest.match(/(\d+)/);
-    if (digitMatch) {
-        const parsed = Number(digitMatch[1]);
-        if (Number.isFinite(parsed) && parsed > 0) {
-            return parsed;
-        }
-    }
-
-    const lowered = userRequest.toLowerCase();
-    if (
-        lowered.includes('여러') ||
-        lowered.includes('several') ||
-        lowered.includes('multiple') ||
-        lowered.includes('many') ||
-        lowered.includes('ideas') ||
-        lowered.includes('titles')
-    ) {
-        return 5;
-    }
-
-    return 1;
-}
-
 /** Infers a coarse task type for flow-design decisions. */
 export async function inferFlowDesignTaskType(args: {
     userRequest: string;
@@ -112,16 +88,10 @@ export async function analyzeFlowRequest(
         taskTypes?: FlowDesignTaskTypeDefinition[];
     } = {},
 ): Promise<FlowDesignIntent> {
-    const lowered = userRequest.toLowerCase();
-    const wantsJson =
-        lowered.includes('json') ||
-        lowered.includes('structured') ||
-        lowered.includes('객체') ||
-        lowered.includes('구조화');
-    const desiredCount = parseDesiredCount(userRequest);
+    const outputContract = inferFlowOutputContract(userRequest);
     const taskTypeRecommendation = await inferFlowDesignTaskType({
         userRequest,
-        wantsJson,
+        wantsJson: outputContract.wantsJson,
         taskTypeAdvisor: options.taskTypeAdvisor,
         taskTypes: options.taskTypes,
     });
@@ -132,9 +102,10 @@ export async function analyzeFlowRequest(
         taskTypeConfidence: taskTypeRecommendation.confidence,
         taskTypeRationale: taskTypeRecommendation.rationale,
         taskTypeSource: taskTypeRecommendation.source,
-        wantsJson,
-        wantsMultiple: desiredCount > 1,
-        desiredCount,
+        outputContract,
+        wantsJson: outputContract.wantsJson,
+        wantsMultiple: outputContract.wantsMultiple,
+        desiredCount: outputContract.desiredCount,
         sampleInput: await buildFlowDesignSampleInput(taskTypeRecommendation.taskType, userRequest),
     };
 }
@@ -161,17 +132,15 @@ export function buildFlowDesignUserPrompt(args: {
     wantsJson: boolean;
     improvementNotes: string[];
 }): string {
+    const outputContract = inferFlowOutputContract(args.userRequest);
     const desiredCountInstruction =
         args.desiredCount > 1 ? `Return exactly ${args.desiredCount} results.` : 'Return one result.';
-    const formatInstruction = args.wantsJson
-        ? 'Return JSON only.'
-        : args.desiredCount > 1
-        ? 'Return each result on its own line.'
-        : 'Return plain text.';
+    const formatInstruction = buildFlowOutputFormatInstruction(outputContract);
     const improvementText =
         args.improvementNotes.length > 0 ? ` Improvement notes: ${args.improvementNotes.join(' | ')}` : '';
 
-    return `User request: ${args.userRequest}. Sample input: ${args.sampleInput}. ${desiredCountInstruction} ${formatInstruction}${improvementText}`;
+    const instructions = [desiredCountInstruction, formatInstruction].filter(Boolean).join(' ');
+    return `User request: ${args.userRequest}. Sample input: ${args.sampleInput}. ${instructions}${improvementText}`;
 }
 
 function findTaskNodeByCapability(taskNodes: TaskGraphNode[], capability: string): TaskGraphNode | undefined {

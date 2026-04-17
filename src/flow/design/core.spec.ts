@@ -19,6 +19,13 @@ describe('flow-design core', () => {
             taskTypeConfidence: expect.any(Number),
             taskTypeRationale: expect.any(String),
             taskTypeSource: 'deterministic',
+            outputContract: {
+                format: 'unspecified',
+                explicitFormat: false,
+                desiredCount: 5,
+                wantsMultiple: true,
+                wantsJson: false,
+            },
             wantsJson: false,
             wantsMultiple: true,
             desiredCount: 5,
@@ -81,7 +88,7 @@ describe('flow-design core', () => {
 
         expect(execution.status).toBe('completed');
         expect(execution.output).toMatchObject({
-            model: 'mock-flow-model',
+            model: 'fake-main',
             items: expect.any(Array),
         });
         expect(reflection.satisfied).toBe(true);

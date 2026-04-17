@@ -61,11 +61,31 @@ describe('final-result formatters', () => {
 
     it('formats successful flow-designer results from step outputs', async () => {
         const result = await formatFlowDesignerFinalResult([
+            makeStepResult('s0', 'analyzeFlowRequest', {
+                outputContract: {
+                    format: 'json',
+                    explicitFormat: true,
+                    desiredCount: 1,
+                    wantsMultiple: false,
+                    wantsJson: true,
+                },
+            }),
             makeStepResult('s1', 'prevalidateFlowDesignRequest', {
                 feasible: true,
                 missingCapabilities: [],
             }),
             makeStepResult('s2', 'designFlowNodeConfigurations', {
+                flow: {
+                    nodes: [
+                        {
+                            blockId: 'ai-generate',
+                            config: {
+                                jsonOutput: 'false',
+                                outputSchema: '',
+                            },
+                        },
+                    ],
+                },
                 suggestions: [{ nodeId: 'ai-node' }],
                 appliedStrategyIds: ['ai-generation'],
                 nodeStrategyAssignments: [{ nodeId: 'ai-node', strategyId: 'ai-generation' }],
@@ -84,6 +104,8 @@ describe('final-result formatters', () => {
         expect(result.success).toBe(true);
         expect(result.summary).toContain('executed successfully');
         expect(result.summary).toContain('satisfactory for the request');
+        expect(result.summary).toContain('did not preserve the requested JSON output contract');
+        expect(result.nextActions).toContain('Align the AI node output mode with the requested JSON contract.');
         expect(result.payload).toEqual(
             expect.objectContaining({
                 kind: 'flow-designer',

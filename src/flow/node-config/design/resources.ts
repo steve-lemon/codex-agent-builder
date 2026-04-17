@@ -1,5 +1,6 @@
 // Manifest-backed defaults for node-config strategies.
 import { logDebug } from '../../../diagnostics/logger';
+import { resolveRuntimeModelAlias } from '../../../llm/runtime-model-alias';
 import type { FlowDesignTaskType } from '../../design/types';
 import { getNodeConfigDesignManifest } from './manifest';
 
@@ -39,7 +40,7 @@ export async function getNodeConfigModelProfile(args: {
                     reason: 'json-preferred',
                 },
             });
-            return defaults.aiModelProfiles[profileId];
+            return resolveRuntimeModelAlias(defaults.aiModelProfiles[profileId]);
         }
     }
 
@@ -57,7 +58,7 @@ export async function getNodeConfigModelProfile(args: {
                         reason: 'strategy-note-rule',
                     },
                 });
-                return profile;
+                return resolveRuntimeModelAlias(profile);
             }
         }
     }
@@ -74,7 +75,7 @@ export async function getNodeConfigModelProfile(args: {
                 reason: 'task-type',
             },
         });
-        return defaults.aiModelProfiles[taskTypeProfileId];
+        return resolveRuntimeModelAlias(defaults.aiModelProfiles[taskTypeProfileId]);
     }
 
     logDebug({
@@ -87,5 +88,61 @@ export async function getNodeConfigModelProfile(args: {
             reason: 'default',
         },
     });
-    return defaults.aiModelProfiles[defaults.modelSelection.defaultProfileId];
+    return resolveRuntimeModelAlias(defaults.aiModelProfiles[defaults.modelSelection.defaultProfileId]);
+}
+
+/** Returns the manifest-backed default output schema for JSON-oriented AI node configuration. */
+export async function getNodeConfigOutputSchemaDefault(args: {
+    taskType: FlowDesignTaskType;
+    wantsJson: boolean;
+    userRequest: string;
+    desiredCount: number;
+}): Promise<string> {
+    if (!args.wantsJson) {
+        return '';
+    }
+
+    const { defaults } = await getNodeConfigDesignManifest();
+    const lowered = args.userRequest.toLowerCase();
+
+    if (
+        (lowered.includes('자음') || lowered.includes('consonant')) &&
+        (lowered.includes('모음') || lowered.includes('vowel')) &&
+        (lowered.includes('개수') || lowered.includes('count'))
+    ) {
+        logDebug({
+            scope: 'node-config',
+            action: 'output_schema_selected',
+            message: 'Selected consonant/vowel count schema.',
+            data: {
+                taskType: args.taskType,
+                reason: 'consonant-vowel-count',
+            },
+        });
+        return defaults.outputSchemaTemplates.consonantVowelCounts;
+    }
+
+    if (args.taskType === 'blog-title-generation' || args.desiredCount > 1) {
+        logDebug({
+            scope: 'node-config',
+            action: 'output_schema_selected',
+            message: 'Selected string list schema.',
+            data: {
+                taskType: args.taskType,
+                reason: 'multi-item',
+            },
+        });
+        return defaults.outputSchemaTemplates.stringList;
+    }
+
+    logDebug({
+        scope: 'node-config',
+        action: 'output_schema_selected',
+        message: 'Selected default structured object schema.',
+        data: {
+            taskType: args.taskType,
+            reason: 'default',
+        },
+    });
+    return defaults.outputSchemaTemplates.defaultStructuredObject;
 }

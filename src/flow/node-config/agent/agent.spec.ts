@@ -104,7 +104,7 @@ describe('node-config design agent', () => {
                     nodeId: 'ai-node',
                     strategyId: 'ai-generation',
                     config: expect.objectContaining({
-                        model: 'mock-blog-gpt',
+                        model: 'fake-main',
                         jsonOutput: 'false',
                     }),
                 }),
@@ -146,8 +146,9 @@ describe('node-config design agent', () => {
         const aiSuggestion = result.suggestions.find(suggestion => suggestion.nodeId === 'ai-node');
         expect(aiSuggestion?.config).toEqual(
             expect.objectContaining({
-                model: 'mock-structured-gpt',
+                model: 'fake-main',
                 jsonOutput: 'true',
+                outputSchema: expect.stringContaining('type: object'),
             }),
         );
     });
@@ -238,7 +239,7 @@ describe('node-config design agent', () => {
 
         expect(result.suggestions.find(suggestion => suggestion.nodeId === 'ai-node')?.config).toEqual(
             expect.objectContaining({
-                model: 'mock-structured-gpt',
+                model: 'fake-main',
                 jsonOutput: 'true',
             }),
         );

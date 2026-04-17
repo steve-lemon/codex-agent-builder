@@ -788,7 +788,7 @@ describe('tools modules', () => {
                         nodeId: 'ai-node',
                         strategyId: 'ai-generation',
                         config: expect.objectContaining({
-                            model: 'mock-blog-gpt',
+                            model: 'fake-main',
                             jsonOutput: 'false',
                             systemPrompt: expect.stringContaining('clear and catchy blog titles'),
                             promptTemplate: expect.stringContaining('User request: 키워드를 줄테니 블로그 타이틀 여러개 만들기'),
@@ -805,7 +805,7 @@ describe('tools modules', () => {
                         nodeId: 'ai-node',
                         strategyId: 'ai-generation',
                         config: expect.objectContaining({
-                            model: 'mock-blog-gpt',
+                            model: 'fake-main',
                             jsonOutput: 'false',
                         }),
                         rationale: expect.arrayContaining([expect.stringContaining('Use the probe result')]),

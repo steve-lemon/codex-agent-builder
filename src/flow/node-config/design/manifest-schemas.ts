@@ -4,6 +4,11 @@ import { z } from 'zod';
 export const NodeConfigDefaultsSchema = z.object({
     systemPrompts: z.record(z.string()),
     aiModelProfiles: z.record(z.string()),
+    outputSchemaTemplates: z.object({
+        defaultStructuredObject: z.string(),
+        stringList: z.string(),
+        consonantVowelCounts: z.string(),
+    }),
     modelSelection: z.object({
         defaultProfileId: z.string(),
         jsonPreferredProfileId: z.string().optional(),

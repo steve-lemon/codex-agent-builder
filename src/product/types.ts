@@ -11,16 +11,35 @@ import type {
 import type { TraceEvent } from '../observability/types';
 import type { NodeConfigDesignDetailsDto } from '../flow/node-config/design/dto';
 import type { FlowDocument } from '../flow/types';
+import type { FlowOutputContract } from '../flow/output-contract';
 
 export type ProductFlowSkill = 'flow-preflight-validator' | 'flow-designer' | 'node-config-designer';
 
 export type RequirementFulfillmentLevel = 'fulfilled' | 'uncertain' | 'partial' | 'not-fulfilled';
+
+export type RequirementAssessmentReasonCategory = 'execution' | 'capability' | 'classification' | 'output-contract' | 'runtime';
+
+export type RequirementAssessmentReasonCode =
+    | 'execution-failed'
+    | 'missing-capabilities'
+    | 'generic-task-graph-fallback'
+    | 'mock-model-config'
+    | 'json-contract-not-preserved'
+    | 'json-schema-missing'
+    | 'plain-text-format-drift';
+
+export interface RequirementAssessmentReason {
+    category: RequirementAssessmentReasonCategory;
+    code: RequirementAssessmentReasonCode;
+    message: string;
+}
 
 export interface RequirementAssessment {
     executionSucceeded: boolean;
     fulfillmentLevel: RequirementFulfillmentLevel;
     summary: string;
     caveats: string[];
+    reasons: RequirementAssessmentReason[];
 }
 
 /** Optional per-call monitoring hooks for product-facing design runs. */
@@ -47,6 +66,7 @@ export interface ProductDesignRunResult {
     waitingApproval?: PendingApproval;
     trace: TraceEvent[];
     finalFlow?: FlowDocument;
+    outputContract: FlowOutputContract;
 }
 
 /** Product-facing API for flow-related agent features. */

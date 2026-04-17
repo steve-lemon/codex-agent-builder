@@ -54,4 +54,32 @@ describe('input node strategies', () => {
             }),
         ).toBe(false);
     });
+
+    it('does not force plain-text wording when the request did not explicitly ask for a text format', async () => {
+        const strategy = new PromptInputNodeStrategy();
+
+        const result = await strategy.apply(
+            {
+                id: 'prompt-input',
+                blockId: 'input',
+                label: 'Prompt Input',
+                config: {},
+                inputPorts: [],
+                outputPorts: [],
+            },
+            {
+                flow: { blocks: [], nodes: [], edges: [] },
+                input: {
+                    userRequest: '자음과 모음의 개수를 분리해',
+                    flow: { blocks: [], nodes: [], edges: [] },
+                    desiredCount: 1,
+                    wantsJson: false,
+                },
+                probeInsightsApplied: [],
+            },
+        );
+
+        expect(result.suggestion?.config.input).toContain('Return one result.');
+        expect(result.suggestion?.config.input).not.toContain('Return plain text');
+    });
 });

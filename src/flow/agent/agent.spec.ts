@@ -41,7 +41,7 @@ describe('flow design agent', () => {
         expect(result.status).toBe('completed');
         expect(result.intent?.wantsJson).toBe(true);
         expect(result.execution?.output).toMatchObject({
-            model: 'mock-flow-model',
+            model: 'fake-main',
             items: expect.any(Array),
         });
         expect(Array.isArray((result.execution?.output as { items?: unknown[] }).items)).toBe(true);
@@ -104,6 +104,13 @@ describe('flow design agent', () => {
                     return {
                         userRequest,
                         taskType: 'text-generation',
+                        outputContract: {
+                            format: 'unspecified',
+                            explicitFormat: false,
+                            desiredCount: 1,
+                            wantsMultiple: false,
+                            wantsJson: false,
+                        },
                         wantsJson: false,
                         wantsMultiple: false,
                         desiredCount: 1,

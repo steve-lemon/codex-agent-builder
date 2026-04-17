@@ -43,6 +43,7 @@ describe('FlowDesignProduct', () => {
                 executionSucceeded: true,
                 fulfillmentLevel: expect.stringMatching(/fulfilled|uncertain/),
                 summary: expect.any(String),
+                reasons: expect.any(Array),
             }),
         );
         if (result.requirementAssessment.fulfillmentLevel !== 'fulfilled') {

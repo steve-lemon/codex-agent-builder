@@ -115,6 +115,19 @@ export class FakeLlmGateway implements LlmGateway {
             });
         }
 
+        if (request.schema.name === 'prompt_lab_codex_prompt_rewrite') {
+            return request.schema.parse({
+                title: 'Codex Prompt Draft',
+                summary: 'A rewritten natural-language Codex prompt built from the generated draft and run output.',
+                codexPrompt: [
+                    '다음 요구사항을 만족하도록 작업하라.',
+                    '입력과 출력 형식을 명확히 지키고, 결과 검증 조건을 함께 반영하라.',
+                    '구현 코드나 예시 코드를 프롬프트 본문에 포함하지 말고, 자연어 작업 지시문으로 유지하라.',
+                ].join('\n'),
+                usageNotes: ['Use this rewritten prompt as the next working Codex prompt for follow-up tasks.'],
+            });
+        }
+
         throw new AgentError(`Fake gateway does not support generic structured schema: ${request.schema.name}`, {
             code: 'FAKE_GATEWAY_UNSUPPORTED_STRUCTURED_SCHEMA',
         });

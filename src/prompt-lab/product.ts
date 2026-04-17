@@ -7,7 +7,11 @@ import type { ProductDesignRunResult, ProductFlowSkill } from '../product/types'
 import { FakeLlmGateway, GeminiGateway, OpenAiGateway, type LlmGateway } from '../llm';
 import { appendNdjson, createPromptLabSession, writeJson, writeText } from './files';
 import { getPromptLabManifest } from './manifest';
-import { buildPromptLabCodexPromptRequest, buildPromptLabSelfReviewRequest } from './requests';
+import {
+    buildPromptLabCodexPromptRequest,
+    buildPromptLabCodexPromptRewriteRequest,
+    buildPromptLabSelfReviewRequest,
+} from './requests';
 import type {
     PromptLabArtifactPaths,
     PromptLabCodexPrompt,
@@ -112,9 +116,117 @@ function renderCodexPromptMarkdown(prompt: PromptLabCodexPrompt): string {
     ].join('\n');
 }
 
+function looksCodeLikeCodexPrompt(prompt: string): boolean {
+    return [
+        /```/,
+        /^\s*function\s+\w+/m,
+        /^\s*(const|let|var)\s+\w+\s*=/m,
+        /^\s*def\s+\w+\s*\(/m,
+        /^\s*class\s+\w+/m,
+        /console\.log\s*\(/,
+        /charCodeAt\s*\(/,
+        /^\s*\/\/\s*(Input|Output|Requirements?)/m,
+        /^\s*#\s*(Input|Output|Requirements?)/m,
+        /\breturn\s+\{/,
+        /\b(write|implement|create)\s+(a|an)\s+function\b/i,
+        /함수(?:를)?\s*(작성|구현|만들)/,
+        /코드(?:를)?\s*(작성|구현|생성)/,
+        /javascript|typescript|python/i,
+    ].some(pattern => pattern.test(prompt));
+}
+
+function splitPromptSentences(prompt: string): string[] {
+    return prompt
+        .split(/(?<=[.!?。다요])\s+|\n+/)
+        .map(sentence => sentence.trim())
+        .filter(Boolean);
+}
+
+function findPrimaryAiNode(result: ProductDesignRunResult) {
+    return result.finalFlow?.nodes.find(node => node.blockId === 'ai-generate');
+}
+
+function inferJsonOutputContract(result: ProductDesignRunResult, requirement: string, userFeedback: string) {
+    const aiNode = findPrimaryAiNode(result);
+    const wantsJsonFromText = result.outputContract.format === 'json';
+    const jsonOutputEnabled = aiNode?.config?.jsonOutput?.trim().toLowerCase() === 'true';
+    const outputSchema = aiNode?.config?.outputSchema?.trim() ?? '';
+
+    if (!wantsJsonFromText && !jsonOutputEnabled && !outputSchema) {
+        return undefined;
+    }
+
+    const hasConsonantVowelSchema =
+        /consonants/i.test(outputSchema) &&
+        /vowels/i.test(outputSchema) &&
+        /integer/i.test(outputSchema);
+
+    if (hasConsonantVowelSchema) {
+        return '출력은 JSON 객체 하나로만 반환하고, 형식은 {"consonants": 정수, "vowels": 정수}이어야 합니다. 설명이나 추가 텍스트는 포함하지 마세요.';
+    }
+
+    return '출력은 JSON 객체 하나로만 반환하세요. 설명이나 추가 텍스트는 포함하지 마세요.';
+}
+
+export function sanitizeCodexPromptText(
+    requirement: string,
+    userFeedback: string,
+    prompt: string,
+    result?: ProductDesignRunResult,
+): string {
+    const combined = `${requirement}\n${userFeedback}`.toLowerCase();
+    const allowsExamples = /예시|\bexample\b|샘플/.test(combined);
+    const allowsErrorOutput = /오류|에러|\berror\b|exception/.test(combined);
+    const allowsFallbackRules = /fallback|폴백|대체 규칙|예외 처리/.test(combined);
+
+    const filtered = splitPromptSentences(prompt).filter(sentence => {
+        const normalized = sentence.toLowerCase();
+
+        if (!allowsExamples && (/예시|example|샘플/.test(normalized))) {
+            return false;
+        }
+
+        if (!allowsErrorOutput && (/오류|에러|\berror\b|exception/.test(normalized))) {
+            return false;
+        }
+
+        if (!allowsFallbackRules && (/fallback|폴백|대체 규칙/.test(normalized))) {
+            return false;
+        }
+
+        return true;
+    });
+
+    let normalized = filtered.join(' ').replace(/\s+/g, ' ').trim() || prompt.trim();
+    const jsonContract = result ? inferJsonOutputContract(result, requirement, userFeedback) : undefined;
+    const prefersPlainText = result?.outputContract.format === 'plain-text';
+
+    if (jsonContract) {
+        const hasJsonContract = /json 객체 하나로만 반환|json object only|only json|형식은\s*\{.*consonants.*vowels.*\}/i.test(
+            normalized,
+        );
+        if (!hasJsonContract) {
+            normalized = `${normalized} ${jsonContract}`.trim();
+        }
+    }
+
+    if (prefersPlainText) {
+        normalized = normalized.replace(
+            /출력은 자음 개수와 모음 개수를 명확히 구분하여 알려 주세요\.?/g,
+            '출력은 간결한 평문으로 반환하세요.',
+        );
+    }
+
+    return normalized;
+}
+
 function localizeAssessmentSummary(language: 'ko' | 'en', summary: string): string {
     if (language !== 'ko') {
         return summary;
+    }
+
+    if (summary.startsWith('some capabilities are still missing (')) {
+        return summary.replace('some capabilities are still missing', '일부 capability가 아직 부족합니다');
     }
 
     const mapping: Record<string, string> = {
@@ -122,10 +234,34 @@ function localizeAssessmentSummary(language: 'ko' | 'en', summary: string): stri
             '실행이 성공적으로 완료되지 않았으므로, 요구사항은 아직 충족되지 않았습니다.',
         'The run completed, but the requirement is only partially covered because some capabilities are still missing.':
             '실행은 완료되었지만, 일부 capability가 아직 부족하여 요구사항을 부분적으로만 충족합니다.',
-        'The run completed successfully, but requirement fulfillment is still uncertain because the design relied on generic fallback or mock execution settings.':
-            '실행은 성공적으로 완료되었지만, generic fallback 또는 mock 실행 설정에 의존했기 때문에 요구사항 충족 여부는 아직 불확실합니다.',
+        'The run completed successfully, but requirement fulfillment is still uncertain because the design relied on a generic task-graph fallback and the final flow still uses mock execution settings.':
+            '실행은 성공적으로 완료되었지만, 일반 task graph fallback과 mock 실행 설정에 의존했기 때문에 요구사항 충족 여부는 아직 불확실합니다.',
+        'The run completed successfully, but requirement fulfillment is still uncertain because the design relied on a generic task-graph fallback.':
+            '실행은 성공적으로 완료되었지만, 일반 task graph fallback에 의존했기 때문에 요구사항 충족 여부는 아직 불확실합니다.',
+        'The run completed successfully, but requirement fulfillment is still uncertain because the final flow still uses mock execution settings.':
+            '실행은 성공적으로 완료되었지만, 최종 flow가 아직 mock 실행 설정을 사용하고 있어 요구사항 충족 여부는 아직 불확실합니다.',
+        'The run completed successfully, but requirement fulfillment is still uncertain because the requested JSON output contract was not preserved.':
+            '실행은 성공적으로 완료되었지만, 요청된 JSON 출력 계약이 최종 flow에서 유지되지 않아 요구사항 충족 여부는 아직 불확실합니다.',
+        'The run completed successfully, but requirement fulfillment is still uncertain because structured JSON output still lacks an explicit output schema.':
+            '실행은 성공적으로 완료되었지만, 구조화된 JSON 출력에 필요한 명시적 스키마가 아직 없어 요구사항 충족 여부는 아직 불확실합니다.',
+        'The run completed successfully, but requirement fulfillment is still uncertain because the flow output format drifted away from the requested plain-text preference.':
+            '실행은 성공적으로 완료되었지만, 최종 flow의 출력 형식이 요청된 평문 선호에서 벗어나 요구사항 충족 여부는 아직 불확실합니다.',
         'The run completed successfully and the current design appears to fulfill the requirement.':
             '실행은 성공적으로 완료되었고, 현재 설계는 요구사항을 충족하는 것으로 보입니다.',
+        'the run did not complete successfully':
+            '실행이 성공적으로 완료되지 않았습니다.',
+        'some capabilities are still missing':
+            '일부 capability가 아직 부족합니다.',
+        'the design relied on a generic task-graph fallback':
+            '설계가 일반 task graph fallback에 의존했습니다.',
+        'the final flow still uses mock execution settings':
+            '최종 flow가 아직 mock 실행 설정을 사용하고 있습니다.',
+        'the requested JSON output contract was not preserved':
+            '요청된 JSON 출력 계약이 유지되지 않았습니다.',
+        'structured JSON output still lacks an explicit output schema':
+            '구조화된 JSON 출력에 필요한 명시적 스키마가 아직 없습니다.',
+        'the flow output format drifted away from the requested plain-text preference':
+            '출력 형식이 요청된 평문 선호에서 벗어났습니다.',
     };
 
     return mapping[summary] ?? summary;
@@ -141,9 +277,31 @@ function localizeAssessmentCaveat(language: 'ko' | 'en', caveat: string): string
             'Task graph 분류가 generic 템플릿으로 fallback 되었습니다.',
         'The final flow still uses a mock AI model configuration.':
             '최종 플로우가 아직 mock AI 모델 설정을 사용하고 있습니다.',
+        'The final flow did not preserve the requested JSON output contract.':
+            '최종 flow가 요청된 JSON 출력 계약을 유지하지 못했습니다.',
+        'The final flow enables JSON output but does not define an output schema.':
+            '최종 flow가 JSON 출력을 사용하지만 출력 스키마를 정의하지 않았습니다.',
+        'The final flow switched to JSON output even though the request preferred plain text.':
+            '최종 flow가 요청된 평문 선호와 달리 JSON 출력으로 바뀌었습니다.',
     };
 
     return mapping[caveat] ?? caveat;
+}
+
+function localizeAssessmentReasonCategory(language: 'ko' | 'en', category: string): string {
+    if (language !== 'ko') {
+        return category;
+    }
+
+    const mapping: Record<string, string> = {
+        execution: '실행',
+        capability: '기능',
+        classification: '분류',
+        'output-contract': '출력 계약',
+        runtime: '런타임',
+    };
+
+    return mapping[category] ?? category;
 }
 
 function renderSummaryMarkdown(args: {
@@ -174,6 +332,7 @@ function renderSummaryMarkdown(args: {
               success: '성공',
               executionSucceeded: '실행 성공',
               fulfillmentLevel: '충족도 수준',
+              assessmentReasons: '판단 근거',
           }
         : {
               title: 'Prompt Lab Session',
@@ -194,17 +353,15 @@ function renderSummaryMarkdown(args: {
               success: 'Success',
               executionSucceeded: 'Execution Succeeded',
               fulfillmentLevel: 'Fulfillment Level',
+              assessmentReasons: 'Assessment Signals',
           };
     const fulfillmentLevel = isKorean
-        ? (
-              {
-                  fulfilled: '충족',
-                  uncertain: '불확실',
-                  partial: '부분 충족',
-                  'not-fulfilled': '미충족',
-              }[args.result.requirementAssessment.fulfillmentLevel] ??
-              args.result.requirementAssessment.fulfillmentLevel
-          )
+        ? {
+              fulfilled: '충족',
+              uncertain: '불확실',
+              partial: '부분 충족',
+              'not-fulfilled': '미충족',
+          }[args.result.requirementAssessment.fulfillmentLevel] ?? args.result.requirementAssessment.fulfillmentLevel
         : args.result.requirementAssessment.fulfillmentLevel;
 
     return [
@@ -231,11 +388,29 @@ function renderSummaryMarkdown(args: {
         '',
         `- ${sections.executionSucceeded}: ${String(args.result.requirementAssessment.executionSucceeded)}`,
         `- ${sections.fulfillmentLevel}: ${fulfillmentLevel}`,
-        `- ${sections.summary}: ${localizeAssessmentSummary(args.session.config.language, args.result.requirementAssessment.summary)}`,
+        `- ${sections.summary}: ${localizeAssessmentSummary(
+            args.session.config.language,
+            args.result.requirementAssessment.summary,
+        )}`,
+        ...(args.result.requirementAssessment.reasons.length > 0
+            ? [
+                  '',
+                  `- ${sections.assessmentReasons}:`,
+                  ...args.result.requirementAssessment.reasons.map(
+                      item =>
+                          `  - [${localizeAssessmentReasonCategory(args.session.config.language, item.category)}] ${localizeAssessmentSummary(
+                              args.session.config.language,
+                              item.message,
+                          )}`,
+                  ),
+              ]
+            : []),
         ...(args.result.requirementAssessment.caveats.length > 0
             ? [
                   '',
-                  ...args.result.requirementAssessment.caveats.map(item => `- ${localizeAssessmentCaveat(args.session.config.language, item)}`),
+                  ...args.result.requirementAssessment.caveats.map(
+                      item => `- ${localizeAssessmentCaveat(args.session.config.language, item)}`,
+                  ),
                   '',
               ]
             : ['']),
@@ -345,8 +520,14 @@ export class PromptLabProduct {
 
         let gateway: LlmGateway | undefined;
         let diagnosticListener: DiagnosticListener | undefined;
+        const previousRuntimeProvider = process.env.FLOW_RUNTIME_PROVIDER;
+        const previousRuntimeMainModel = process.env.FLOW_RUNTIME_MAIN_MODEL;
+        const previousRuntimeLiteModel = process.env.FLOW_RUNTIME_LITE_MODEL;
 
         try {
+            process.env.FLOW_RUNTIME_PROVIDER = args.config.provider;
+            process.env.FLOW_RUNTIME_MAIN_MODEL = args.config.mainModel;
+            process.env.FLOW_RUNTIME_LITE_MODEL = args.config.liteModel;
             gateway = createGateway(args.config);
             const product =
                 this.options.productFactory?.(gateway) ??
@@ -391,6 +572,21 @@ export class PromptLabProduct {
                 code: error instanceof AgentError ? error.code : 'PROMPT_LAB_RUN_FAILED',
             });
         } finally {
+            if (previousRuntimeProvider === undefined) {
+                delete process.env.FLOW_RUNTIME_PROVIDER;
+            } else {
+                process.env.FLOW_RUNTIME_PROVIDER = previousRuntimeProvider;
+            }
+            if (previousRuntimeMainModel === undefined) {
+                delete process.env.FLOW_RUNTIME_MAIN_MODEL;
+            } else {
+                process.env.FLOW_RUNTIME_MAIN_MODEL = previousRuntimeMainModel;
+            }
+            if (previousRuntimeLiteModel === undefined) {
+                delete process.env.FLOW_RUNTIME_LITE_MODEL;
+            } else {
+                process.env.FLOW_RUNTIME_LITE_MODEL = previousRuntimeLiteModel;
+            }
             if (diagnosticListener) {
                 removeDiagnosticListener(diagnosticListener);
             }
@@ -432,9 +628,30 @@ export class PromptLabProduct {
                 language: args.session.config.language,
             }),
         );
+        const rewrittenOrGeneratedCodexPrompt = looksCodeLikeCodexPrompt(codexPrompt.codexPrompt)
+            ? await args.gateway.generateStructured(
+                  await buildPromptLabCodexPromptRewriteRequest({
+                      session: args.session,
+                      result: args.result,
+                      selfReview: args.selfReview,
+                      userFeedback: args.userFeedback,
+                      language: args.session.config.language,
+                      draftPrompt: codexPrompt.codexPrompt,
+                  }),
+              )
+            : codexPrompt;
+        const normalizedCodexPrompt = {
+            ...rewrittenOrGeneratedCodexPrompt,
+            codexPrompt: sanitizeCodexPromptText(
+                args.session.requirement,
+                args.userFeedback,
+                rewrittenOrGeneratedCodexPrompt.codexPrompt,
+                args.result,
+            ),
+        };
 
-        await writeJson(paths.promptJsonPath, codexPrompt);
-        await writeText(paths.promptMarkdownPath, renderCodexPromptMarkdown(codexPrompt));
+        await writeJson(paths.promptJsonPath, normalizedCodexPrompt);
+        await writeText(paths.promptMarkdownPath, renderCodexPromptMarkdown(normalizedCodexPrompt));
         await writeText(
             paths.summaryPath,
             renderSummaryMarkdown({
@@ -442,7 +659,7 @@ export class PromptLabProduct {
                 result: args.result,
                 selfReview: args.selfReview,
                 userFeedback: args.userFeedback,
-                codexPrompt,
+                codexPrompt: normalizedCodexPrompt,
             }),
         );
         await writeJson(paths.artifactsPath, paths);
@@ -452,7 +669,7 @@ export class PromptLabProduct {
             result: args.result,
             selfReview: args.selfReview,
             userFeedback: args.userFeedback,
-            codexPrompt,
+            codexPrompt: normalizedCodexPrompt,
         };
     }
 

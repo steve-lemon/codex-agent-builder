@@ -1,5 +1,6 @@
 // Input-node configuration strategies for system and user prompt blocks.
 import type { FlowNode } from '../../../types';
+import { buildFlowOutputFormatInstruction, inferFlowOutputContract } from '../../../output-contract';
 import { getNodeConfigSystemPromptDefault } from '../../design/resources';
 import type { NodeConfigurationDesignInput } from '../types';
 import {
@@ -28,13 +29,10 @@ async function buildSystemPrompt(input: NodeConfigurationDesignInput): Promise<s
 }
 
 function buildUserPrompt(input: NodeConfigurationDesignInput): string {
+    const outputContract = inferFlowOutputContract(input.userRequest);
     const desiredCountInstruction =
         input.desiredCount > 1 ? `Return exactly ${input.desiredCount} results.` : 'Return one result.';
-    const formatInstruction = input.wantsJson
-        ? 'Return JSON only.'
-        : input.desiredCount > 1
-        ? 'Return each result on its own line.'
-        : 'Return plain text.';
+    const formatInstruction = buildFlowOutputFormatInstruction(outputContract);
     const probeHint = input.probeResult?.mismatchesFromSpec?.[0]?.trim()
         ? ` Keep in mind this observed behavior detail: ${input.probeResult.mismatchesFromSpec[0].trim()}`
         : '';
@@ -45,7 +43,8 @@ function buildUserPrompt(input: NodeConfigurationDesignInput): string {
             ? ` Improvement notes: ${input.improvementNotes.join(' | ')}`
             : '';
 
-    return `User request: ${input.userRequest}. ${desiredCountInstruction} ${formatInstruction}${probeHint}${strategyHint}${improvementText}`;
+    const instructions = [desiredCountInstruction, formatInstruction].filter(Boolean).join(' ');
+    return `User request: ${input.userRequest}. ${instructions}${probeHint}${strategyHint}${improvementText}`;
 }
 
 /** Strategy for the system input node that constrains downstream AI behavior. */

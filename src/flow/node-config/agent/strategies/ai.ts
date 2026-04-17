@@ -1,5 +1,10 @@
 // AI block strategy for model and structured-output configuration.
-import { getNodeConfigModelProfile, getNodeConfigSystemPromptDefault } from '../../design/resources';
+import { buildFlowOutputFormatInstruction, inferFlowOutputContract } from '../../../output-contract';
+import {
+    getNodeConfigModelProfile,
+    getNodeConfigOutputSchemaDefault,
+    getNodeConfigSystemPromptDefault,
+} from '../../design/resources';
 import {
     collectStrategyNotesFor,
     inferTaskType,
@@ -26,14 +31,22 @@ async function buildAiDefaults(input: NodeConfigurationDesignInput): Promise<{
     outputSchema: string;
 }> {
     const taskType = await inferTaskType(input.userRequest, input.wantsJson);
+    const outputContract = inferFlowOutputContract(input.userRequest);
     const systemPrompt = await getNodeConfigSystemPromptDefault(taskType);
     const countInstruction =
         input.desiredCount > 1 ? `Return exactly ${input.desiredCount} results.` : 'Return one result.';
-    const outputInstruction = input.wantsJson ? 'Return JSON only.' : 'Return plain text.';
+    const outputInstruction = buildFlowOutputFormatInstruction(outputContract);
     return {
         systemPrompt,
-        promptTemplate: `User request: ${input.userRequest}. ${countInstruction} ${outputInstruction}`,
-        outputSchema: '',
+        promptTemplate: `User request: ${input.userRequest}. ${[countInstruction, outputInstruction]
+            .filter(Boolean)
+            .join(' ')}`,
+        outputSchema: await getNodeConfigOutputSchemaDefault({
+            taskType,
+            wantsJson: input.wantsJson,
+            userRequest: input.userRequest,
+            desiredCount: input.desiredCount,
+        }),
     };
 }
 
@@ -74,7 +87,9 @@ export class AiGenerateNodeStrategy implements NodeBlockConfigStrategy {
                     'Choose an AI model profile that matches the requested output style.',
                     'Populate fallback system/prompt settings so the AI node remains understandable in the editor and can execute with config defaults.',
                     ...(context.input.wantsJson
-                        ? ['If a JSON schema is available, keep it aligned with the expected structured output.']
+                        ? [
+                              'Populate an output schema when JSON output is expected so structured validation can happen later.',
+                          ]
                         : []),
                     'Keep jsonOutput aligned with the request so downstream parsing expectations stay stable.',
                     ...(context.probeInsightsApplied.length > 0

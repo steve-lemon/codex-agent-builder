@@ -4,18 +4,23 @@ import { now } from '../tools/now';
 import type { PromptLabSessionConfig, PromptLabSessionRecord } from './types';
 
 function slugify(input: string): string {
-    return input
-        .toLowerCase()
-        .replace(/[^a-z0-9가-힣]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 48) || 'session';
+    return (
+        input
+            .toLowerCase()
+            .replace(/[^a-z0-9가-힣]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 48) || 'session'
+    );
 }
 
 function timestampId(): string {
     return new Date(now()).toISOString().replace(/[:.]/g, '-');
 }
 
-export async function createPromptLabSession(config: PromptLabSessionConfig, requirement: string): Promise<PromptLabSessionRecord> {
+export async function createPromptLabSession(
+    config: PromptLabSessionConfig,
+    requirement: string,
+): Promise<PromptLabSessionRecord> {
     const sessionId = timestampId();
     const outputRoot = config.outputRoot ?? 'output/labs';
     const rootDir = isAbsolute(outputRoot) ? outputRoot : resolve(process.cwd(), outputRoot);

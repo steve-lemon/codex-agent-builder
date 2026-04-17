@@ -2,6 +2,7 @@
 import type { GraphExecutionPlan, GraphRunResult } from '../../graph/types';
 import type { FlowAiGenerateRequest } from '../runtime';
 import type { FlowDocument } from '../types';
+import type { FlowOutputContract } from '../output-contract';
 
 /** Coarse-grained task classification used by flow-design layers. */
 export type FlowDesignTaskType = string;
@@ -13,6 +14,7 @@ export interface FlowDesignIntent {
     taskTypeConfidence?: number;
     taskTypeRationale?: string;
     taskTypeSource?: 'deterministic' | 'model';
+    outputContract: FlowOutputContract;
     wantsJson: boolean;
     wantsMultiple: boolean;
     desiredCount: number;
