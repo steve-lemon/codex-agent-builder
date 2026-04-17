@@ -86,6 +86,7 @@ function getTaskGraphToolDefinitions(): Record<
                 reflection: z.object({
                     issues: z.array(z.string()).default([]),
                     improvementNotes: z.array(z.string()).default([]),
+                    triggeredRuleIds: z.array(z.string()).optional(),
                 }),
             }),
         },
@@ -137,9 +138,9 @@ function getTaskGraphToolExecutors() {
                 nodes: Array<{ id: string; label?: string; data?: Record<string, unknown> }>;
                 edges: Array<{ source: string; target: string; label?: string; data?: Record<string, unknown> }>;
             };
-            reflection: { issues: string[]; improvementNotes: string[] };
+            reflection: { issues: string[]; improvementNotes: string[]; triggeredRuleIds?: string[] };
         }>(async ({ taskGraph, reflection }) => {
-            const refinedTaskGraph = refineTaskGraph(taskGraph, reflection);
+            const refinedTaskGraph = await refineTaskGraph(taskGraph, reflection);
             return {
                 taskGraph: refinedTaskGraph,
                 changeSummary: reflection.improvementNotes,

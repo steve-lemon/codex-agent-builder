@@ -2,11 +2,17 @@
 import { z } from 'zod';
 
 export const FlowDesignTaskTypeDefinitionSchema = z.object({
-    id: z.enum(['blog-title-generation', 'json-generation', 'text-generation']),
+    id: z.string(),
     label: z.string(),
     description: z.string(),
     examples: z.array(z.string()),
     signals: z.array(z.string()),
+    hints: z
+        .object({
+            preferredWhenJson: z.boolean().optional(),
+            fallbackWhenPlainText: z.boolean().optional(),
+        })
+        .optional(),
 });
 
 export const TaskGraphNodeSchema = z.object({
@@ -58,6 +64,10 @@ export const FlowDesignDefaultsSchema = z.object({
             prompt: z.string(),
         }),
     }),
+    taskTypeSelection: z.object({
+        jsonPreferredTaskTypeId: z.string(),
+        plainTextFallbackTaskTypeId: z.string(),
+    }),
 });
 
 export const FlowDesignKnowledgeConditionalNotesSchema = z.object({
@@ -71,10 +81,29 @@ export const FlowDesignKnowledgeConditionalNotesSchema = z.object({
     notes: z.array(z.string()).optional(),
 });
 
+export const FlowDesignReflectionRuleSchema = z.object({
+    id: z.string(),
+    match: z.object({
+        taskTypes: z.array(z.string()).optional(),
+        maxItemLength: z.number().int().positive().optional(),
+    }),
+    issue: z.string(),
+    suggestedImprovement: z.string(),
+    taskGraphRefinement: z
+        .object({
+            targetOperationPrefixes: z.array(z.string()).optional(),
+            expectedOutputs: z.array(z.string()).optional(),
+            requiredCapabilities: z.array(z.string()).optional(),
+            qualityHints: z.array(z.string()).optional(),
+        })
+        .optional(),
+});
+
 export const FlowDesignKnowledgeManifestSchema = z.object({
     sharedDraftNotes: z.array(z.string()).optional(),
     conditionalDraftNotes: z.array(FlowDesignKnowledgeConditionalNotesSchema).optional(),
     reflectionNotes: z.array(z.string()).optional(),
+    reflectionRules: z.array(FlowDesignReflectionRuleSchema).optional(),
 });
 
 export const FlowDesignManifestSchema = z.object({
@@ -90,5 +119,6 @@ export type FlowDesignTaskGraphTemplateRecord = z.infer<typeof TaskGraphTemplate
 export type FlowDesignClassifierPromptsRecord = z.infer<typeof FlowDesignClassifierPromptsSchema>;
 export type FlowDesignDefaultsRecord = z.infer<typeof FlowDesignDefaultsSchema>;
 export type FlowDesignKnowledgeConditionalNotesRecord = z.infer<typeof FlowDesignKnowledgeConditionalNotesSchema>;
+export type FlowDesignReflectionRuleRecord = z.infer<typeof FlowDesignReflectionRuleSchema>;
 export type FlowDesignKnowledgeManifestRecord = z.infer<typeof FlowDesignKnowledgeManifestSchema>;
 export type FlowDesignManifestRecord = z.infer<typeof FlowDesignManifestSchema>;

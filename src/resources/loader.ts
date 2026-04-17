@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import yaml from 'js-yaml';
+import { logDebug, logError } from '../diagnostics/logger';
 import { getResourceDefinition, type ResourceId, type ResourceSchemaMap } from './registry';
 import { resolveResourcePath } from './path-resolver';
 
@@ -35,15 +36,67 @@ export async function loadResource<K extends ResourceId>(
         resourceCache.set(
             cacheKey,
             (async () => {
-                // TODO(resources): Support non-file text sources with metadata such as etag/version
-                // so remote config backends can participate in cache invalidation safely.
-                const text = await source.readText(resolvedPath);
-                const parsed = yaml.load(text);
-                // TODO(resources): Distinguish parse errors from schema-validation failures with
-                // a structured ResourceLoadError so callers can surface better operator diagnostics.
-                return definition.schema.parse(parsed);
+                try {
+                    logDebug({
+                        scope: 'resources',
+                        action: 'load_start',
+                        message: 'Loading resource.',
+                        data: {
+                            id,
+                            resolvedPath,
+                        },
+                    });
+                    // TODO(resources): Support non-file text sources with metadata such as etag/version
+                    // so remote config backends can participate in cache invalidation safely.
+                    const text = await source.readText(resolvedPath);
+                    const parsed = yaml.load(text);
+                    // TODO(resources): Distinguish parse errors from schema-validation failures with
+                    // a structured ResourceLoadError so callers can surface better operator diagnostics.
+                    const validated = definition.schema.parse(parsed);
+                    logDebug({
+                        scope: 'resources',
+                        action: 'load_success',
+                        message: 'Loaded resource successfully.',
+                        data: {
+                            id,
+                            resolvedPath,
+                        },
+                    });
+                    return validated;
+                } catch (error) {
+                    logError({
+                        scope: 'resources',
+                        action: 'load_failed',
+                        message: 'Failed to load resource.',
+                        data: {
+                            id,
+                            resolvedPath,
+                            error:
+                                error instanceof Error
+                                    ? {
+                                          name: error.name,
+                                          message: error.message,
+                                      }
+                                    : { message: String(error) },
+                        },
+                    });
+                    // TODO(resources): Raise a first-class ResourceLoadError that distinguishes
+                    // missing file, parse failure, and schema validation failure so operators can
+                    // triage manifest problems without inspecting raw exception shapes.
+                    throw error;
+                }
             })(),
         );
+    } else {
+        logDebug({
+            scope: 'resources',
+            action: 'cache_hit',
+            message: 'Using cached resource.',
+            data: {
+                id,
+                resolvedPath,
+            },
+        });
     }
 
     // TODO(resources): Add optional stale-while-revalidate or TTL-based refresh for long-lived

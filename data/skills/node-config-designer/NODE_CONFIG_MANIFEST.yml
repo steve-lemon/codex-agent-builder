@@ -8,6 +8,17 @@ defaults:
     default: mock-flow-model
     blog-title-generation: mock-blog-gpt
     structured-output: mock-structured-gpt
+  modelSelection:
+    defaultProfileId: default
+    jsonPreferredProfileId: structured-output
+    taskTypeProfileIds:
+      blog-title-generation: blog-title-generation
+    strategyNoteProfileRules:
+      - keywords:
+          - title
+          - headline
+          - blog
+        profileId: blog-title-generation
 knowledge:
   sharedNotes:
     - Use separate configuration strategies per block family instead of one generic prompt/config pass.

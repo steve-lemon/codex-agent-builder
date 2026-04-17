@@ -4,7 +4,7 @@ import type { FlowAiGenerateRequest } from '../flow/runtime';
 import type { FlowDocument } from '../flow/types';
 
 /** Coarse-grained task classification used by flow-design layers. */
-export type FlowDesignTaskType = 'blog-title-generation' | 'json-generation' | 'text-generation' | 'unknown';
+export type FlowDesignTaskType = string;
 
 /** Parsed intent derived from a natural-language user request. */
 export interface FlowDesignIntent {
@@ -41,6 +41,7 @@ export interface FlowDesignReflection {
     summary: string;
     issues: string[];
     suggestedImprovements: string[];
+    triggeredRuleIds?: string[];
 }
 
 /** Mapping between inferred task-graph nodes and the simplified flow draft. */

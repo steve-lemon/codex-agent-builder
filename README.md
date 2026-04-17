@@ -216,6 +216,7 @@ The Gemini SDK requires Node.js 20 or newer for real API execution, and this pro
 - `USE_REAL_OPENAI`: `true` or `false`
 - `CODEX_RESOURCE_ROOT`: optional shared resource root; defaults to `/Users/dujung/Documents/Codex/data`
 - `CODEX_RESOURCE_PROFILE`: optional resource profile suffix; if set to `staging`, the loader will prefer files such as `FLOW_DESIGN_MANIFEST.staging.yml` when they exist inside the resource root
+- `CODEX_DEBUG_LOGS=1`: enables additional diagnostic logs for resource loading, task-type/task-graph selection, and key node-config decisions. Warnings and errors are still logged without this flag.
 
 Resource loading notes:
 

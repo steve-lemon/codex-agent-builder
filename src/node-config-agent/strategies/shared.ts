@@ -1,5 +1,6 @@
 // Shared contracts and helpers for block-specific node-configuration strategies.
 import type { FlowDocument, FlowNode } from '../../flow/types';
+import { defaultFlowDesignTaskTypeAdvisor, getFlowDesignTaskTypeCatalog } from '../../flow-design/task-types';
 import type { NodeConfigurationDesignInput, NodeConfigurationSuggestion } from '../types';
 
 export interface NodeBlockConfigStrategyContext {
@@ -29,23 +30,15 @@ export interface NodeBlockConfigStrategy {
     // node instead of picking only one matching strategy.
 }
 
-export function inferTaskType(
-    userRequest: string,
-    wantsJson: boolean,
-): 'blog-title-generation' | 'json-generation' | 'text-generation' {
-    const lowered = userRequest.toLowerCase();
-    if (
-        lowered.includes('blog') ||
-        lowered.includes('title') ||
-        userRequest.includes('타이틀') ||
-        userRequest.includes('제목')
-    ) {
-        return 'blog-title-generation';
-    }
-    if (wantsJson) {
-        return 'json-generation';
-    }
-    return 'text-generation';
+export async function inferTaskType(userRequest: string, wantsJson: boolean): Promise<string> {
+    const taskTypes = await getFlowDesignTaskTypeCatalog();
+    return (
+        await defaultFlowDesignTaskTypeAdvisor.recommend({
+            userRequest,
+            wantsJson,
+            taskTypes,
+        })
+    ).taskType;
 }
 
 export function collectStrategyNotes(input: NodeConfigurationDesignInput): string[] {

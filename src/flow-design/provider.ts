@@ -66,7 +66,7 @@ export class DeterministicFlowDesignProvider implements FlowDesignProvider {
 
     async reflectExecution(args: Parameters<FlowDesignProvider['reflectExecution']>[0]): Promise<FlowDesignReflection> {
         const intent = await this.analyzeRequest(args.userRequest);
-        const baseReflection = reflectFlowExecution(args);
+        const baseReflection = await reflectFlowExecution(args);
         const reflectionNotes = await Promise.resolve(
             this.knowledgeSource.getReflectionNotes({
                 intent,
@@ -74,7 +74,7 @@ export class DeterministicFlowDesignProvider implements FlowDesignProvider {
                 reflection: baseReflection,
             }),
         );
-        return reflectFlowExecution({
+        return await reflectFlowExecution({
             ...args,
             reflectionNotes,
         });

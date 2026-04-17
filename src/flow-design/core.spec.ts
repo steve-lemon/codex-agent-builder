@@ -66,7 +66,7 @@ describe('flow-design core', () => {
             userRequest: '상품 소개 문구를 JSON 형태로 여러개 만들어줘',
             improvementNotes: [],
         });
-        const reflection = reflectFlowExecution({
+        const reflection = await reflectFlowExecution({
             userRequest: '상품 소개 문구를 JSON 형태로 여러개 만들어줘',
             desiredCount: 5,
             wantsJson: true,

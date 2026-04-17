@@ -5,6 +5,7 @@ import type {
     FlowDesignDefaultsRecord,
     FlowDesignManifestRecord,
     FlowDesignKnowledgeManifestRecord,
+    FlowDesignReflectionRuleRecord,
     FlowDesignTaskGraphTemplateRecord,
     FlowDesignTaskTypeDefinitionRecord,
 } from './manifest-schemas';
@@ -14,7 +15,9 @@ export interface FlowDesignManifest {
     taskGraphTemplates: FlowDesignTaskGraphTemplateRecord[];
     classifierPrompts: FlowDesignClassifierPromptsRecord;
     defaults: FlowDesignDefaultsRecord;
-    knowledge: FlowDesignKnowledgeManifestRecord;
+    knowledge: FlowDesignKnowledgeManifestRecord & {
+        reflectionRules: FlowDesignReflectionRuleRecord[];
+    };
 }
 
 export async function getFlowDesignManifest(): Promise<FlowDesignManifest> {
@@ -27,6 +30,9 @@ export async function getFlowDesignManifest(): Promise<FlowDesignManifest> {
         taskGraphTemplates: manifest.taskGraphTemplates,
         classifierPrompts: manifest.classifierPrompts,
         defaults: manifest.defaults,
-        knowledge: manifest.knowledge,
+        knowledge: {
+            ...manifest.knowledge,
+            reflectionRules: manifest.knowledge.reflectionRules ?? [],
+        },
     };
 }

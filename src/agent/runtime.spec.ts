@@ -201,6 +201,42 @@ describe('runtime flow', () => {
         expect(timeline.every((event, index) => event.seq === index + 1)).toBe(true);
     });
 
+    it('can stream diagnostic logger events into the unified runtime timeline', async () => {
+        const originalDebugLogs = process.env.CODEX_DEBUG_LOGS;
+        process.env.CODEX_DEBUG_LOGS = '1';
+        try {
+            const timeline: UnifiedRunEvent[] = [];
+            const runtime = new AgentRuntime({
+                llm: new FakeLlmGateway(),
+                store: new InMemoryRunStateStore(),
+                toolRegistry: await buildDefaultToolRegistry(),
+                unifiedEventConnectionFactory: () =>
+                    new CallbackUnifiedRunEventConnection(event => {
+                        timeline.push(event);
+                    }),
+            });
+
+            const result = await runtime.run('키워드를 줄테니 블로그 타이틀 여러개 만들기');
+
+            expect(result.status).toBe('completed');
+            expect(
+                timeline.some(
+                    event =>
+                        event.source === 'trace' &&
+                        event.type === 'diagnostic_debug' &&
+                        typeof event.message === 'string' &&
+                        event.message.includes('flow-design'),
+                ),
+            ).toBe(true);
+        } finally {
+            if (typeof originalDebugLogs === 'undefined') {
+                delete process.env.CODEX_DEBUG_LOGS;
+            } else {
+                process.env.CODEX_DEBUG_LOGS = originalDebugLogs;
+            }
+        }
+    });
+
     it('completes a preflight validation run and returns task-graph feasibility feedback', async () => {
         const runtime = await buildDefaultRuntime();
         const result = await runtime.run('이 요청이 가능한지 사전 검증해줘: 이메일을 확인해서 답장 해줘');

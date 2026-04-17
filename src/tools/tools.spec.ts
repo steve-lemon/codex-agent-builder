@@ -329,6 +329,7 @@ describe('tools modules', () => {
                             'Ask for exactly 5 distinct results.',
                             'Make each result read like a publishable blog title.',
                         ],
+                        triggeredRuleIds: ['short-title-output'],
                     },
                 },
             },

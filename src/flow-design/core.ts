@@ -33,6 +33,7 @@ import type {
 } from './types';
 import type { FlowFeasibilityAssessment } from './analysis';
 import { assessFlowFeasibility } from './analysis';
+import { getFlowDesignManifest } from './manifest';
 import {
     defaultFlowDesignTaskTypeAdvisor,
     getFlowDesignTaskTypeCatalog,
@@ -496,7 +497,7 @@ export function extractFlowOutputItems(output: unknown): string[] {
 }
 
 /** Reflects on a sample execution against the original request intent. */
-export function reflectFlowExecution(args: {
+export async function reflectFlowExecution(args: {
     userRequest: string;
     desiredCount: number;
     wantsJson: boolean;
@@ -506,9 +507,10 @@ export function reflectFlowExecution(args: {
         output?: unknown;
         logs: string[];
     };
-}): FlowDesignReflection {
+}): Promise<FlowDesignReflection> {
     const issues: string[] = [];
     const suggestedImprovements: string[] = [];
+    const triggeredRuleIds: string[] = [];
     const items = extractFlowOutputItems(args.sampleResult.output);
 
     if (args.sampleResult.status !== 'completed') {
@@ -529,17 +531,24 @@ export function reflectFlowExecution(args: {
         suggestedImprovements.push(`Ask for exactly ${args.desiredCount} distinct results.`);
     }
 
-    const lowered = args.userRequest.toLowerCase();
-    if (
-        (lowered.includes('blog') ||
-            lowered.includes('title') ||
-            lowered.includes('타이틀') ||
-            lowered.includes('제목')) &&
-        items.length > 0 &&
-        items.every(item => item.length < 6)
-    ) {
-        issues.push('The output did not look like usable blog titles.');
-        suggestedImprovements.push('Make each result read like a publishable blog title.');
+    const manifest = await getFlowDesignManifest();
+    const taskTypeRecommendation = await inferFlowDesignTaskType({
+        userRequest: args.userRequest,
+        wantsJson: args.wantsJson,
+        taskTypes: manifest.taskTypes,
+    });
+    for (const rule of manifest.knowledge.reflectionRules) {
+        const taskTypeMatches = !rule.match.taskTypes || rule.match.taskTypes.includes(taskTypeRecommendation.taskType);
+        const maxItemLengthMatches =
+            rule.match.maxItemLength === undefined ||
+            (items.length > 0 &&
+                items.every(item => item.length <= (rule.match.maxItemLength ?? Number.MAX_SAFE_INTEGER)));
+        if (!taskTypeMatches || !maxItemLengthMatches) {
+            continue;
+        }
+        issues.push(rule.issue);
+        suggestedImprovements.push(rule.suggestedImprovement);
+        triggeredRuleIds.push(rule.id);
     }
 
     for (const note of args.reflectionNotes ?? []) {
@@ -556,6 +565,7 @@ export function reflectFlowExecution(args: {
                 : 'The sample flow output needs another design pass.',
         issues,
         suggestedImprovements,
+        triggeredRuleIds,
     };
 }
 

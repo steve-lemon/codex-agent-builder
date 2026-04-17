@@ -1,4 +1,5 @@
 // Internal task-graph catalog and recommendation helpers for flow-design preflight analysis.
+import { logDebug, logWarn } from '../diagnostics/logger';
 import type { DirectedGraph } from '../graph/types';
 import { getFlowDesignManifest } from './manifest';
 import type { FlowDesignTaskGraphTemplateRecord } from './manifest-schemas';
@@ -80,7 +81,7 @@ export class DeterministicFlowDesignTaskGraphAdvisor implements FlowDesignTaskGr
         if (!best || best.score <= 0) {
             const fallbackTemplate =
                 args.templates.find(template => template.id === 'generic-generation') ?? args.templates[0];
-            return {
+            const recommendation: FlowDesignTaskGraphRecommendation = {
                 templateId: fallbackTemplate?.id ?? 'generic-generation',
                 graph: fallbackTemplate?.graph ?? { nodes: [], edges: [] },
                 confidence: 0.4,
@@ -88,15 +89,35 @@ export class DeterministicFlowDesignTaskGraphAdvisor implements FlowDesignTaskGr
                     'No strong task-graph template match was found, so the generic generation workflow was used.',
                 source: 'deterministic',
             };
+            logWarn({
+                scope: 'flow-design',
+                action: 'task_graph_fallback',
+                message: 'No strong task-graph template match was found. Using fallback template.',
+                data: {
+                    selectedTemplateId: recommendation.templateId,
+                },
+            });
+            return recommendation;
         }
 
-        return {
+        const recommendation: FlowDesignTaskGraphRecommendation = {
             templateId: best.template.id,
             graph: best.template.graph,
             confidence: Math.min(0.95, 0.5 + best.score / 10),
             rationale: `Matched the request against the internal flow-design task-graph catalog and selected '${best.template.label}'.`,
             source: 'deterministic',
         };
+        logDebug({
+            scope: 'flow-design',
+            action: 'task_graph_selected',
+            message: 'Selected task graph template.',
+            data: {
+                selectedTemplateId: recommendation.templateId,
+                confidence: recommendation.confidence,
+                source: recommendation.source,
+            },
+        });
+        return recommendation;
     }
 }
 
@@ -115,10 +136,18 @@ export class ModelBackedFlowDesignTaskGraphAdvisor implements FlowDesignTaskGrap
         const matchedTemplate = args.templates.find(template => template.id === result.templateId);
 
         if (!matchedTemplate) {
+            logWarn({
+                scope: 'flow-design',
+                action: 'task_graph_model_miss',
+                message: 'Model-backed task-graph result did not match the configured catalog. Using fallback advisor.',
+                data: {
+                    requestedTemplateId: result.templateId,
+                },
+            });
             return this.fallback.recommend(args);
         }
 
-        return {
+        const recommendation: FlowDesignTaskGraphRecommendation = {
             templateId: matchedTemplate.id,
             graph: matchedTemplate.graph,
             confidence: result.confidence ?? 0.7,
@@ -127,6 +156,17 @@ export class ModelBackedFlowDesignTaskGraphAdvisor implements FlowDesignTaskGrap
                 `Selected '${matchedTemplate.label}' using the configured model-backed task-graph advisor.`,
             source: 'model',
         };
+        logDebug({
+            scope: 'flow-design',
+            action: 'task_graph_selected',
+            message: 'Selected task graph template.',
+            data: {
+                selectedTemplateId: recommendation.templateId,
+                confidence: recommendation.confidence,
+                source: recommendation.source,
+            },
+        });
+        return recommendation;
     }
 }
 

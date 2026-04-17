@@ -3,10 +3,17 @@ import { z } from 'zod';
 
 export const NodeConfigDefaultsSchema = z.object({
     systemPrompts: z.record(z.string()),
-    aiModelProfiles: z.object({
-        default: z.string(),
-        'blog-title-generation': z.string(),
-        'structured-output': z.string(),
+    aiModelProfiles: z.record(z.string()),
+    modelSelection: z.object({
+        defaultProfileId: z.string(),
+        jsonPreferredProfileId: z.string().optional(),
+        taskTypeProfileIds: z.record(z.string()),
+        strategyNoteProfileRules: z.array(
+            z.object({
+                keywords: z.array(z.string()),
+                profileId: z.string(),
+            }),
+        ),
     }),
 });
 

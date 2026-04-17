@@ -1,6 +1,7 @@
 // Shared flow-analysis helpers used by flow design core and skill/tool wrappers.
 import type { DirectedGraph } from '../graph/types';
 import { availableFlowBlocks, availableFlowCapabilities, flowBlockCapabilityMap } from './catalog';
+import { getFlowDesignManifest } from './manifest';
 import {
     defaultFlowDesignTaskGraphAdvisor,
     getFlowDesignTaskGraphCatalog,
@@ -47,6 +48,7 @@ export interface FlowFeasibilityAssessment {
 export interface TaskGraphRefinementInput {
     issues: string[];
     improvementNotes: string[];
+    triggeredRuleIds?: string[];
 }
 
 /** Derives graph-level required capabilities from the inferred task graph itself. */
@@ -80,16 +82,17 @@ export async function inferTaskGraph(
 }
 
 /** Refines an inferred task graph using reflection output from an earlier design pass. */
-export function refineTaskGraph(graph: DirectedGraph, reflection: TaskGraphRefinementInput): DirectedGraph {
+export async function refineTaskGraph(graph: DirectedGraph, reflection: TaskGraphRefinementInput): Promise<DirectedGraph> {
     // TODO(flow-agent): Track refinement provenance per node so later passes can
     // explain which reflection note changed which task-graph expectation.
     const exactCountMatch = reflection.improvementNotes.join(' ').match(/exactly\s+(\d+)/i);
     const expectedCountHint = exactCountMatch ? `exactly ${exactCountMatch[1]} items` : undefined;
     const wantsJson = reflection.improvementNotes.some(note => note.toLowerCase().includes('json only'));
-    const wantsBlogQuality = reflection.improvementNotes.some(note =>
-        note.toLowerCase().includes('publishable blog title'),
-    );
     const wantsStability = reflection.improvementNotes.some(note => note.toLowerCase().includes('stabilize'));
+    const manifest = await getFlowDesignManifest();
+    const triggeredRules = manifest.knowledge.reflectionRules.filter(rule =>
+        (reflection.triggeredRuleIds ?? []).includes(rule.id),
+    );
 
     return {
         nodes: graph.nodes.map(node => {
@@ -107,14 +110,31 @@ export function refineTaskGraph(graph: DirectedGraph, reflection: TaskGraphRefin
                     expectedOutputs.add('json object output');
                     qualityHints.add('Return machine-parseable JSON only.');
                 }
-                if (wantsBlogQuality) {
-                    expectedOutputs.add('publishable blog titles');
-                    qualityHints.add('Prefer polished, publication-ready title wording.');
-                }
             }
 
             if (String(data.operation ?? '').startsWith('log') && wantsStability) {
                 qualityHints.add('Highlight runtime failures and unstable output shapes during review.');
+            }
+
+            for (const rule of triggeredRules) {
+                const refinement = rule.taskGraphRefinement;
+                if (!refinement) {
+                    continue;
+                }
+                const prefixes = refinement.targetOperationPrefixes ?? ['generate'];
+                const operation = String(data.operation ?? '');
+                if (!prefixes.some(prefix => operation.startsWith(prefix))) {
+                    continue;
+                }
+                for (const expectedOutput of refinement.expectedOutputs ?? []) {
+                    expectedOutputs.add(expectedOutput);
+                }
+                for (const capability of refinement.requiredCapabilities ?? []) {
+                    requiredCapabilities.add(capability);
+                }
+                for (const hint of refinement.qualityHints ?? []) {
+                    qualityHints.add(hint);
+                }
             }
 
             return {

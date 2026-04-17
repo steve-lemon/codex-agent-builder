@@ -1,4 +1,5 @@
 // Internal task-type catalog and recommendation helpers for flow-design intent analysis.
+import { logDebug, logWarn } from '../diagnostics/logger';
 import type { FlowDesignTaskType } from './types';
 import { getFlowDesignManifest } from './manifest';
 import type { FlowDesignTaskTypeDefinitionRecord } from './manifest-schemas';
@@ -60,11 +61,11 @@ function scoreTaskType(args: {
         score += Math.min(sharedTokens.length, 3);
     }
 
-    if (args.wantsJson && args.taskType.id === 'json-generation') {
+    if (args.wantsJson && args.taskType.hints?.preferredWhenJson) {
         score += 4;
     }
 
-    if (!args.wantsJson && args.taskType.id === 'text-generation') {
+    if (!args.wantsJson && args.taskType.hints?.fallbackWhenPlainText) {
         score += 1;
     }
 
@@ -78,6 +79,7 @@ export class DeterministicFlowDesignTaskTypeAdvisor implements FlowDesignTaskTyp
         wantsJson: boolean;
         taskTypes: FlowDesignTaskTypeDefinition[];
     }): Promise<FlowDesignTaskTypeRecommendation> {
+        const manifest = await getFlowDesignManifest();
         const ranked = args.taskTypes
             .map(taskType => ({
                 taskType,
@@ -91,22 +93,45 @@ export class DeterministicFlowDesignTaskTypeAdvisor implements FlowDesignTaskTyp
 
         const best = ranked[0];
         if (!best || best.score <= 0) {
-            return {
-                taskType: args.wantsJson ? 'json-generation' : 'text-generation',
+            const fallbackRecommendation: FlowDesignTaskTypeRecommendation = {
+                taskType: args.wantsJson
+                    ? manifest.defaults.taskTypeSelection.jsonPreferredTaskTypeId
+                    : manifest.defaults.taskTypeSelection.plainTextFallbackTaskTypeId,
                 confidence: args.wantsJson ? 0.6 : 0.4,
                 rationale: args.wantsJson
                     ? 'No strong task-type match was found, so JSON intent became the fallback signal.'
                     : 'No strong task-type match was found, so plain text generation became the fallback.',
                 source: 'deterministic',
             };
+            logWarn({
+                scope: 'flow-design',
+                action: 'task_type_fallback',
+                message: 'No strong task-type match was found. Falling back to configured default.',
+                data: {
+                    wantsJson: args.wantsJson,
+                    selectedTaskType: fallbackRecommendation.taskType,
+                },
+            });
+            return fallbackRecommendation;
         }
 
-        return {
+        const recommendation: FlowDesignTaskTypeRecommendation = {
             taskType: best.taskType.id,
             confidence: Math.min(0.95, 0.5 + best.score / 10),
             rationale: `Matched the request against the internal flow-design task catalog and selected '${best.taskType.label}'.`,
             source: 'deterministic',
         };
+        logDebug({
+            scope: 'flow-design',
+            action: 'task_type_selected',
+            message: 'Selected task type.',
+            data: {
+                selectedTaskType: recommendation.taskType,
+                confidence: recommendation.confidence,
+                source: recommendation.source,
+            },
+        });
+        return recommendation;
     }
 }
 
@@ -126,10 +151,18 @@ export class ModelBackedFlowDesignTaskTypeAdvisor implements FlowDesignTaskTypeA
         const matchedTaskType = args.taskTypes.find(taskType => taskType.id === result.taskType);
 
         if (!matchedTaskType) {
+            logWarn({
+                scope: 'flow-design',
+                action: 'task_type_model_miss',
+                message: 'Model-backed task-type result did not match the configured catalog. Using fallback advisor.',
+                data: {
+                    requestedTaskType: result.taskType,
+                },
+            });
             return this.fallback.recommend(args);
         }
 
-        return {
+        const recommendation: FlowDesignTaskTypeRecommendation = {
             taskType: matchedTaskType.id,
             confidence: result.confidence ?? 0.7,
             rationale:
@@ -137,6 +170,17 @@ export class ModelBackedFlowDesignTaskTypeAdvisor implements FlowDesignTaskTypeA
                 `Selected '${matchedTaskType.label}' using the configured model-backed task-type advisor.`,
             source: 'model',
         };
+        logDebug({
+            scope: 'flow-design',
+            action: 'task_type_selected',
+            message: 'Selected task type.',
+            data: {
+                selectedTaskType: recommendation.taskType,
+                confidence: recommendation.confidence,
+                source: recommendation.source,
+            },
+        });
+        return recommendation;
     }
 }
 

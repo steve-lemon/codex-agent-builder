@@ -36,6 +36,10 @@ describe('flow-design knowledge sources', () => {
                         prompt: 'probe prompt',
                     },
                 },
+                taskTypeSelection: {
+                    jsonPreferredTaskTypeId: 'json-generation',
+                    plainTextFallbackTaskTypeId: 'text-generation',
+                },
             },
             knowledge: {
                 sharedDraftNotes: ['base draft note'],
@@ -46,6 +50,7 @@ describe('flow-design knowledge sources', () => {
                     },
                 ],
                 reflectionNotes: ['base reflection note'],
+                reflectionRules: [],
             },
         }));
 
@@ -106,7 +111,7 @@ describe('flow-design knowledge sources', () => {
             availableBlocks: availableFlowBlocks,
             guidanceNotes: ['custom guidance note'],
         });
-        const reflection = reflectFlowExecution({
+        const reflection = await reflectFlowExecution({
             userRequest: '키워드를 줄테니 블로그 타이틀 여러개 만들기',
             desiredCount: 5,
             wantsJson: false,

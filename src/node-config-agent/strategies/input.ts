@@ -12,7 +12,7 @@ import {
 } from './shared';
 
 async function buildSystemPrompt(input: NodeConfigurationDesignInput): Promise<string> {
-    const taskType = inferTaskType(input.userRequest, input.wantsJson);
+    const taskType = await inferTaskType(input.userRequest, input.wantsJson);
     const basePrompt = await getNodeConfigSystemPromptDefault(taskType);
     const probeHint = input.probeResult?.behaviorNotes?.[0]?.trim()
         ? ` Observed block behavior: ${input.probeResult.behaviorNotes[0].trim()}`

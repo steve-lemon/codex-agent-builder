@@ -21,6 +21,7 @@ import { buildToolManifest } from '../tools/types';
 import { TraceStore } from '../observability/types';
 import type { FlowDesignConnection } from '../flow/design-monitor';
 import { UnifiedRunEventBus, type UnifiedRunEventConnection } from '../observability/unified-timeline';
+import { addDiagnosticListener, removeDiagnosticListener, type DiagnosticListener } from '../diagnostics/logger';
 
 /** Constructor dependencies required by the runtime coordinator. */
 export interface AgentRuntimeOptions {
@@ -99,6 +100,8 @@ export class AgentRuntime {
         if (timelineTraceConnection) {
             this.tracer.attachConnection(runId, timelineTraceConnection);
         }
+        const diagnosticListener = this.createDiagnosticTraceListener(runId);
+        addDiagnosticListener(diagnosticListener);
         const externalDesignConnection = this.options.flowDesignConnectionFactory?.({
             runId,
             skillName,
@@ -139,17 +142,21 @@ export class AgentRuntime {
         };
 
         await this.options.store.save(initialState);
-        const result = await this.executeUntilPauseOrComplete(runId, designConnection);
-        this.tracer.log(runId, 'run_end', { status: result.status });
-        if (result.status !== 'waiting_for_approval') {
-            await this.tracer.flush(runId);
+        try {
+            const result = await this.executeUntilPauseOrComplete(runId, designConnection);
+            this.tracer.log(runId, 'run_end', { status: result.status });
+            if (result.status !== 'waiting_for_approval') {
+                await this.tracer.flush(runId);
+            }
+            return { ...result, trace: this.tracer.getEvents(runId) };
+        } finally {
+            removeDiagnosticListener(diagnosticListener);
+            if (timelineTraceConnection) {
+                this.tracer.detachConnection(runId, timelineTraceConnection);
+            }
+            void designConnection?.close?.();
+            unifiedBus?.close();
         }
-        if (timelineTraceConnection) {
-            this.tracer.detachConnection(runId, timelineTraceConnection);
-        }
-        void designConnection?.close?.();
-        unifiedBus?.close();
-        return { ...result, trace: this.tracer.getEvents(runId) };
     }
 
     async resume(runId: string, decision: ApprovalDecision): Promise<RuntimeRunResult> {
@@ -208,6 +215,8 @@ export class AgentRuntime {
         if (timelineTraceConnection) {
             this.tracer.attachConnection(runId, timelineTraceConnection);
         }
+        const diagnosticListener = this.createDiagnosticTraceListener(runId);
+        addDiagnosticListener(diagnosticListener);
         const externalDesignConnection = this.options.flowDesignConnectionFactory?.({
             runId,
             skillName: run.skillName as SkillName,
@@ -217,17 +226,21 @@ export class AgentRuntime {
             externalDesignConnection,
             unifiedBus?.asFlowDesignConnection(),
         ]);
-        const result = await this.executeUntilPauseOrComplete(runId, designConnection);
-        this.tracer.log(runId, 'run_end', { status: result.status });
-        if (result.status !== 'waiting_for_approval') {
-            await this.tracer.flush(runId);
+        try {
+            const result = await this.executeUntilPauseOrComplete(runId, designConnection);
+            this.tracer.log(runId, 'run_end', { status: result.status });
+            if (result.status !== 'waiting_for_approval') {
+                await this.tracer.flush(runId);
+            }
+            return { ...result, trace: this.tracer.getEvents(runId) };
+        } finally {
+            removeDiagnosticListener(diagnosticListener);
+            if (timelineTraceConnection) {
+                this.tracer.detachConnection(runId, timelineTraceConnection);
+            }
+            void designConnection?.close?.();
+            unifiedBus?.close();
         }
-        if (timelineTraceConnection) {
-            this.tracer.detachConnection(runId, timelineTraceConnection);
-        }
-        void designConnection?.close?.();
-        unifiedBus?.close();
-        return { ...result, trace: this.tracer.getEvents(runId) };
     }
 
     private async executeUntilPauseOrComplete(
@@ -358,5 +371,18 @@ export class AgentRuntime {
 
     private createRunStateContext(runId: string) {
         return createLazyRunStateContext(this.options.store, runId);
+    }
+
+    private createDiagnosticTraceListener(runId: string): DiagnosticListener {
+        return (level, event) => {
+            // TODO(observability): Add correlation ids or planner/step linkage here so
+            // diagnostic events can be tied back to a specific tool call or design pass.
+            this.tracer.log(runId, `diagnostic_${level}`, {
+                scope: event.scope,
+                action: event.action,
+                message: event.message,
+                ...(event.data ?? {}),
+            });
+        };
     }
 }

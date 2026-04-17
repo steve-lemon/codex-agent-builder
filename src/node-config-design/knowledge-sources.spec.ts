@@ -23,6 +23,14 @@ describe('node-config knowledge sources', () => {
                     'blog-title-generation': 'blog-model',
                     'structured-output': 'structured-model',
                 },
+                modelSelection: {
+                    defaultProfileId: 'default',
+                    jsonPreferredProfileId: 'structured-output',
+                    taskTypeProfileIds: {
+                        'blog-title-generation': 'blog-title-generation',
+                    },
+                    strategyNoteProfileRules: [],
+                },
             },
             knowledge: {
                 sharedNotes: ['base note'],
