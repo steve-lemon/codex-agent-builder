@@ -30,7 +30,11 @@ describe('node-config knowledge sources', () => {
                 },
                 outputSchemaTemplates: {
                     defaultStructuredObject: 'type: object',
+                    genericCountMap: 'type: object',
                     stringList: 'type: object',
+                    keywordList: 'type: object',
+                    summaryLines: 'type: object',
+                    correctedText: 'type: object',
                     consonantVowelCounts: 'type: object',
                 },
                 modelSelection: {

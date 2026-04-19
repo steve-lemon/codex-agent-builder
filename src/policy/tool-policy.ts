@@ -8,6 +8,7 @@ export function resolveToolExecutionPolicy(tool: ToolDefinition): ToolExecutionP
         analyzeFlowRequest: 5000,
         assessFlowFeasibility: 5000,
         prevalidateFlowDesignRequest: 5000,
+        designFlowDraft: 6000,
         designFlowNodeConfigurations: 6000,
     };
 

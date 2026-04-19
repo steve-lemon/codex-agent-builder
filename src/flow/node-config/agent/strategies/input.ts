@@ -38,7 +38,15 @@ async function buildSystemPrompt(input: NodeConfigurationDesignInput): Promise<s
 
 async function buildUserPrompt(input: NodeConfigurationDesignInput): Promise<string> {
     const brief = await ensureDesignBrief(input);
-    const outputContract = inferFlowOutputContract(input.userRequest);
+    const outputContract = brief.outputContract.format
+        ? {
+              format: brief.outputContract.format,
+              explicitFormat: brief.outputContract.format !== 'unspecified',
+              desiredCount: input.desiredCount,
+              wantsMultiple: input.desiredCount > 1,
+              wantsJson: brief.outputContract.format === 'json',
+          }
+        : inferFlowOutputContract(input.userRequest);
     const desiredCountInstruction =
         input.desiredCount > 1 ? `Return exactly ${input.desiredCount} results.` : 'Return one result.';
     const formatInstruction = buildFlowOutputFormatInstruction(outputContract);

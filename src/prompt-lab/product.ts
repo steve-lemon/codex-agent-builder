@@ -5,6 +5,8 @@ import { evaluateFlowDesignAdvisors, type AdvisorEvaluationReport } from '../flo
 import { buildArchitectureReview, buildDesignBrief } from '../flow/design/architecture';
 import { loadArchitectureKnowledgeResource } from '../flow/design/architecture-resources';
 import { normalizeFlowRequest } from '../flow/design/core';
+import { createFlowOutputContractAdvisor } from '../flow/output-contract';
+import { createFlowDesignTaskTypeAdvisor } from '../flow/design/task-types';
 import type { ArchitectureReview, DesignBrief } from '../flow/design/types';
 import { FlowDesignProduct } from '../product';
 import type { ProductDesignRunResult, ProductFlowSkill } from '../product/types';
@@ -267,6 +269,11 @@ function buildArchitectureAdjustedAssessment(args: {
     if (!args.architectureBrief || !assessment.executionSucceeded) {
         return assessment;
     }
+
+    // TODO(prompt-lab): Successful sample-based runs can still be slightly optimistic when
+    // they pass representative assertions but have not been exercised against broader real-user
+    // inputs. Revisit whether `fulfilled` should remain the default when evidence is limited to
+    // narrow representative samples even without synthetic-only validation.
 
     const next = {
         ...assessment,
@@ -1093,7 +1100,10 @@ export class PromptLabProduct {
                 },
             });
 
-            const normalizedRequest = await normalizeFlowRequest(args.requirement);
+            const normalizedRequest = await normalizeFlowRequest(args.requirement, {
+                taskTypeAdvisor: createFlowDesignTaskTypeAdvisor(gateway),
+                outputContractAdvisor: createFlowOutputContractAdvisor(gateway),
+            });
             const architectureBrief = await buildDesignBrief(normalizedRequest);
             const architectureKnowledge = await loadArchitectureKnowledgeResource();
             const architectureReview = buildArchitectureReview({

@@ -78,7 +78,7 @@ export async function getFlowDesignSampleInputDefaults(
         };
     }
 
-    if (lowered.includes('keyword') || lowered.includes('키워드')) {
+    if (taskType === 'blog-title-generation' && (lowered.includes('keyword') || lowered.includes('키워드'))) {
         return {
             sampleInput: defaults.sampleInputs.keywordDriven,
             source: 'default',

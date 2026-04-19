@@ -91,4 +91,46 @@ describe('flow-design task type advisors', () => {
         expect(recommendation.taskType).toBe('json-generation');
         expect(recommendation.source).toBe('deterministic');
     });
+
+    it('classifies email-style proofreading requests as text editing instead of email integration', async () => {
+        const taskTypes = await getFlowDesignTaskTypeCatalog();
+        const advisor = new DeterministicFlowDesignTaskTypeAdvisor();
+
+        const recommendation = await advisor.recommend({
+            userRequest: '이메일 내용의 오타를 정정해주기',
+            wantsJson: false,
+            taskTypes,
+        });
+
+        expect(recommendation.taskType).toBe('text-editing');
+        expect(recommendation.source).toBe('deterministic');
+    });
+
+    it('classifies summarization requests by operation instead of blog-title domain words', async () => {
+        const taskTypes = await getFlowDesignTaskTypeCatalog();
+        const advisor = new DeterministicFlowDesignTaskTypeAdvisor();
+
+        const recommendation = await advisor.recommend({
+            userRequest: '블로그 내용을 줄테니 이걸 3줄로 요약해줘',
+            wantsJson: false,
+            taskTypes,
+        });
+
+        expect(recommendation.taskType).toBe('text-summarization');
+        expect(recommendation.source).toBe('deterministic');
+    });
+
+    it('classifies keyword analysis requests as extraction instead of summarization', async () => {
+        const taskTypes = await getFlowDesignTaskTypeCatalog();
+        const advisor = new DeterministicFlowDesignTaskTypeAdvisor();
+
+        const recommendation = await advisor.recommend({
+            userRequest: '블로그 내용을 줄테니 키워드 분석 해줘',
+            wantsJson: false,
+            taskTypes,
+        });
+
+        expect(recommendation.taskType).toBe('keyword-analysis');
+        expect(recommendation.source).toBe('deterministic');
+    });
 });

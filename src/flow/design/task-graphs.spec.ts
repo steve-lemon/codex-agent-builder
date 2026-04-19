@@ -37,6 +37,66 @@ describe('flow-design task graph advisors', () => {
         expect(recommendation.source).toBe('deterministic');
     });
 
+    it('prefers a text editing workflow for email-style proofreading requests without mailbox intent', async () => {
+        const templates = await getFlowDesignTaskGraphCatalog();
+        const advisor = new DeterministicFlowDesignTaskGraphAdvisor();
+
+        const recommendation = await advisor.recommend({
+            userRequest: '이메일 내용의 오타를 정정해주기',
+            templates,
+            taskType: 'text-editing',
+            operationModel: ['edit', 'transform'],
+        });
+
+        expect(recommendation.templateId).toBe('text-editing');
+        expect(recommendation.graph.nodes.map(node => node.id)).toEqual([
+            'capture-request',
+            'revise-text',
+            'review-output',
+        ]);
+        expect(recommendation.source).toBe('deterministic');
+    });
+
+    it('prefers a summarization workflow over title generation for three-line summary requests', async () => {
+        const templates = await getFlowDesignTaskGraphCatalog();
+        const advisor = new DeterministicFlowDesignTaskGraphAdvisor();
+
+        const recommendation = await advisor.recommend({
+            userRequest: '블로그 내용을 줄테니 이걸 3줄로 요약해줘',
+            templates,
+            taskType: 'text-summarization',
+            operationModel: ['summarize', 'transform'],
+        });
+
+        expect(recommendation.templateId).toBe('text-summarization');
+        expect(recommendation.graph.nodes.map(node => node.id)).toEqual([
+            'capture-request',
+            'summarize-content',
+            'review-output',
+        ]);
+        expect(recommendation.source).toBe('deterministic');
+    });
+
+    it('prefers a keyword analysis workflow over summarization for keyword extraction requests', async () => {
+        const templates = await getFlowDesignTaskGraphCatalog();
+        const advisor = new DeterministicFlowDesignTaskGraphAdvisor();
+
+        const recommendation = await advisor.recommend({
+            userRequest: '블로그 내용을 줄테니 키워드 분석 해줘',
+            templates,
+            taskType: 'keyword-analysis',
+            operationModel: ['extract', 'classify', 'transform'],
+        });
+
+        expect(recommendation.templateId).toBe('keyword-analysis');
+        expect(recommendation.graph.nodes.map(node => node.id)).toEqual([
+            'capture-request',
+            'extract-keywords',
+            'review-output',
+        ]);
+        expect(recommendation.source).toBe('deterministic');
+    });
+
     it('uses a model-backed task-graph advisor when one is supplied', async () => {
         const gateway = {
             generateStructured: async () => ({
@@ -110,5 +170,35 @@ describe('flow-design task graph advisors', () => {
             'text-output',
             'email-reply',
         ]);
+    });
+
+    it('does not infer email transport capabilities for email-content proofreading requests', async () => {
+        const graph = await inferTaskGraph('이메일 내용의 오타를 정정해주기', {
+            taskType: 'text-editing',
+            operationModel: ['edit', 'transform'],
+        });
+
+        expect(deriveRequiredCapabilitiesFromTaskGraph(graph)).toEqual(['text-input', 'ai-generation', 'text-output', 'view-log']);
+        expect(graph.nodes.map(node => node.id)).toEqual(['capture-request', 'revise-text', 'review-output']);
+    });
+
+    it('does not reuse blog title capabilities for summarization requests', async () => {
+        const graph = await inferTaskGraph('블로그 내용을 줄테니 이걸 3줄로 요약해줘', {
+            taskType: 'text-summarization',
+            operationModel: ['summarize', 'transform'],
+        });
+
+        expect(deriveRequiredCapabilitiesFromTaskGraph(graph)).toEqual(['text-input', 'ai-generation', 'text-output', 'view-log']);
+        expect(graph.nodes.map(node => node.id)).toEqual(['capture-request', 'summarize-content', 'review-output']);
+    });
+
+    it('does not reuse summarization semantics for keyword analysis requests', async () => {
+        const graph = await inferTaskGraph('블로그 내용을 줄테니 키워드 분석 해줘', {
+            taskType: 'keyword-analysis',
+            operationModel: ['extract', 'classify', 'transform'],
+        });
+
+        expect(deriveRequiredCapabilitiesFromTaskGraph(graph)).toEqual(['text-input', 'ai-generation', 'text-output', 'view-log']);
+        expect(graph.nodes.map(node => node.id)).toEqual(['capture-request', 'extract-keywords', 'review-output']);
     });
 });

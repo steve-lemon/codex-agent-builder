@@ -2,6 +2,7 @@
 import { logDebug } from '../../../diagnostics/logger';
 import { resolveRuntimeModelAlias } from '../../../llm/runtime-model-alias';
 import type { FlowDesignTaskType } from '../../design/types';
+import type { DesignBrief } from '../../design/types';
 import { getNodeConfigDesignManifest } from './manifest';
 
 /** Returns the manifest-backed default system prompt for node-config strategies. */
@@ -97,6 +98,7 @@ export async function getNodeConfigOutputSchemaDefault(args: {
     wantsJson: boolean;
     userRequest: string;
     desiredCount: number;
+    brief?: DesignBrief;
 }): Promise<string> {
     if (!args.wantsJson) {
         return '';
@@ -104,6 +106,46 @@ export async function getNodeConfigOutputSchemaDefault(args: {
 
     const { defaults } = await getNodeConfigDesignManifest();
     const lowered = args.userRequest.toLowerCase();
+    const operationModel = args.brief?.mission.operationModel ?? [];
+
+    if (operationModel.includes('edit') || args.taskType === 'text-editing') {
+        logDebug({
+            scope: 'node-config',
+            action: 'output_schema_selected',
+            message: 'Selected corrected-text schema.',
+            data: {
+                taskType: args.taskType,
+                reason: 'text-editing',
+            },
+        });
+        return defaults.outputSchemaTemplates.correctedText;
+    }
+
+    if (operationModel.includes('summarize') || args.taskType === 'text-summarization') {
+        logDebug({
+            scope: 'node-config',
+            action: 'output_schema_selected',
+            message: 'Selected summary-lines schema.',
+            data: {
+                taskType: args.taskType,
+                reason: 'text-summarization',
+            },
+        });
+        return defaults.outputSchemaTemplates.summaryLines;
+    }
+
+    if (operationModel.includes('extract') || args.taskType === 'keyword-analysis') {
+        logDebug({
+            scope: 'node-config',
+            action: 'output_schema_selected',
+            message: 'Selected keyword-list schema.',
+            data: {
+                taskType: args.taskType,
+                reason: 'keyword-analysis',
+            },
+        });
+        return defaults.outputSchemaTemplates.keywordList;
+    }
 
     if (
         (lowered.includes('자음') || lowered.includes('consonant')) &&
@@ -120,6 +162,19 @@ export async function getNodeConfigOutputSchemaDefault(args: {
             },
         });
         return defaults.outputSchemaTemplates.consonantVowelCounts;
+    }
+
+    if (operationModel.includes('count') || args.taskType === 'text-counting') {
+        logDebug({
+            scope: 'node-config',
+            action: 'output_schema_selected',
+            message: 'Selected generic count-map schema.',
+            data: {
+                taskType: args.taskType,
+                reason: 'generic-count',
+            },
+        });
+        return defaults.outputSchemaTemplates.genericCountMap;
     }
 
     if (args.taskType === 'blog-title-generation' || args.desiredCount > 1) {

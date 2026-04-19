@@ -45,6 +45,91 @@ function normalize(text: string): string {
     return text.toLowerCase();
 }
 
+function inferOperationHints(userRequest: string): string[] {
+    const lowered = normalize(userRequest);
+    const operations: string[] = [];
+
+    if (/summarize|summary|요약|정리|핵심/.test(lowered)) {
+        operations.push('summarize');
+    }
+    if (/edit|revise|proofread|correct|rewrite|교정|정정|수정|오타|다듬/.test(lowered)) {
+        operations.push('edit');
+    }
+    if (/count|counting|frequency|카운트|개수|빈도|수를 세/.test(lowered)) {
+        operations.push('count');
+    }
+    if (/extract|extraction|analyze|analysis|핵심어|핵심 키워드|키워드 분석|추출|분석/.test(lowered)) {
+        operations.push('extract');
+    }
+    if (/explain|설명|무엇을 하는지|의미|용도/.test(lowered)) {
+        operations.push('explain');
+    }
+    if (/title|headline|타이틀|제목/.test(lowered)) {
+        operations.push('title');
+    }
+
+    return operations;
+}
+
+function adjustScoreForOperationHints(args: {
+    userRequest: string;
+    taskType: FlowDesignTaskTypeDefinition;
+    score: number;
+}): number {
+    const hints = inferOperationHints(args.userRequest);
+    let score = args.score;
+
+    if (hints.includes('summarize')) {
+        if (args.taskType.id === 'text-summarization') {
+            score += 6;
+        }
+        if (args.taskType.id === 'blog-title-generation') {
+            score -= 4;
+        }
+    }
+
+    if (hints.includes('edit')) {
+        if (args.taskType.id === 'text-editing') {
+            score += 6;
+        }
+        if (args.taskType.id === 'blog-title-generation') {
+            score -= 3;
+        }
+    }
+
+    if (hints.includes('count')) {
+        if (args.taskType.id === 'text-counting') {
+            score += 6;
+        }
+        if (args.taskType.id === 'blog-title-generation') {
+            score -= 3;
+        }
+    }
+
+    if (hints.includes('extract')) {
+        if (args.taskType.id === 'keyword-analysis') {
+            score += 6;
+        }
+        if (args.taskType.id === 'text-summarization') {
+            score -= 3;
+        }
+        if (args.taskType.id === 'blog-title-generation') {
+            score -= 3;
+        }
+    }
+
+    if (hints.includes('title')) {
+        if (args.taskType.id === 'blog-title-generation') {
+            score += 5;
+        }
+        if (args.taskType.id === 'text-summarization' || args.taskType.id === 'text-editing') {
+            score -= 2;
+        }
+    }
+
+    return score;
+}
+
 function scoreTaskType(args: {
     userRequest: string;
     wantsJson: boolean;
@@ -73,14 +158,14 @@ function scoreTaskType(args: {
         score += 1;
     }
 
-    return score;
+    return adjustScoreForOperationHints({
+        userRequest: args.userRequest,
+        taskType: args.taskType,
+        score,
+    });
 }
 
-function rankTaskTypes(args: {
-    userRequest: string;
-    wantsJson: boolean;
-    taskTypes: FlowDesignTaskTypeDefinition[];
-}) {
+function rankTaskTypes(args: { userRequest: string; wantsJson: boolean; taskTypes: FlowDesignTaskTypeDefinition[] }) {
     return args.taskTypes
         .map(taskType => ({
             taskType,
@@ -201,7 +286,9 @@ export class LlmBackedFlowDesignTaskTypeAdvisor implements FlowDesignTaskTypeAdv
             mapResult: result => {
                 const matchedTaskType = args.taskTypes.find(taskType => taskType.id === result.taskType);
                 if (!matchedTaskType) {
-                    throw new Error(`Model-backed task-type result did not match the configured catalog: ${result.taskType}`);
+                    throw new Error(
+                        `Model-backed task-type result did not match the configured catalog: ${result.taskType}`,
+                    );
                 }
                 return {
                     taskType: matchedTaskType.id,

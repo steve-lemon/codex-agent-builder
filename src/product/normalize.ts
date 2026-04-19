@@ -161,7 +161,10 @@ function collectRequirementAssessment(args: {
             message: 'structured JSON output still lacks an explicit output schema',
         });
     }
-    if (args.outputContract.format === 'plain-text' && actualJsonOutput) {
+    if (
+        (args.outputContract.format === 'plain-text' || args.outputContract.format === 'markdown') &&
+        actualJsonOutput
+    ) {
         caveats.push('The final flow switched to JSON output even though the request preferred plain text.');
         reasons.push({
             category: 'output-contract',

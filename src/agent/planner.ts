@@ -62,8 +62,11 @@ const REFERENCE_ARG_PRODUCERS: Readonly<
 };
 
 // TODO(planner): Planner remains the dominant end-to-end latency cost in prompt-lab runs.
-// Next step should focus on reducing planner payload/step complexity and measuring whether
-// structured output itself is the main bottleneck before adding more tool-level optimizations.
+// Next step should focus on:
+// 1) introducing a smaller flow-designer tactical mode that emits a fixed skeleton plus
+//    a minimal repair pass instead of a full structured plan round,
+// 2) further shrinking planner-visible payloads (tool subset, strategy brief, instructions),
+// 3) measuring whether the remaining cost is prompt size, model latency, or structured-plan parsing.
 
 function findPreviousReference(
     steps: PlanStep[],

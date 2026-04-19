@@ -47,12 +47,12 @@ describe('flow-design core', () => {
         });
     });
 
-    it('treats json input plus markdown explanation requests as plain-text output intent', async () => {
+    it('treats json input plus markdown explanation requests as markdown output intent', async () => {
         const intent = await analyzeFlowRequest('그래프(json)를 보고 이게 뭐하는 것인지 설명(md) 해줘');
 
         expect(intent.taskType).toBe('graph-explanation');
         expect(intent.outputContract).toEqual({
-            format: 'plain-text',
+            format: 'markdown',
             explicitFormat: true,
             desiredCount: 1,
             wantsMultiple: false,
@@ -70,6 +70,20 @@ describe('flow-design core', () => {
                 }),
                 validationPlan: expect.objectContaining({
                     confidenceCeiling: 'uncertain',
+                }),
+            }),
+        );
+    });
+
+    it('analyzes keyword analysis requests as extraction instead of keyword-driven title generation', async () => {
+        const intent = await analyzeFlowRequest('블로그 내용을 줄테니 키워드 분석 해줘');
+
+        expect(intent.taskType).toBe('keyword-analysis');
+        expect(intent.sampleInput).toContain('블로그 본문 예시입니다');
+        expect(intent.designBrief).toEqual(
+            expect.objectContaining({
+                mission: expect.objectContaining({
+                    operationModel: expect.arrayContaining(['extract']),
                 }),
             }),
         );

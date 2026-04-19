@@ -4,6 +4,7 @@ export const ArchitectureOperationModelSchema = z.enum([
     'classify',
     'count',
     'extract',
+    'edit',
     'transform',
     'summarize',
     'explain',

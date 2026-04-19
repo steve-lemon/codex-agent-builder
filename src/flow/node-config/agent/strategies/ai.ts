@@ -1,5 +1,5 @@
 // AI block strategy for model and structured-output configuration.
-import { buildFlowOutputFormatInstruction, inferFlowOutputContract } from '../../../output-contract';
+import { buildFlowOutputFormatInstruction } from '../../../output-contract';
 import {
     getNodeConfigModelProfile,
     getNodeConfigOutputSchemaDefault,
@@ -34,7 +34,13 @@ async function buildAiDefaults(input: NodeConfigurationDesignInput): Promise<{
 }> {
     const taskType = await inferTaskTypeWithInput(input);
     const brief = await ensureDesignBrief(input);
-    const outputContract = inferFlowOutputContract(input.userRequest);
+    const outputContract = {
+        format: brief.outputContract.format,
+        explicitFormat: brief.outputContract.format !== 'unspecified',
+        desiredCount: input.desiredCount,
+        wantsMultiple: input.desiredCount > 1,
+        wantsJson: brief.outputContract.format === 'json',
+    } as const;
     const systemPrompt = await getNodeConfigSystemPromptDefault(taskType);
     const countInstruction =
         input.desiredCount > 1 ? `Return exactly ${input.desiredCount} results.` : 'Return one result.';
@@ -49,6 +55,7 @@ async function buildAiDefaults(input: NodeConfigurationDesignInput): Promise<{
             wantsJson: input.wantsJson,
             userRequest: input.userRequest,
             desiredCount: input.desiredCount,
+            brief,
         }),
     };
 }

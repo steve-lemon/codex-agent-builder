@@ -600,6 +600,10 @@ function printExecutionTimingSummary(args: {
             }\n`,
         );
     }
+    // TODO(prompt-lab): Once planner/node-config latency is pushed lower, consider collapsing
+    // low-signal stage/tool lines in the default view and leaving full timing breakdown in the
+    // JSON artifact only. The current verbose timing block is useful for tuning but still noisy
+    // for routine successful runs.
     output.write(`${isKorean ? '=================' : '======================='}\n\n`);
 }
 

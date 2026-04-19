@@ -51,6 +51,14 @@ function normalizeOperationModel(operationModel?: string[]): string[] {
     return (operationModel ?? []).map(item => normalize(item));
 }
 
+function hasExplicitEmailIntegrationIntent(userRequest: string): boolean {
+    const lowered = normalize(userRequest);
+    return (
+        /(답장|회신|reply|respond|send)/.test(lowered) ||
+        /(읽어|읽고|확인|받은|최신|latest|inbox|mailbox|thread)/.test(lowered)
+    );
+}
+
 function scoreTemplate(args: {
     userRequest: string;
     template: FlowDesignTaskGraphTemplate;
@@ -96,6 +104,10 @@ function scoreTemplate(args: {
 
     if (args.template.id === 'generic-generation' && args.taskType && args.taskType !== 'text-generation') {
         score -= 3;
+    }
+
+    if (args.template.id === 'email-reply' && !hasExplicitEmailIntegrationIntent(args.userRequest)) {
+        score -= 8;
     }
 
     return score;

@@ -22,6 +22,7 @@ import type { FinalResult, StepResult } from '../agent/types';
 import { DeterministicFlowDesignTaskGraphAdvisor, getFlowDesignTaskGraphCatalog } from '../flow/design/task-graphs';
 import { DeterministicFlowDesignTaskTypeAdvisor, getFlowDesignTaskTypeCatalog } from '../flow/design/task-types';
 import { defaultFlowAiDelegationAdvisor } from '../flow/design/ai-delegation';
+import { inferFlowOutputContract } from '../flow/output-contract';
 
 /** Deterministic gateway that returns stable plans and summaries for tests and demos. */
 export class FakeLlmGateway implements LlmGateway {
@@ -108,6 +109,17 @@ export class FakeLlmGateway implements LlmGateway {
                 templateId: recommendation.templateId,
                 confidence: recommendation.confidence,
                 rationale: recommendation.rationale,
+            });
+        }
+
+        if (request.schema.name === 'flow_output_contract_classification') {
+            const recommendation = inferFlowOutputContract(String(userPayload.userRequest ?? ''));
+            return request.schema.parse({
+                format: recommendation.format,
+                explicitFormat: recommendation.explicitFormat,
+                desiredCount: recommendation.desiredCount,
+                rationale: 'Output contract matched the deterministic fallback heuristic.',
+                confidence: 0.82,
             });
         }
 

@@ -7,10 +7,20 @@ describe('flow-design manifest', () => {
         const manifest = await getFlowDesignManifest();
 
         expect(manifest.taskTypes).toEqual(
-            expect.arrayContaining([expect.objectContaining({ id: 'blog-title-generation' })]),
+            expect.arrayContaining([
+                expect.objectContaining({ id: 'blog-title-generation' }),
+                expect.objectContaining({ id: 'text-editing' }),
+                expect.objectContaining({ id: 'text-summarization' }),
+                expect.objectContaining({ id: 'keyword-analysis' }),
+            ]),
         );
         expect(manifest.taskGraphTemplates).toEqual(
-            expect.arrayContaining([expect.objectContaining({ id: 'email-reply' })]),
+            expect.arrayContaining([
+                expect.objectContaining({ id: 'email-reply' }),
+                expect.objectContaining({ id: 'text-editing' }),
+                expect.objectContaining({ id: 'text-summarization' }),
+                expect.objectContaining({ id: 'keyword-analysis' }),
+            ]),
         );
         expect(manifest.classifierPrompts).toEqual(
             expect.objectContaining({

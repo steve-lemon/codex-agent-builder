@@ -25,6 +25,7 @@ import {
 import type { FlowFeasibilityAssessment } from '../design/analysis';
 import { assessFlowFeasibility } from '../design/analysis';
 import { createFlowAiDelegationAdvisor } from '../design/ai-delegation';
+import { createFlowOutputContractAdvisor } from '../output-contract';
 
 const FlowPortSchema = z.object({
     id: z.string(),
@@ -449,6 +450,7 @@ export async function createFlowDesignToolBundle(
             async ({ userRequest }, context) => {
                 const normalizedRequest = await normalizeFlowRequest(userRequest, {
                     taskTypeAdvisor: createFlowDesignTaskTypeAdvisor(context.llm),
+                    outputContractAdvisor: createFlowOutputContractAdvisor(context.llm),
                 });
                 const designBrief = await buildDesignBrief(normalizedRequest);
                 const representativeSample = designBrief.validationPlan.sampleCases[0];
@@ -505,6 +507,7 @@ export async function createFlowDesignToolBundle(
             async ({ userRequest }, context) => {
                 const normalizedRequest = await normalizeFlowRequest(userRequest as string, {
                     taskTypeAdvisor: createFlowDesignTaskTypeAdvisor(context.llm),
+                    outputContractAdvisor: createFlowOutputContractAdvisor(context.llm),
                 });
                 const designBrief = await buildDesignBrief(normalizedRequest);
                 return await assessFlowFeasibility(userRequest as string, {
@@ -537,6 +540,7 @@ export async function createFlowDesignToolBundle(
         }>(async ({ userRequest, sampleInput, desiredCount, wantsJson, improvementNotes = [], preflight }, context) => {
             const normalizedRequest = await normalizeFlowRequest(userRequest as string, {
                 taskTypeAdvisor: createFlowDesignTaskTypeAdvisor(context.llm),
+                outputContractAdvisor: createFlowOutputContractAdvisor(context.llm),
             });
             const designBrief = await buildDesignBrief(normalizedRequest);
             const feasibility =

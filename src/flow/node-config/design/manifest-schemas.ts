@@ -6,7 +6,11 @@ export const NodeConfigDefaultsSchema = z.object({
     aiModelProfiles: z.record(z.string()),
     outputSchemaTemplates: z.object({
         defaultStructuredObject: z.string(),
+        genericCountMap: z.string(),
         stringList: z.string(),
+        keywordList: z.string(),
+        summaryLines: z.string(),
+        correctedText: z.string(),
         consonantVowelCounts: z.string(),
     }),
     modelSelection: z.object({

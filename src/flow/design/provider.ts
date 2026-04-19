@@ -11,6 +11,7 @@ import {
     getFlowDesignTaskTypeCatalog,
     type FlowDesignTaskTypeAdvisor,
 } from './task-types';
+import { defaultFlowOutputContractAdvisor, type FlowOutputContractAdvisor } from '../output-contract';
 import type {
     DesignBrief,
     FlowDesignDraftResult,
@@ -54,6 +55,7 @@ export class DeterministicFlowDesignProvider implements FlowDesignProvider {
     constructor(
         private readonly knowledgeSource: FlowDesignKnowledgeSource = createDefaultFlowDesignKnowledgeSource(),
         private readonly taskTypeAdvisor: FlowDesignTaskTypeAdvisor = defaultFlowDesignTaskTypeAdvisor,
+        private readonly outputContractAdvisor: FlowOutputContractAdvisor = defaultFlowOutputContractAdvisor,
     ) {}
 
     async normalizeRequest(userRequest: string): Promise<FlowDesignRequestNormalization> {
@@ -61,6 +63,7 @@ export class DeterministicFlowDesignProvider implements FlowDesignProvider {
         return await normalizeFlowRequest(userRequest, {
             taskTypeAdvisor: this.taskTypeAdvisor,
             taskTypes,
+            outputContractAdvisor: this.outputContractAdvisor,
         });
     }
 

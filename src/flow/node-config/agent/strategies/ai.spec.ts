@@ -54,7 +54,7 @@ describe('ai node strategy', () => {
             expect.objectContaining({
                 model: 'fake-main',
                 jsonOutput: 'true',
-                systemPrompt: expect.stringContaining('JSON'),
+                systemPrompt: expect.stringContaining('Count the requested elements'),
                 promptTemplate: expect.stringContaining(
                     'User request: 입력한 텍스트에서 자음 개수를 찾아서 JSON으로 보여줘',
                 ),
@@ -151,5 +151,125 @@ describe('ai node strategy', () => {
         expect(result.suggestion?.config.systemPrompt).toContain('Strategic posture: ai-first');
         expect(result.suggestion?.config.systemPrompt).toContain('Explain the provided graph JSON.');
         expect(result.suggestion?.config.promptTemplate).toContain('Validation targets: Cover main nodes and edges.');
+    });
+
+    it('selects a corrected-text schema for text editing requests when JSON output is requested', async () => {
+        const strategy = new AiGenerateNodeStrategy();
+
+        const result = await strategy.apply(
+            {
+                id: 'ai-node',
+                blockId: 'ai-generate',
+                label: 'AI Node',
+                config: {},
+                inputPorts: [],
+                outputPorts: [],
+            },
+            {
+                flow: { blocks: [], nodes: [], edges: [] },
+                input: {
+                    userRequest: '이메일 초안의 오타를 JSON으로 정정해줘',
+                    flow: { blocks: [], nodes: [], edges: [] },
+                    desiredCount: 1,
+                    wantsJson: true,
+                    designBrief: {
+                        mission: {
+                            summary: 'Edit or correct the provided text.',
+                            goal: '오타 정정',
+                            operationModel: ['edit', 'transform'],
+                        },
+                        inputContract: {
+                            format: 'text',
+                            source: 'user-provided',
+                            concreteInputPresent: true,
+                            missingRequiredInput: false,
+                            notes: [],
+                        },
+                        outputContract: {
+                            format: 'json',
+                            structured: true,
+                            cardinality: 'single',
+                        },
+                        executionPosture: {
+                            strategy: 'ai-first',
+                            rationale: ['Editing quality depends on text interpretation.'],
+                        },
+                        successCriteria: ['Return the corrected text.'],
+                        validationPlan: {
+                            sampleCases: [],
+                            assertions: ['Preserve the intended meaning while correcting typos.'],
+                            confidenceCeiling: 'fulfilled',
+                        },
+                        designPrinciples: ['Keep the revision faithful to the input.'],
+                        riskFlags: [],
+                        strategicAssumptions: [],
+                        knowledgeReferences: [],
+                    },
+                },
+                probeInsightsApplied: [],
+            },
+        );
+
+        expect(result.suggestion?.config.outputSchema).toContain('correctedText');
+    });
+
+    it('selects a keyword-list schema for keyword analysis requests when JSON output is requested', async () => {
+        const strategy = new AiGenerateNodeStrategy();
+
+        const result = await strategy.apply(
+            {
+                id: 'ai-node',
+                blockId: 'ai-generate',
+                label: 'AI Node',
+                config: {},
+                inputPorts: [],
+                outputPorts: [],
+            },
+            {
+                flow: { blocks: [], nodes: [], edges: [] },
+                input: {
+                    userRequest: '블로그 내용을 보고 핵심 키워드를 JSON으로 추출해줘',
+                    flow: { blocks: [], nodes: [], edges: [] },
+                    desiredCount: 1,
+                    wantsJson: true,
+                    designBrief: {
+                        mission: {
+                            summary: 'Extract representative keywords from the provided text.',
+                            goal: '키워드 추출',
+                            operationModel: ['extract', 'classify', 'transform'],
+                        },
+                        inputContract: {
+                            format: 'text',
+                            source: 'user-provided',
+                            concreteInputPresent: true,
+                            missingRequiredInput: false,
+                            notes: [],
+                        },
+                        outputContract: {
+                            format: 'json',
+                            structured: true,
+                            cardinality: 'multiple',
+                        },
+                        executionPosture: {
+                            strategy: 'ai-first',
+                            rationale: ['Keyword salience depends on text interpretation.'],
+                        },
+                        successCriteria: ['Return a concise keyword list.'],
+                        validationPlan: {
+                            sampleCases: [],
+                            assertions: ['Extract representative keywords without duplication.'],
+                            confidenceCeiling: 'fulfilled',
+                        },
+                        designPrinciples: ['Prefer representative keywords over verbose phrases.'],
+                        riskFlags: [],
+                        strategicAssumptions: [],
+                        knowledgeReferences: [],
+                    },
+                },
+                probeInsightsApplied: [],
+            },
+        );
+
+        expect(result.suggestion?.config.outputSchema).toContain('keywords');
     });
 });

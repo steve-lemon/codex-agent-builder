@@ -3,11 +3,18 @@ import type { FlowDocument, FlowNode } from '../../../types';
 import { normalizeFlowRequest } from '../../../design/core';
 import { buildDesignBrief } from '../../../design/architecture';
 import { createFlowDesignTaskTypeAdvisor, getFlowDesignTaskTypeCatalog } from '../../../design/task-types';
+import { createFlowOutputContractAdvisor } from '../../../output-contract';
 import type { DesignBrief } from '../../../design/types';
 import type { NodeConfigurationDesignInput, NodeConfigurationSuggestion } from '../types';
 
 const designBriefCache = new WeakMap<NodeConfigurationDesignInput, Promise<DesignBrief>>();
 const taskTypeCache = new WeakMap<NodeConfigurationDesignInput, Promise<string>>();
+// TODO(node-config): designFlowNodeConfigurations is no longer timing out, but it is still
+// one of the most expensive tool stages in successful prompt-lab runs. The next optimization
+// pass should measure and trim:
+// 1) repeated manifest/resource lookups inside strategy application,
+// 2) oversized strategy notes/directives payloads,
+// 3) unnecessary task-type inference when a design brief already implies a stable operation model.
 
 export interface NodeBlockConfigStrategyContext {
     flow: FlowDocument;
@@ -81,6 +88,7 @@ export async function ensureDesignBrief(input: NodeConfigurationDesignInput): Pr
     const pending = (async () => {
         const normalizedRequest = await normalizeFlowRequest(input.userRequest, {
             taskTypeAdvisor: createFlowDesignTaskTypeAdvisor(input.llm),
+            outputContractAdvisor: createFlowOutputContractAdvisor(input.llm),
             taskTypes: await getFlowDesignTaskTypeCatalog(),
         });
 

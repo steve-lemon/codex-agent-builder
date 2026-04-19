@@ -25,6 +25,8 @@ import { addDiagnosticListener, removeDiagnosticListener, type DiagnosticListene
 import { normalizeFlowRequest } from '../flow/design/core';
 import { buildDesignBrief } from '../flow/design/architecture';
 import { summarizeDesignBriefForPlanner } from '../flow/design/architecture';
+import { createFlowOutputContractAdvisor } from '../flow/output-contract';
+import { createFlowDesignTaskTypeAdvisor } from '../flow/design/task-types';
 import type { ToolDefinition } from '../tools';
 
 /** Constructor dependencies required by the runtime coordinator. */
@@ -124,7 +126,14 @@ export class AgentRuntime {
             skillName === 'flow-designer' ||
             skillName === 'flow-preflight-validator' ||
             skillName === 'node-config-designer'
-                ? summarizeDesignBriefForPlanner(await buildDesignBrief(await normalizeFlowRequest(userInput)))
+                ? summarizeDesignBriefForPlanner(
+                      await buildDesignBrief(
+                          await normalizeFlowRequest(userInput, {
+                              taskTypeAdvisor: createFlowDesignTaskTypeAdvisor(this.options.llm),
+                              outputContractAdvisor: createFlowOutputContractAdvisor(this.options.llm),
+                          }),
+                      ),
+                  )
                 : undefined;
         if (strategyBrief) {
             this.tracer.log(runId, 'architecture_brief_created', {

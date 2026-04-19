@@ -41,6 +41,70 @@ taskTypes:
       - 소개
     hints:
       fallbackWhenPlainText: true
+  - id: text-editing
+    label: Text Editing
+    description: Revise, proofread, correct, or rewrite user-provided text without requiring external system integration.
+    examples:
+      - 이메일 내용의 오타를 정정해주기
+      - 문장을 자연스럽게 교정해줘
+      - proofread this email draft
+    signals:
+      - edit
+      - revise
+      - proofread
+      - correct
+      - rewrite
+      - typo
+      - draft
+      - 교정
+      - 정정
+      - 수정
+      - 오타
+      - 다듬
+      - 이메일 내용
+      - 이메일 초안
+    hints:
+      fallbackWhenPlainText: true
+  - id: text-summarization
+    label: Text Summarization
+    description: Summarize user-provided text into a requested number of lines or concise sentences.
+    examples:
+      - 블로그 내용을 줄테니 이걸 3줄로 요약해줘
+      - summarize this article in three sentences
+      - 본문을 짧게 요약해줘
+    signals:
+      - summarize
+      - summary
+      - 요약
+      - 정리
+      - 핵심
+      - 3줄
+      - 세 줄
+      - three sentences
+      - three lines
+    hints:
+      fallbackWhenPlainText: true
+  - id: keyword-analysis
+    label: Keyword Analysis
+    description: Extract representative keywords or key phrases from user-provided text and present them clearly.
+    examples:
+      - 블로그 내용을 줄테니 키워드 분석 해줘
+      - 이 문서에서 핵심 키워드를 추출해줘
+      - extract the main keywords from this article
+    signals:
+      - key phrase
+      - key phrases
+      - extract
+      - extraction
+      - analyze
+      - analysis
+      - 핵심어
+      - 핵심 키워드
+      - 키워드 분석
+      - 추출
+      - 분석
+    hints:
+      fallbackWhenPlainText: true
   - id: text-counting
     label: Text Counting
     description: Count characters, tokens, linguistic units, or extracted elements from text with exact or near-exact outputs.
@@ -95,6 +159,12 @@ taskGraphTemplates:
       - 답장
       - 회신
       - 이메일
+    taskTypes:
+      - email-reply
+    operationModels:
+      - reply
+      - read
+      - send
     graph:
       nodes:
         - id: email-read
@@ -139,6 +209,76 @@ taskGraphTemplates:
         - source: draft-reply
           target: send-reply
           label: reply draft
+  - id: text-editing
+    label: Text Editing Workflow
+    description: Capture user-provided text, revise it according to editing guidance, and review the corrected result.
+    examples:
+      - 이메일 내용의 오타를 정정해주기
+      - 문장을 자연스럽게 교정해줘
+      - proofread this email draft
+    signals:
+      - edit
+      - revise
+      - proofread
+      - correct
+      - rewrite
+      - typo
+      - 교정
+      - 정정
+      - 수정
+      - 오타
+      - 다듬
+      - 이메일 내용
+      - 이메일 초안
+    taskTypes:
+      - text-editing
+    operationModels:
+      - edit
+      - transform
+      - validate
+    graph:
+      nodes:
+        - id: capture-request
+          label: Capture Request
+          data:
+            operation: capture-text
+            expectedInputs:
+              - user-provided source text
+              - editing instruction
+            expectedOutputs:
+              - source text
+              - editing goal
+            requiredCapabilities:
+              - text-input
+        - id: revise-text
+          label: Revise Text
+          data:
+            operation: revise-text
+            expectedInputs:
+              - source text
+              - editing goal
+            expectedOutputs:
+              - corrected text
+            requiredCapabilities:
+              - ai-generation
+              - text-output
+        - id: review-output
+          label: Review Output
+          data:
+            operation: log-output
+            expectedInputs:
+              - corrected text
+            expectedOutputs:
+              - execution log
+            requiredCapabilities:
+              - view-log
+      edges:
+        - source: capture-request
+          target: revise-text
+          label: source text
+        - source: revise-text
+          target: review-output
+          label: corrected text
   - id: blog-title-generation
     label: Blog Title Generation Workflow
     description: Capture a topic, generate title candidates, and review the output.
@@ -261,6 +401,135 @@ taskGraphTemplates:
         - source: count-elements
           target: review-output
           label: counted result
+  - id: text-summarization
+    label: Text Summarization Workflow
+    description: Capture source text, summarize it to the requested length, and review the summary output.
+    examples:
+      - 블로그 내용을 줄테니 이걸 3줄로 요약해줘
+      - summarize this article in three sentences
+      - 본문을 짧게 요약해줘
+    signals:
+      - summarize
+      - summary
+      - 요약
+      - 정리
+      - 핵심
+      - 3줄
+      - 세 줄
+      - three sentences
+      - three lines
+    taskTypes:
+      - text-summarization
+    operationModels:
+      - summarize
+      - transform
+      - extract
+    graph:
+      nodes:
+        - id: capture-request
+          label: Capture Request
+          data:
+            operation: capture-text
+            expectedInputs:
+              - source text
+              - summary length target
+            expectedOutputs:
+              - source text
+              - summary target
+            requiredCapabilities:
+              - text-input
+        - id: summarize-content
+          label: Summarize Content
+          data:
+            operation: summarize-text
+            expectedInputs:
+              - source text
+              - summary target
+            expectedOutputs:
+              - summary text
+            requiredCapabilities:
+              - ai-generation
+              - text-output
+        - id: review-output
+          label: Review Output
+          data:
+            operation: log-output
+            expectedInputs:
+              - summary text
+            expectedOutputs:
+              - execution log
+            requiredCapabilities:
+              - view-log
+      edges:
+        - source: capture-request
+          target: summarize-content
+          label: source text
+        - source: summarize-content
+          target: review-output
+          label: summary text
+  - id: keyword-analysis
+    label: Keyword Analysis Workflow
+    description: Capture source text, extract representative keywords, and review the extracted keyword list.
+    examples:
+      - 블로그 내용을 줄테니 키워드 분석 해줘
+      - 이 문서에서 핵심 키워드를 추출해줘
+      - extract the main keywords from this article
+    signals:
+      - extract
+      - analysis
+      - 핵심 키워드
+      - 핵심어
+      - 추출
+      - 분석
+    taskTypes:
+      - keyword-analysis
+    operationModels:
+      - extract
+      - classify
+      - transform
+    graph:
+      nodes:
+        - id: capture-request
+          label: Capture Request
+          data:
+            operation: capture-text
+            expectedInputs:
+              - source text
+              - keyword extraction goal
+            expectedOutputs:
+              - source text
+              - keyword extraction goal
+            requiredCapabilities:
+              - text-input
+        - id: extract-keywords
+          label: Extract Keywords
+          data:
+            operation: extract-keywords
+            expectedInputs:
+              - source text
+              - keyword extraction goal
+            expectedOutputs:
+              - keyword list
+            requiredCapabilities:
+              - ai-generation
+              - text-output
+        - id: review-output
+          label: Review Output
+          data:
+            operation: log-output
+            expectedInputs:
+              - keyword list
+            expectedOutputs:
+              - execution log
+            requiredCapabilities:
+              - view-log
+      edges:
+        - source: capture-request
+          target: extract-keywords
+          label: source text
+        - source: extract-keywords
+          target: review-output
+          label: keyword list
   - id: generic-generation
     label: Generic Generation Workflow
     description: Capture a request, generate a response, and review the output.
@@ -392,6 +661,10 @@ defaults:
     keywordDriven: 생산성 향상
     byTaskType:
       blog-title-generation: 원격 근무
+      keyword-analysis: |-
+        블로그 본문 예시입니다. 원격 협업 습관, 비동기 커뮤니케이션, 문서 중심 의사결정을 다룹니다. 마지막에는 팀 생산성을 높이는 실천 팁을 정리합니다.
+      text-summarization: |-
+        블로그 본문 예시입니다. 생산성을 높이는 습관과 협업 원칙을 설명합니다. 마지막에는 실천 팁을 정리합니다.
       text-counting: 한글
       graph-explanation: |-
         {
@@ -410,6 +683,8 @@ defaults:
       unknown: 샘플 입력
   systemPrompts:
     blog-title-generation: You generate clear and catchy blog titles based on one keyword.
+    keyword-analysis: You extract representative keywords from the provided text and keep them distinct, relevant, and easy to review.
+    text-summarization: You summarize the provided text faithfully and keep the requested line or sentence count stable.
     text-counting: You count the requested text elements exactly and make the counting rule explicit.
     graph-explanation: You explain graph-shaped JSON structures clearly in Korean markdown.
     json-generation: You return concise structured output that can be safely parsed as JSON.

@@ -95,7 +95,7 @@ function describeOutputContractState(
         }
     }
 
-    if (outputContract.format === 'plain-text' && jsonOutputEnabled) {
+    if ((outputContract.format === 'plain-text' || outputContract.format === 'markdown') && jsonOutputEnabled) {
         return {
             summarySuffix: ' The configured flow drifted toward JSON output even though the request preferred plain text.',
             nextAction: 'Restore the plain-text output mode requested by the user.',

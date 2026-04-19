@@ -1,7 +1,13 @@
 // Shared flow-design core used by skill wrappers, tools, and mock/example agents.
 import { AgentError } from '../../errors/agent-error';
 import { BuiltinFlowBlockIds } from '../block-pool';
-import { buildFlowOutputFormatInstruction, inferFlowOutputContract } from '../output-contract';
+import {
+    buildFlowOutputFormatInstruction,
+    createFlowOutputContractAdvisor,
+    inferFlowOutputContract,
+    inferFlowOutputContractWithAdvisor,
+    type FlowOutputContractAdvisor,
+} from '../output-contract';
 import { FlowDesignSession, type FlowDesignConnection } from '../design-monitor';
 import {
     connectFlowPorts,
@@ -116,9 +122,13 @@ export async function normalizeFlowRequest(
     options: {
         taskTypeAdvisor?: FlowDesignTaskTypeAdvisor;
         taskTypes?: FlowDesignTaskTypeDefinition[];
+        outputContractAdvisor?: FlowOutputContractAdvisor;
     } = {},
 ): Promise<FlowDesignRequestNormalization> {
-    const outputContract = inferFlowOutputContract(userRequest);
+    const outputContract = await inferFlowOutputContractWithAdvisor({
+        userRequest,
+        advisor: options.outputContractAdvisor,
+    });
     const taskTypeRecommendation = await inferFlowDesignTaskType({
         userRequest,
         wantsJson: outputContract.wantsJson,
@@ -148,6 +158,7 @@ export async function analyzeFlowRequest(
     options: {
         taskTypeAdvisor?: FlowDesignTaskTypeAdvisor;
         taskTypes?: FlowDesignTaskTypeDefinition[];
+        outputContractAdvisor?: FlowOutputContractAdvisor;
     } = {},
 ): Promise<FlowDesignIntent> {
     const normalizedRequest = await normalizeFlowRequest(userRequest, options);
@@ -160,7 +171,10 @@ export async function analyzeFlowRequest(
 
 /** Builds the system prompt used by the default AI generation node. */
 export async function buildFlowDesignSystemPrompt(userRequest: string, improvementNotes: string[]): Promise<string> {
-    const outputContract = inferFlowOutputContract(userRequest);
+    const outputContract = await inferFlowOutputContractWithAdvisor({
+        userRequest,
+        advisor: createFlowOutputContractAdvisor(),
+    });
     const taskTypeRecommendation = await inferFlowDesignTaskType({
         userRequest,
         wantsJson: outputContract.wantsJson,

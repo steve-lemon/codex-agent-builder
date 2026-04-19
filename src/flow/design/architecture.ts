@@ -27,11 +27,17 @@ function inferOperationModel(userRequest: string, taskType: string): DesignBrief
     const lowered = `${userRequest} ${taskType}`.toLowerCase();
     const operations: DesignBriefRecord['mission']['operationModel'] = [];
 
+    if (/edit|revise|proofread|correct|rewrite|typo|교정|정정|수정|오타|다듬/.test(lowered)) {
+        operations.push('edit');
+    }
     if (/count|카운트|개수|수를 세/.test(lowered)) {
         operations.push('count');
     }
-    if (/extract|추출/.test(lowered)) {
+    if (/extract|keywords?|analyze|analysis|핵심어|핵심 키워드|키워드 분석|추출|분석/.test(lowered)) {
         operations.push('extract');
+    }
+    if (/analyze|analysis|분석/.test(lowered)) {
+        operations.push('classify');
     }
     if (/transform|변환|분리/.test(lowered)) {
         operations.push('transform');
@@ -64,7 +70,7 @@ function mapOutputFormat(
     if (outputContract.format === 'json') {
         return 'json';
     }
-    if (outputContract.format === 'plain-text' && /markdown|md/i.test('plain-text')) {
+    if (outputContract.format === 'markdown') {
         return 'markdown';
     }
     if (outputContract.format === 'plain-text') {
@@ -95,8 +101,14 @@ function buildMissionSummary(
     taskType: string,
     operationModel: DesignBriefRecord['mission']['operationModel'],
 ): string {
+    if (operationModel.includes('edit')) {
+        return `Edit or correct the provided text for task type ${taskType}.`;
+    }
     if (operationModel.includes('count')) {
         return `Count the requested elements for task type ${taskType}.`;
+    }
+    if (operationModel.includes('extract')) {
+        return `Extract the requested representative items for task type ${taskType}.`;
     }
     if (operationModel.includes('explain')) {
         return `Explain the meaning or purpose of the provided input for task type ${taskType}.`;
