@@ -1,6 +1,8 @@
 // Shared contracts and helpers for block-specific node-configuration strategies.
 import type { FlowDocument, FlowNode } from '../../../types';
+import { analyzeFlowRequest } from '../../../design/core';
 import { createFlowDesignTaskTypeAdvisor, getFlowDesignTaskTypeCatalog } from '../../../design/task-types';
+import type { DesignBrief } from '../../../design/types';
 import type { NodeConfigurationDesignInput, NodeConfigurationSuggestion } from '../types';
 
 export interface NodeBlockConfigStrategyContext {
@@ -50,6 +52,19 @@ export async function inferTaskTypeWithInput(input: NodeConfigurationDesignInput
             taskTypes,
         })
     ).taskType;
+}
+
+export async function ensureDesignBrief(input: NodeConfigurationDesignInput): Promise<DesignBrief> {
+    if (input.designBrief) {
+        return input.designBrief;
+    }
+
+    const analyzedIntent = await analyzeFlowRequest(input.userRequest, {
+        taskTypeAdvisor: createFlowDesignTaskTypeAdvisor(input.llm),
+        taskTypes: await getFlowDesignTaskTypeCatalog(),
+    });
+
+    return analyzedIntent.designBrief!;
 }
 
 export function collectStrategyNotes(input: NodeConfigurationDesignInput): string[] {

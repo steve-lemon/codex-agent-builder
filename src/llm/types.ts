@@ -4,12 +4,14 @@ import type { Plan, ReflectorOutput } from '../agent/schemas';
 import type { FinalResult } from '../agent/types';
 import type { ToolDefinition, ToolManifest } from '../tools';
 import type { StructuredSchema } from './structured-schema';
+import type { PlannerStrategyBrief } from '../flow/design/architecture';
 
 /** Payload sent to a planner-capable LLM gateway. */
 export interface PlannerInput {
     userInput: string;
     skillName: string;
     skillInstructions: string;
+    strategyBrief?: PlannerStrategyBrief;
     allowedTools: string[];
     toolManifests: ToolManifest[];
     toolDefinitions: ToolDefinition[];

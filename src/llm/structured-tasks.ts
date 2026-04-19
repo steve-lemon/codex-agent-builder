@@ -20,6 +20,7 @@ export async function buildPlanStructuredRequest(input: PlannerInput): Promise<S
                     userInput: input.userInput,
                     skillName: input.skillName,
                     skillInstructions: input.skillInstructions,
+                    strategyBrief: input.strategyBrief,
                     allowedTools: input.allowedTools,
                     toolManifests: input.toolManifests,
                 }),

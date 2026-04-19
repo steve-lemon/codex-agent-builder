@@ -32,6 +32,18 @@ describe('flow-design core', () => {
             sampleInput: '생산성 향상',
             sampleInputSource: 'default',
             sampleInputReadyForDesign: true,
+            designBrief: expect.objectContaining({
+                mission: expect.objectContaining({
+                    operationModel: expect.arrayContaining(['generate']),
+                }),
+                executionPosture: expect.objectContaining({
+                    strategy: expect.any(String),
+                }),
+                validationPlan: expect.objectContaining({
+                    sampleCases: expect.any(Array),
+                    assertions: expect.any(Array),
+                }),
+            }),
         });
     });
 
@@ -51,6 +63,16 @@ describe('flow-design core', () => {
         expect(intent.sampleInputReadyForDesign).toBe(true);
         expect(intent.sampleInput).toContain('"nodes"');
         expect(intent.sampleInput).toContain('"edges"');
+        expect(intent.designBrief).toEqual(
+            expect.objectContaining({
+                inputContract: expect.objectContaining({
+                    source: 'synthetic',
+                }),
+                validationPlan: expect.objectContaining({
+                    confidenceCeiling: 'uncertain',
+                }),
+            }),
+        );
     });
 
     it('creates and validates a deterministic draft flow from preflight-backed inputs', async () => {

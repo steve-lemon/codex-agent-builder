@@ -35,6 +35,12 @@ describe('PromptLabProduct', () => {
 
         const summary = await readFile(join(artifacts.session.sessionDir, 'summary.md'), 'utf8');
         const promptMarkdown = await readFile(join(artifacts.session.sessionDir, 'codex-prompt.md'), 'utf8');
+        const architectureBrief = JSON.parse(
+            await readFile(join(artifacts.session.sessionDir, 'architecture-brief.json'), 'utf8'),
+        );
+        const architectureReview = JSON.parse(
+            await readFile(join(artifacts.session.sessionDir, 'architecture-review.json'), 'utf8'),
+        );
         const resultJson = JSON.parse(await readFile(join(artifacts.session.sessionDir, 'result.json'), 'utf8'));
         const designedFlowYaml = await readFile(join(artifacts.session.sessionDir, 'designed-flow.yml'), 'utf8');
         const designedFlow = yaml.load(designedFlowYaml) as {
@@ -46,8 +52,25 @@ describe('PromptLabProduct', () => {
         expect(summary).toContain('Prompt Lab 세션');
         expect(summary).toContain('요구 충족도 평가');
         expect(summary).toContain('판단 근거');
+        expect(summary).toContain('아키텍처');
         expect(promptMarkdown).toContain('## Prompt');
         expect(resultJson.skillName).toBe('flow-designer');
+        expect(architectureBrief).toEqual(
+            expect.objectContaining({
+                mission: expect.objectContaining({
+                    summary: expect.any(String),
+                }),
+                validationPlan: expect.objectContaining({
+                    sampleCases: expect.any(Array),
+                }),
+            }),
+        );
+        expect(architectureReview).toEqual(
+            expect.objectContaining({
+                strategyFit: expect.any(String),
+                evidenceAdequacy: expect.any(String),
+            }),
+        );
         expect(resultJson.requirementAssessment).toEqual(
             expect.objectContaining({
                 executionSucceeded: true,
@@ -112,6 +135,44 @@ describe('PromptLabProduct', () => {
                 expect.objectContaining({ stageId: 'prompt-finalize' }),
             ]),
         );
+    });
+
+    it('keeps graph-explanation fulfillment uncertain when architecture limits confidence to synthetic evidence', async () => {
+        const outputRoot = await mkdtemp(join(tmpdir(), 'prompt-lab-'));
+        const product = new PromptLabProduct();
+
+        const { session, result, gateway } = await product.runRequirement({
+            config: {
+                mode: 'run',
+                provider: 'fake',
+                mainModel: 'fake-main',
+                liteModel: 'fake-lite',
+                language: 'ko',
+                skillName: 'flow-designer',
+                outputRoot,
+            },
+            requirement: '그래프(json)를 보고 이게 뭐하는 것인지 설명(md) 해줘',
+        });
+
+        expect(result.architectureBrief?.validationPlan.confidenceCeiling).toBe('uncertain');
+        expect(result.architectureReview?.syntheticReliance).toMatch(/bounded|high/);
+        expect(result.requirementAssessment.fulfillmentLevel).toBe('uncertain');
+        expect(
+            result.requirementAssessment.reasons.some(reason =>
+                ['architecture-confidence-limited', 'architecture-evidence-thin'].includes(reason.code),
+            ),
+        ).toBe(true);
+
+        const artifacts = await product.finalizeSession({
+            session,
+            result,
+            selfReview: await product.createSelfReview({ session, result, gateway }),
+            userFeedback: '',
+            gateway,
+        });
+        const summary = await readFile(join(artifacts.session.sessionDir, 'summary.md'), 'utf8');
+        expect(summary).toContain('아키텍처');
+        expect(summary).toContain('핵심 finding');
     });
 
     it('can validate preflight runs through the same prompt-lab workflow', async () => {

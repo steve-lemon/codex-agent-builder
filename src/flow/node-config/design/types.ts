@@ -1,6 +1,7 @@
 // Core contracts for node-level flow configuration design.
 import type { FlowDocument } from '../../types';
 import type { LlmGateway } from '../../../llm/types';
+import type { DesignBrief } from '../../design/types';
 
 /** Per-node configuration recommendation emitted by the node-config core. */
 export interface NodeConfigurationSuggestion {
@@ -52,6 +53,7 @@ export interface NodeConfigurationDesignInput {
     desiredCount: number;
     wantsJson: boolean;
     llm?: LlmGateway;
+    designBrief?: DesignBrief;
     improvementNotes?: string[];
     strategyNotes?: string[];
     strategyDirectives?: NodeConfigurationStrategyDirective[];

@@ -23,6 +23,7 @@ import {
     getFlowDesignSampleInputDefaults,
     getFlowDesignSystemPromptDefault,
 } from './resources';
+import { buildDesignBrief } from './architecture';
 import type {
     FlowDesignAiGenerateRequest,
     FlowDesignDraftResult,
@@ -96,8 +97,7 @@ export async function analyzeFlowRequest(
         taskTypes: options.taskTypes,
     });
     const sampleInputDefaults = await getFlowDesignSampleInputDefaults(taskTypeRecommendation.taskType, userRequest);
-
-    return {
+    const baseIntent: FlowDesignIntent = {
         userRequest,
         taskType: taskTypeRecommendation.taskType,
         taskTypeConfidence: taskTypeRecommendation.confidence,
@@ -110,6 +110,12 @@ export async function analyzeFlowRequest(
         sampleInput: sampleInputDefaults.sampleInput,
         sampleInputSource: sampleInputDefaults.source,
         sampleInputReadyForDesign: sampleInputDefaults.readyForDesign,
+    };
+    const designBrief = await buildDesignBrief(baseIntent);
+
+    return {
+        ...baseIntent,
+        designBrief,
     };
 }
 
@@ -211,7 +217,12 @@ export async function designFlowDraft(args: {
     toolName?: string;
 }): Promise<FlowDesignDraftResult> {
     const availableBlocks = args.availableBlocks ?? (await getCatalogAvailableFlowBlocks());
-    const improvementNotes = [...(args.guidanceNotes ?? []), ...(args.improvementNotes ?? [])];
+    const architectureIntent = await analyzeFlowRequest(args.userRequest);
+    const architectureNotes = [
+        ...architectureIntent.designBrief!.designPrinciples,
+        ...architectureIntent.designBrief!.validationPlan.assertions.map(item => `Validation target: ${item}`),
+    ];
+    const improvementNotes = [...architectureNotes, ...(args.guidanceNotes ?? []), ...(args.improvementNotes ?? [])];
     ensureRequiredFlowBlocks(availableBlocks, [
         BuiltinFlowBlockIds.input,
         BuiltinFlowBlockIds.aiGenerate,

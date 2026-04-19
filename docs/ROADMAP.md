@@ -31,6 +31,7 @@ Files:
 - [`src/flow/agent/preflight-tools.ts`](../src/flow/agent/preflight-tools.ts)
 - [`src/llm/fake-plan-builders.ts`](../src/llm/fake-plan-builders.ts)
 - [`src/agent/final-result-formatters.ts`](../src/agent/final-result-formatters.ts)
+- [`docs/ARCHITECTURE_AGENT_DESIGN.md`](./ARCHITECTURE_AGENT_DESIGN.md)
 
 Planned work:
 - replace deterministic task-graph inference heuristics with a more block-aware decomposition model
@@ -41,6 +42,8 @@ Planned work:
 - replace keyword-based retry policy with an explicit planner-visible policy model
 - allow deterministic multi-pass planning to short-circuit once reflection is satisfied
 - persist pass-by-pass design details so UIs can visualize design evolution
+- introduce a strategist-owned `DesignBrief` / architecture layer that supplies strategy, evidence posture, and knowledge-backed constraints without taking over planner orchestration
+- let planner, node-config, and assessment consume the architecture layer more explicitly while preserving strategist/tactician boundaries
 
 ## Node-Config Design
 

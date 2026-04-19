@@ -15,6 +15,7 @@ import {
     buildFlowPreflightValidatorPlan,
     buildNodeConfigDesignerPlan,
 } from '../llm/fake-plan-builders';
+import type { PlannerStrategyBrief } from '../flow/design/architecture';
 import { z, ZodFirstPartyTypeKind } from 'zod';
 
 const REFERENCE_ONLY_TOOL_ARGS: Readonly<Record<string, readonly string[]>> = {
@@ -245,6 +246,7 @@ export class Planner {
         userInput: string;
         skillName: string;
         skillInstructions: string;
+        strategyBrief?: PlannerStrategyBrief;
         allowedTools: string[];
         toolManifests: ToolManifest[];
         toolDefinitions: ToolDefinition[];
@@ -253,6 +255,7 @@ export class Planner {
             userInput: input.userInput,
             skillName: input.skillName,
             skillInstructions: input.skillInstructions,
+            strategyBrief: input.strategyBrief,
             allowedTools: input.allowedTools,
             toolManifests: input.toolManifests,
             toolDefinitions: input.toolDefinitions,
@@ -283,6 +286,7 @@ export class Planner {
             userInput: string;
             skillName: string;
             skillInstructions: string;
+            strategyBrief?: PlannerStrategyBrief;
             allowedTools: string[];
             toolManifests: ToolManifest[];
             toolDefinitions: ToolDefinition[];

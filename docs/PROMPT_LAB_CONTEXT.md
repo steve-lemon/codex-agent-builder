@@ -18,6 +18,9 @@ Prompt Lab now supports:
   - `self-review`
   - `prompt-finalize`
 - fallback designed-flow reconstruction when live design events are missing
+- architecture-agent design draft documented in [`docs/ARCHITECTURE_AGENT_DESIGN.md`](/Users/dujung/Documents/Codex/docs/ARCHITECTURE_AGENT_DESIGN.md)
+- architecture brief / review artifacts in session output
+- planner input now receives a compact strategy brief for flow-related skills
 
 ## Current Known Gaps
 
@@ -58,6 +61,20 @@ That means we still need better visibility into:
 - whether advisor-backed classification was actually used
 - whether fallback happened before advisor timing instrumentation
 - where planner-internal classification decisions were finalized
+
+### 4. Architecture layer is now present, but still intentionally narrow
+
+Current state:
+
+- `analyzeFlowRequest` now produces a `designBrief`
+- prompt-lab persists `architecture-brief.*` and `architecture-review.*`
+- planner now receives a compact `strategyBrief`
+
+Current limitation:
+
+- planner only consumes a compact subset implicitly through prompt context
+- requirement assessment does not yet directly consume architecture review findings
+- node-config consumes architecture influence indirectly through draft guidance, not through a first-class brief contract
 
 ## Auto Policy Structure
 
@@ -103,6 +120,12 @@ Design intent:
   - advisor direct decision
   - deterministic fallback
   - generic template fallback
+
+4. Architecture layer rollout
+
+- deepen planner usage of the compact `strategyBrief` without letting architecture take over orchestration
+- let requirement assessment and final summaries consume architecture review findings
+- make node-config consume explicit architecture hint fields instead of only inherited draft notes
 
 ## Fast Run Commands
 

@@ -3,6 +3,7 @@ import type { GraphExecutionPlan, GraphRunResult } from '../../graph/types';
 import type { FlowAiGenerateRequest } from '../runtime';
 import type { FlowDocument } from '../types';
 import type { FlowOutputContract } from '../output-contract';
+import type { ArchitectureReviewRecord, DesignBriefRecord } from './architecture-schemas';
 
 /** Coarse-grained task classification used by flow-design layers. */
 export type FlowDesignTaskType = string;
@@ -21,6 +22,7 @@ export interface FlowDesignIntent {
     sampleInput: string;
     sampleInputSource?: 'default' | 'synthetic-graph-json';
     sampleInputReadyForDesign?: boolean;
+    designBrief?: DesignBriefRecord;
 }
 
 /** Validation summary for a designed flow draft. */
@@ -81,3 +83,6 @@ export interface FlowDesignAiGenerateRequest extends FlowAiGenerateRequest {
     userRequest: string;
     improvementNotes: string[];
 }
+
+export type DesignBrief = DesignBriefRecord;
+export type ArchitectureReview = ArchitectureReviewRecord;

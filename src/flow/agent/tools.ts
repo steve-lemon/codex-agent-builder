@@ -472,6 +472,7 @@ export async function createFlowDesignToolBundle(
                         intent.desiredCount > 1
                             ? [`Produce ${intent.desiredCount} useful outputs.`]
                             : ['Produce one useful output.'],
+                    designBrief: intent.designBrief,
                 };
             },
         ),

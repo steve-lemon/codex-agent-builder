@@ -15,6 +15,10 @@ import {
     type LiteAdvisorResourceRecord,
     LiteAdvisorResourceSchema,
 } from '../advisors/resource-schemas';
+import {
+    type ArchitectureKnowledgeResourceRecord,
+    ArchitectureKnowledgeResourceSchema,
+} from '../flow/design/architecture-schemas';
 
 export interface ResourceDefinition<T> {
     id: string;
@@ -31,6 +35,7 @@ export interface ResourceSchemaMap {
     'flow.block-pool': FlowBlockPoolRecord;
     'flow-design.advisors': LiteAdvisorResourceRecord;
     'flow-design.advisor-evals': LiteAdvisorEvaluationResourceRecord;
+    'flow-design.architecture-knowledge': ArchitectureKnowledgeResourceRecord;
     'tools.sample-tools.set': ToolPackResourceRecord;
     'tools.flow-design.set': ToolPackResourceRecord;
     'tools.node-config.set': ToolPackResourceRecord;
@@ -81,6 +86,11 @@ export const RESOURCE_DEFINITIONS: {
         id: 'flow-design.advisor-evals',
         relativePath: 'skills/flow-designer/ADVISOR_EVALS.yml',
         schema: LiteAdvisorEvaluationResourceSchema,
+    },
+    'flow-design.architecture-knowledge': {
+        id: 'flow-design.architecture-knowledge',
+        relativePath: 'skills/flow-designer/ARCHITECTURE_KNOWLEDGE.yml',
+        schema: ArchitectureKnowledgeResourceSchema,
     },
     'tools.sample-tools.set': {
         id: 'tools.sample-tools.set',

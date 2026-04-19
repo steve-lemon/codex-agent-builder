@@ -12,6 +12,7 @@ import type { TraceEvent } from '../observability/types';
 import type { NodeConfigDesignDetailsDto } from '../flow/node-config/design/dto';
 import type { FlowDocument } from '../flow/types';
 import type { FlowOutputContract } from '../flow/output-contract';
+import type { ArchitectureReview, DesignBrief } from '../flow/design/types';
 
 export type ProductFlowSkill = 'flow-preflight-validator' | 'flow-designer' | 'node-config-designer';
 
@@ -34,7 +35,9 @@ export type RequirementAssessmentReasonCode =
     | 'json-contract-not-preserved'
     | 'json-schema-missing'
     | 'plain-text-format-drift'
-    | 'synthetic-sample-validation';
+    | 'synthetic-sample-validation'
+    | 'architecture-confidence-limited'
+    | 'architecture-evidence-thin';
 
 export interface RequirementAssessmentReason {
     category: RequirementAssessmentReasonCategory;
@@ -75,6 +78,8 @@ export interface ProductDesignRunResult {
     trace: TraceEvent[];
     finalFlow?: FlowDocument;
     outputContract: FlowOutputContract;
+    architectureBrief?: DesignBrief;
+    architectureReview?: ArchitectureReview;
 }
 
 /** Product-facing API for flow-related agent features. */

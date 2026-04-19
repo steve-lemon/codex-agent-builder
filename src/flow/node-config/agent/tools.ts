@@ -11,6 +11,7 @@ import {
 } from '../../../tools/core/types';
 import type { FlowDocument } from '../../types';
 import { AgentError } from '../../../errors/agent-error';
+import { DesignBriefSchema } from '../../design/architecture-schemas';
 
 const service = new NodeConfigDesignService();
 
@@ -146,6 +147,7 @@ function getNodeConfigToolDefinitions(): Record<
                 flow: FlowDocumentSchema,
                 desiredCount: z.number().int().positive(),
                 wantsJson: z.boolean(),
+                designBrief: DesignBriefSchema.optional(),
                 improvementNotes: z.array(z.string()).optional(),
                 strategyNotes: z.array(z.string()).optional(),
                 strategyDirectives: z.array(StrategyDirectiveSchema).optional(),
@@ -168,6 +170,7 @@ function getNodeConfigToolExecutors() {
             flow: unknown;
             desiredCount: number;
             wantsJson: boolean;
+            designBrief?: unknown;
             improvementNotes?: string[];
             strategyNotes?: string[];
             strategyDirectives?: Array<{ strategyId: string; note: string }>;
@@ -179,22 +182,27 @@ function getNodeConfigToolExecutors() {
                 mismatchesFromSpec?: string[];
             };
         }>(
-            async ({
-                userRequest,
-                flow,
-                desiredCount,
-                wantsJson,
-                improvementNotes = [],
-                strategyNotes = [],
-                strategyDirectives = [],
-                probeResult,
-            }, context) =>
+            async (
+                {
+                    userRequest,
+                    flow,
+                    desiredCount,
+                    wantsJson,
+                    designBrief,
+                    improvementNotes = [],
+                    strategyNotes = [],
+                    strategyDirectives = [],
+                    probeResult,
+                },
+                context,
+            ) =>
                 service.design({
                     userRequest,
                     flow: (await normalizeKnownFlowDocument(flow as FlowDocument)) as never,
                     desiredCount,
                     wantsJson,
                     llm: context.llm,
+                    designBrief: designBrief as never,
                     improvementNotes,
                     strategyNotes,
                     strategyDirectives,

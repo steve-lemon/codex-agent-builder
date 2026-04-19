@@ -2,6 +2,10 @@ import { join } from 'node:path';
 import { addDiagnosticListener, removeDiagnosticListener, type DiagnosticListener } from '../diagnostics/logger';
 import { AgentError } from '../errors/agent-error';
 import { evaluateFlowDesignAdvisors, type AdvisorEvaluationReport } from '../flow/design/advisor-evaluation';
+import { buildArchitectureReview, buildDesignBrief } from '../flow/design/architecture';
+import { loadArchitectureKnowledgeResource } from '../flow/design/architecture-resources';
+import { analyzeFlowRequest } from '../flow/design/core';
+import type { ArchitectureReview, DesignBrief } from '../flow/design/types';
 import { FlowDesignProduct } from '../product';
 import type { ProductDesignRunResult, ProductFlowSkill } from '../product/types';
 import { FakeLlmGateway, GeminiGateway, OpenAiGateway, type LlmGateway } from '../llm';
@@ -123,6 +127,137 @@ function renderCodexPromptMarkdown(prompt: PromptLabCodexPrompt): string {
         ...prompt.usageNotes.map(note => `- ${note}`),
         '',
     ].join('\n');
+}
+
+function renderArchitectureBriefMarkdown(brief: NonNullable<PromptLabRunArtifacts['architectureBrief']>): string {
+    return [
+        '# Architecture Brief',
+        '',
+        `- Mission: ${brief.mission.summary}`,
+        `- Goal: ${brief.mission.goal}`,
+        `- Operation Model: ${brief.mission.operationModel.join(', ')}`,
+        `- Input Source: ${brief.inputContract.source}`,
+        `- Input Format: ${brief.inputContract.format}`,
+        `- Output Format: ${brief.outputContract.format}`,
+        `- Execution Posture: ${brief.executionPosture.strategy}`,
+        `- Confidence Ceiling: ${brief.validationPlan.confidenceCeiling}`,
+        '',
+        '## Success Criteria',
+        '',
+        ...brief.successCriteria.map(item => `- ${item}`),
+        '',
+        '## Validation Plan',
+        '',
+        ...brief.validationPlan.sampleCases.flatMap(sample => [
+            `### ${sample.id}`,
+            '',
+            `- Role: ${sample.role}`,
+            `- Source: ${sample.source}`,
+            `- Assertions: ${sample.assertions.join(' | ')}`,
+            '',
+            '```json',
+            typeof sample.input === 'string' ? sample.input : JSON.stringify(sample.input, null, 2),
+            '```',
+            '',
+        ]),
+        '## Design Principles',
+        '',
+        ...brief.designPrinciples.map(item => `- ${item}`),
+        '',
+        '## Risk Flags',
+        '',
+        ...(brief.riskFlags.length > 0 ? brief.riskFlags.map(item => `- ${item}`) : ['- none']),
+        '',
+        '## Knowledge References',
+        '',
+        ...(brief.knowledgeReferences.length > 0
+            ? brief.knowledgeReferences.map(item => `- ${item.noteId}: ${item.summary}`)
+            : ['- none']),
+        '',
+    ].join('\n');
+}
+
+function renderArchitectureReviewMarkdown(review: NonNullable<PromptLabRunArtifacts['architectureReview']>): string {
+    return [
+        '# Architecture Review',
+        '',
+        `- Strategy Fit: ${review.strategyFit}`,
+        `- Evidence Adequacy: ${review.evidenceAdequacy}`,
+        `- Synthetic Reliance: ${review.syntheticReliance}`,
+        '',
+        '## Key Findings',
+        '',
+        ...review.keyFindings.map(item => `- ${item}`),
+        '',
+        '## Recommended Adjustments',
+        '',
+        ...review.recommendedAdjustments.map(item => `- ${item}`),
+        '',
+    ].join('\n');
+}
+
+function buildArchitectureAdjustedAssessment(args: {
+    result: ProductDesignRunResult;
+    architectureBrief?: DesignBrief;
+    architectureReview?: ArchitectureReview;
+}): ProductDesignRunResult['requirementAssessment'] {
+    const assessment = args.result.requirementAssessment;
+    if (!args.architectureBrief || !assessment.executionSucceeded) {
+        return assessment;
+    }
+
+    const next = {
+        ...assessment,
+        caveats: [...assessment.caveats],
+        reasons: [...assessment.reasons],
+    };
+
+    if (
+        args.architectureBrief.validationPlan.confidenceCeiling === 'uncertain' &&
+        next.fulfillmentLevel === 'fulfilled'
+    ) {
+        next.fulfillmentLevel = 'uncertain';
+        if (
+            !next.reasons.some(reason => reason.code === 'architecture-confidence-limited')
+        ) {
+            next.reasons.push({
+                category: 'evidence',
+                code: 'architecture-confidence-limited',
+                message: 'architecture strategy limited confidence because validation evidence remains synthetic or inferred',
+            });
+        }
+        if (
+            !next.caveats.includes(
+                'Architecture strategy limited confidence because validation evidence remains synthetic or inferred.',
+            )
+        ) {
+            next.caveats.push(
+                'Architecture strategy limited confidence because validation evidence remains synthetic or inferred.',
+            );
+        }
+        next.summary =
+            'The run completed successfully, but requirement fulfillment is still uncertain because the architecture strategy limited confidence to the available evidence.';
+    }
+
+    if (args.architectureReview && args.architectureReview.evidenceAdequacy === 'thin') {
+        if (next.fulfillmentLevel === 'fulfilled') {
+            next.fulfillmentLevel = 'uncertain';
+        }
+        if (!next.reasons.some(reason => reason.code === 'architecture-evidence-thin')) {
+            next.reasons.push({
+                category: 'evidence',
+                code: 'architecture-evidence-thin',
+                message: 'architecture review judged the available validation evidence thin',
+            });
+        }
+        if (!next.caveats.includes('Architecture review judged the available validation evidence thin.')) {
+            next.caveats.push('Architecture review judged the available validation evidence thin.');
+        }
+        next.summary =
+            'The run completed successfully, but requirement fulfillment is still uncertain because the architecture review judged the available evidence thin.';
+    }
+
+    return next;
 }
 
 function renderAdvisorEvaluationMarkdown(report: AdvisorEvaluationReport): string {
@@ -367,6 +502,10 @@ function localizeAssessmentSummary(language: 'ko' | 'en', summary: string): stri
             '실행은 성공적으로 완료되었지만, 최종 flow의 출력 형식이 요청된 평문 선호에서 벗어나 요구사항 충족 여부는 아직 불확실합니다.',
         'The run completed successfully, but requirement fulfillment is still uncertain because validation relied on a synthetic sample input (synthetic-graph-json).':
             '실행은 성공적으로 완료되었지만, synthetic graph JSON 샘플 기반으로만 검증되었기 때문에 요구사항 충족 여부는 아직 불확실합니다.',
+        'The run completed successfully, but requirement fulfillment is still uncertain because the architecture strategy limited confidence to the available evidence.':
+            '실행은 성공적으로 완료되었지만, 아키텍처 전략이 현재 검증 근거 수준에 맞춰 confidence를 제한했기 때문에 요구사항 충족 여부는 아직 불확실합니다.',
+        'The run completed successfully, but requirement fulfillment is still uncertain because the architecture review judged the available evidence thin.':
+            '실행은 성공적으로 완료되었지만, 아키텍처 리뷰가 현재 검증 근거를 충분하지 않다고 판단했기 때문에 요구사항 충족 여부는 아직 불확실합니다.',
         'The run completed successfully and the current design appears to fulfill the requirement.':
             '실행은 성공적으로 완료되었고, 현재 설계는 요구사항을 충족하는 것으로 보입니다.',
         'the run did not complete successfully': '실행이 성공적으로 완료되지 않았습니다.',
@@ -382,6 +521,22 @@ function localizeAssessmentSummary(language: 'ko' | 'en', summary: string): stri
             '출력 형식이 요청된 평문 선호에서 벗어났습니다.',
         'validation relied on a synthetic sample input (synthetic-graph-json)':
             'synthetic graph JSON 샘플 기반으로만 검증되었습니다.',
+        'architecture strategy limited confidence because validation evidence remains synthetic or inferred':
+            '아키텍처 전략이 synthetic 또는 inferred 검증 근거만으로는 확정 confidence를 올리지 않도록 제한했습니다.',
+        'architecture review judged the available validation evidence thin':
+            '아키텍처 리뷰가 현재 검증 근거를 충분하지 않다고 판단했습니다.',
+        'Execution did not finish successfully, so the strategy could not be fully validated.':
+            '실행이 끝까지 완료되지 않아 현재 전략을 충분히 검증할 수 없었습니다.',
+        'Validation relied on synthetic evidence rather than a real user-provided sample.':
+            '실제 사용자 입력 대신 synthetic 검증 근거에 의존했습니다.',
+        'Current fulfillment remains uncertain under the architecture confidence ceiling.':
+            '아키텍처 confidence ceiling 기준에서 현재 충족도는 아직 불확실합니다.',
+        'Stabilize the tactical execution path before trusting the current strategy.':
+            '현재 전략을 신뢰하기 전에 전술 실행 경로부터 안정화해야 합니다.',
+        'Re-run validation against a real representative input before upgrading fulfillment confidence.':
+            '충족 confidence를 올리기 전에 실제 대표 입력으로 다시 검증해야 합니다.',
+        'Architecture review judged the available validation evidence thin.':
+            '아키텍처 리뷰가 현재 검증 근거를 충분하지 않다고 판단했습니다.',
     };
 
     return mapping[summary] ?? summary;
@@ -405,6 +560,10 @@ function localizeAssessmentCaveat(language: 'ko' | 'en', caveat: string): string
             '최종 flow가 요청된 평문 선호와 달리 JSON 출력으로 바뀌었습니다.',
         'Validation relied on a synthetic sample input (synthetic-graph-json).':
             '검증이 synthetic graph JSON 샘플 입력에 의존했습니다.',
+        'Architecture strategy limited confidence because validation evidence remains synthetic or inferred.':
+            '아키텍처 전략이 synthetic 또는 inferred 검증 근거만으로는 확정 confidence를 올리지 않도록 제한했습니다.',
+        'Architecture review judged the available validation evidence thin.':
+            '아키텍처 리뷰가 현재 검증 근거를 충분하지 않다고 판단했습니다.',
     };
 
     return mapping[caveat] ?? caveat;
@@ -446,6 +605,8 @@ function renderSummaryMarkdown(args: {
     result: ProductDesignRunResult;
     advisorEvaluation?: AdvisorEvaluationReport;
     executionTiming?: PromptLabExecutionTimingSummary;
+    architectureBrief?: DesignBrief;
+    architectureReview?: ArchitectureReview;
     selfReview: PromptLabSelfReview;
     userFeedback: string;
     codexPrompt: PromptLabCodexPrompt;
@@ -459,6 +620,7 @@ function renderSummaryMarkdown(args: {
               requirementAssessment: '요구 충족도 평가',
               selfReview: '자가 평가',
               advisorEvaluation: 'Advisor 평가',
+              architecture: '아키텍처',
               executionTiming: '실행 시간',
               userFeedback: '사용자 피드백',
               finalPromptSummary: '최종 Codex 프롬프트 요약',
@@ -483,6 +645,7 @@ function renderSummaryMarkdown(args: {
               requirementAssessment: 'Requirement Assessment',
               selfReview: 'Self Review',
               advisorEvaluation: 'Advisor Evaluation',
+              architecture: 'Architecture',
               executionTiming: 'Execution Timing',
               userFeedback: 'User Feedback',
               finalPromptSummary: 'Final Codex Prompt Summary',
@@ -667,6 +830,32 @@ function renderSummaryMarkdown(args: {
                   '',
               ]
             : []),
+        ...(args.architectureBrief
+            ? [
+                  `## ${sections.architecture}`,
+                  '',
+                  `- ${isKorean ? 'Mission' : 'Mission'}: ${args.architectureBrief.mission.summary}`,
+                  `- ${isKorean ? 'Execution Posture' : 'Execution Posture'}: ${args.architectureBrief.executionPosture.strategy}`,
+                  `- ${isKorean ? 'Confidence Ceiling' : 'Confidence Ceiling'}: ${args.architectureBrief.validationPlan.confidenceCeiling}`,
+                  `- ${isKorean ? '샘플 입력 출처' : 'Sample Input Source'}: ${args.architectureBrief.inputContract.source}`,
+                  ...(args.architectureReview
+                      ? [
+                            `- ${isKorean ? '전략 적합성' : 'Strategy Fit'}: ${args.architectureReview.strategyFit}`,
+                            `- ${isKorean ? '증거 충분성' : 'Evidence Adequacy'}: ${args.architectureReview.evidenceAdequacy}`,
+                            `- ${isKorean ? 'Synthetic 의존도' : 'Synthetic Reliance'}: ${args.architectureReview.syntheticReliance}`,
+                            ...(args.architectureReview.keyFindings.length > 0
+                                ? [
+                                      `- ${isKorean ? '핵심 finding' : 'Key Findings'}:`,
+                                      ...args.architectureReview.keyFindings
+                                          .slice(0, 2)
+                                          .map(item => `  - ${localizeAssessmentSummary(args.session.config.language, item)}`),
+                                  ]
+                                : []),
+                        ]
+                      : []),
+                  '',
+              ]
+            : []),
         `## ${sections.selfReview}`,
         '',
         args.selfReview.summary,
@@ -701,6 +890,10 @@ function buildArtifactPaths(sessionDir: string): PromptLabArtifactPaths {
         promptMarkdownPath: join(sessionDir, 'codex-prompt.md'),
         summaryPath: join(sessionDir, 'summary.md'),
         executionTimingJsonPath: join(sessionDir, 'execution-timing.json'),
+        architectureBriefJsonPath: join(sessionDir, 'architecture-brief.json'),
+        architectureBriefMarkdownPath: join(sessionDir, 'architecture-brief.md'),
+        architectureReviewJsonPath: join(sessionDir, 'architecture-review.json'),
+        architectureReviewMarkdownPath: join(sessionDir, 'architecture-review.md'),
         artifactsPath: join(sessionDir, 'artifacts.json'),
         failureJsonPath: join(sessionDir, 'failure.json'),
         failureTextPath: join(sessionDir, 'failure.txt'),
@@ -769,6 +962,8 @@ export class PromptLabProduct {
         session: PromptLabSessionRecord;
         result: ProductDesignRunResult;
         gateway: LlmGateway;
+        architectureBrief: DesignBrief;
+        architectureReview: ArchitectureReview;
     }> {
         const session = await createPromptLabSession(args.config, args.requirement);
         const paths = buildArtifactPaths(session.sessionDir);
@@ -816,9 +1011,29 @@ export class PromptLabProduct {
                 },
             });
 
+            const analyzedIntent = await analyzeFlowRequest(args.requirement);
+            const architectureBrief =
+                analyzedIntent.designBrief ?? (await buildDesignBrief(analyzedIntent));
+            const architectureKnowledge = await loadArchitectureKnowledgeResource();
+            const architectureReview = buildArchitectureReview({
+                brief: architectureBrief,
+                result,
+                reviewRules: architectureKnowledge.reviewRules,
+            });
+            result.architectureBrief = architectureBrief;
+            result.architectureReview = architectureReview;
+            result.requirementAssessment = buildArchitectureAdjustedAssessment({
+                result,
+                architectureBrief,
+                architectureReview,
+            });
             await writeJson(paths.resultPath, result);
             await writeText(paths.designedFlowYamlPath, yaml.dump(result.finalFlow ?? null, { noRefs: true }));
-            return { session, result, gateway };
+            await writeJson(paths.architectureBriefJsonPath, architectureBrief);
+            await writeText(paths.architectureBriefMarkdownPath, renderArchitectureBriefMarkdown(architectureBrief));
+            await writeJson(paths.architectureReviewJsonPath, architectureReview);
+            await writeText(paths.architectureReviewMarkdownPath, renderArchitectureReviewMarkdown(architectureReview));
+            return { session, result, gateway, architectureBrief, architectureReview };
         } catch (error) {
             const clipboardText = formatFailureClipboard({ session, paths, error });
             await writeJson(paths.failureJsonPath, {
@@ -1010,6 +1225,8 @@ export class PromptLabProduct {
                 result: args.result,
                 advisorEvaluation: args.advisorEvaluation,
                 executionTiming: args.executionTiming,
+                architectureBrief: args.result.architectureBrief,
+                architectureReview: args.result.architectureReview,
                 selfReview: args.selfReview,
                 userFeedback: args.userFeedback,
                 codexPrompt: normalizedCodexPrompt,
@@ -1022,6 +1239,8 @@ export class PromptLabProduct {
             result: args.result,
             advisorEvaluation: args.advisorEvaluation,
             executionTiming: args.executionTiming,
+            architectureBrief: args.result.architectureBrief,
+            architectureReview: args.result.architectureReview,
             selfReview: args.selfReview,
             userFeedback: args.userFeedback,
             codexPrompt: normalizedCodexPrompt,

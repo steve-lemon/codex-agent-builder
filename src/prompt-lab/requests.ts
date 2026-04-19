@@ -33,6 +33,8 @@ function buildRunSnapshot(
         flowDesign: result.flowDesign,
         nodeConfiguration: result.nodeConfiguration,
         outputContract: result.outputContract,
+        architectureBrief: result.architectureBrief,
+        architectureReview: result.architectureReview,
         syntheticValidationUsed: result.requirementAssessment.reasons.some(
             reason => reason.code === 'synthetic-sample-validation',
         ),

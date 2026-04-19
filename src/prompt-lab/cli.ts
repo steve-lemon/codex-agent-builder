@@ -19,7 +19,7 @@ import type {
     PromptLabSelectableModelOption,
     PromptLabSessionConfig,
 } from './types';
-import type { ProductFlowSkill } from '../product/types';
+import type { ProductDesignRunResult, ProductFlowSkill } from '../product/types';
 import type { FlowDesignEvent, FlowDesignGraphSnapshot, FlowDesignNodePhase } from '../flow/design-monitor';
 import type { UnifiedRunEvent } from '../observability/unified-timeline';
 import type { TraceEvent } from '../observability/types';
@@ -192,6 +192,8 @@ function printSessionHeader(
     showIfExists('design', paths.designPath);
     showIfExists('diagnostics', paths.diagnosticsPath);
     showIfExists('execution timing', paths.executionTimingJsonPath);
+    showIfExists('architecture brief', paths.architectureBriefMarkdownPath);
+    showIfExists('architecture review', paths.architectureReviewMarkdownPath);
     if (options.includeFlowArtifacts !== false) {
         showIfExists('designed flow', paths.designedFlowPath);
         showIfExists('designed flow yaml', paths.designedFlowYamlPath);
@@ -795,6 +797,9 @@ function renderFlowSnapshotMarkdown(event: FlowDesignEvent | undefined): string 
         '# Designed Flow',
         '',
         `- Event: ${event.type}`,
+        ...(isSynthesizedDesignEvent(event)
+            ? ['- Snapshot: reconstructed from final node configuration', '']
+            : []),
         `- Nodes: ${nodes.length}`,
         `- Edges: ${edges.length}`,
         '',
@@ -1100,6 +1105,26 @@ function localizeAssessmentInline(text: string, isKorean: boolean): string {
             'Validation relied on a synthetic sample input (synthetic-graph-json).',
             'synthetic graph JSON 샘플 입력에 기반해 검증되었습니다.',
         ],
+        [
+            'Execution did not finish successfully, so the strategy could not be fully validated.',
+            '실행이 끝까지 완료되지 않아 현재 전략을 충분히 검증할 수 없었습니다.',
+        ],
+        [
+            'Validation relied on synthetic evidence rather than a real user-provided sample.',
+            '실제 사용자 입력 대신 synthetic 검증 근거에 의존했습니다.',
+        ],
+        [
+            'Current fulfillment remains uncertain under the architecture confidence ceiling.',
+            '아키텍처 confidence ceiling 기준에서 현재 충족도는 아직 불확실합니다.',
+        ],
+        [
+            'Stabilize the tactical execution path before trusting the current strategy.',
+            '현재 전략을 신뢰하기 전에 전술 실행 경로부터 안정화해야 합니다.',
+        ],
+        [
+            'Re-run validation against a real representative input before upgrading fulfillment confidence.',
+            '충족 confidence를 올리기 전에 실제 대표 입력으로 다시 검증해야 합니다.',
+        ],
         ['the run did not complete successfully', '실행이 성공적으로 완료되지 않았습니다.'],
         [
             'the run completed but did not produce the requested result',
@@ -1119,10 +1144,18 @@ function localizeAssessmentInline(text: string, isKorean: boolean): string {
     return matched?.[1] ?? text;
 }
 
+function isSynthesizedDesignEvent(event: FlowDesignEvent | undefined): boolean {
+    return event?.data !== undefined && typeof event.data === 'object' && event.data?.synthesized === true;
+}
+
 function printDesignedFlowSummary(
     event: FlowDesignEvent | undefined,
-    options: { executionSucceeded: boolean } = { executionSucceeded: true },
+    options: { executionSucceeded: boolean; language: PromptLabLanguage } = {
+        executionSucceeded: true,
+        language: 'en',
+    },
 ): void {
+    const isKorean = options.language === 'ko';
     output.write('\n=== Final Designed Flow ===\n');
     if (!event) {
         output.write('No design snapshot was captured.\n');
@@ -1133,12 +1166,18 @@ function printDesignedFlowSummary(
         return;
     }
 
-    // TODO(prompt-lab): Mark synthesized/reconstructed snapshots explicitly in the CLI so
-    // users can distinguish a true live design stream from a fallback reconstruction.
-
     const nodes = event.snapshot.nodes;
     const edges = event.snapshot.edges;
     output.write(`nodes: ${nodes.length}, edges: ${edges.length}\n`);
+    if (isSynthesizedDesignEvent(event)) {
+        output.write(
+            `${
+                isKorean
+                    ? '이 스냅샷은 최종 노드 설정에서 복원한 reconstructed design snapshot 입니다.\n'
+                    : 'This snapshot is a reconstructed design snapshot derived from final node configuration.\n'
+            }`,
+        );
+    }
     for (const node of nodes) {
         output.write(
             `- node ${node.label} (${node.id})${node.blockId ? ` [${node.blockId}]` : ''}${
@@ -1163,6 +1202,7 @@ function printRequirementAssessment(args: {
     summary: string;
     caveats: string[];
     reasons: Array<{ category: string; message: string }>;
+    architectureReview?: ProductDesignRunResult['architectureReview'];
 }): void {
     const isKorean = args.language === 'ko';
     const title = isKorean ? '=== 요구 충족도 평가 ===' : '=== Requirement Assessment ===';
@@ -1170,6 +1210,7 @@ function printRequirementAssessment(args: {
     const fulfillmentLabel = isKorean ? '충족도 수준' : 'fulfillment level';
     const reasonsLabel = isKorean ? '판단 근거' : 'assessment signals';
     const notesLabel = isKorean ? '참고 사항' : 'notes';
+    const architectureLabel = isKorean ? '전략 검토' : 'architecture review';
     const normalizedLevel = isKorean
         ? {
               fulfilled: '충족',
@@ -1210,6 +1251,12 @@ function printRequirementAssessment(args: {
         output.write(`${notesLabel}:\n`);
         for (const caveat of visibleCaveats) {
             output.write(`- ${localizeAssessmentText(caveat)}\n`);
+        }
+    }
+    if (args.architectureReview?.keyFindings.length) {
+        output.write(`${architectureLabel}:\n`);
+        for (const finding of args.architectureReview.keyFindings.slice(0, 2)) {
+            output.write(`- ${localizeAssessmentText(finding)}\n`);
         }
     }
     output.write(`${footer}\n\n`);
@@ -1470,6 +1517,10 @@ async function main() {
                     promptMarkdownPath: join(artifacts.session.sessionDir, 'codex-prompt.md'),
                     summaryPath: join(artifacts.session.sessionDir, 'summary.md'),
                     executionTimingJsonPath: join(artifacts.session.sessionDir, 'execution-timing.json'),
+                    architectureBriefJsonPath: join(artifacts.session.sessionDir, 'architecture-brief.json'),
+                    architectureBriefMarkdownPath: join(artifacts.session.sessionDir, 'architecture-brief.md'),
+                    architectureReviewJsonPath: join(artifacts.session.sessionDir, 'architecture-review.json'),
+                    architectureReviewMarkdownPath: join(artifacts.session.sessionDir, 'architecture-review.md'),
                     artifactsPath: join(artifacts.session.sessionDir, 'artifacts.json'),
                     failureJsonPath: join(artifacts.session.sessionDir, 'failure.json'),
                     failureTextPath: join(artifacts.session.sessionDir, 'failure.txt'),
@@ -1525,10 +1576,12 @@ async function main() {
         }
         printDesignedFlowSummary(resolvedDesignEvent, {
             executionSucceeded: result.requirementAssessment.executionSucceeded,
+            language,
         });
         printRequirementAssessment({
             language,
             ...result.requirementAssessment,
+            architectureReview: result.architectureReview,
         });
         const selfReviewStartedAt = new Date().toISOString();
         const executionTiming = summarizeExecutionTiming({

@@ -22,6 +22,8 @@ import { TraceStore } from '../observability/types';
 import type { FlowDesignConnection } from '../flow/design-monitor';
 import { UnifiedRunEventBus, type UnifiedRunEventConnection } from '../observability/unified-timeline';
 import { addDiagnosticListener, removeDiagnosticListener, type DiagnosticListener } from '../diagnostics/logger';
+import { analyzeFlowRequest } from '../flow/design/core';
+import { summarizeDesignBriefForPlanner } from '../flow/design/architecture';
 
 /** Constructor dependencies required by the runtime coordinator. */
 export interface AgentRuntimeOptions {
@@ -113,12 +115,26 @@ export class AgentRuntime {
         ]);
 
         this.tracer.log(runId, 'skill_selected', { skillName, allowedTools });
+        const strategyBrief =
+            skillName === 'flow-designer' ||
+            skillName === 'flow-preflight-validator' ||
+            skillName === 'node-config-designer'
+                ? summarizeDesignBriefForPlanner((await analyzeFlowRequest(userInput)).designBrief!)
+                : undefined;
+        if (strategyBrief) {
+            this.tracer.log(runId, 'architecture_brief_created', {
+                executionPosture: strategyBrief.executionPosture,
+                confidenceCeiling: strategyBrief.confidenceCeiling,
+                sampleSource: strategyBrief.sampleSource,
+            });
+        }
         this.tracer.log(runId, 'planner_call', {});
 
         const plan = await this.planner.createPlan({
             userInput,
             skillName,
             skillInstructions,
+            strategyBrief,
             allowedTools,
             toolManifests,
             toolDefinitions: allowedToolDefinitions,

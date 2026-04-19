@@ -90,4 +90,66 @@ describe('ai node strategy', () => {
         expect(result.suggestion?.config.promptTemplate).toContain('Return one result.');
         expect(result.suggestion?.config.promptTemplate).not.toContain('Return plain text.');
     });
+
+    it('consumes architecture posture and validation hints explicitly', async () => {
+        const strategy = new AiGenerateNodeStrategy();
+
+        const result = await strategy.apply(
+            {
+                id: 'ai-node',
+                blockId: 'ai-generate',
+                label: 'AI Node',
+                config: {},
+                inputPorts: [],
+                outputPorts: [],
+            },
+            {
+                flow: { blocks: [], nodes: [], edges: [] },
+                input: {
+                    userRequest: '그래프(json)를 보고 이게 뭐하는 것인지 설명(md) 해줘',
+                    flow: { blocks: [], nodes: [], edges: [] },
+                    desiredCount: 1,
+                    wantsJson: false,
+                    designBrief: {
+                        mission: {
+                            summary: 'Explain the provided graph JSON.',
+                            goal: '그래프 설명',
+                            operationModel: ['explain'],
+                        },
+                        inputContract: {
+                            format: 'json',
+                            source: 'synthetic',
+                            concreteInputPresent: false,
+                            missingRequiredInput: true,
+                            notes: [],
+                        },
+                        outputContract: {
+                            format: 'markdown',
+                            structured: false,
+                            cardinality: 'single',
+                        },
+                        executionPosture: {
+                            strategy: 'ai-first',
+                            rationale: ['Explanation quality depends on structure interpretation.'],
+                        },
+                        successCriteria: ['Describe purpose and structure.'],
+                        validationPlan: {
+                            sampleCases: [],
+                            assertions: ['Cover main nodes and edges.'],
+                            confidenceCeiling: 'uncertain',
+                        },
+                        designPrinciples: ['Keep the explanation grounded in structure.'],
+                        riskFlags: [],
+                        strategicAssumptions: [],
+                        knowledgeReferences: [],
+                    },
+                },
+                probeInsightsApplied: [],
+            },
+        );
+
+        expect(result.suggestion?.config.systemPrompt).toContain('Strategic posture: ai-first');
+        expect(result.suggestion?.config.systemPrompt).toContain('Explain the provided graph JSON.');
+        expect(result.suggestion?.config.promptTemplate).toContain('Validation targets: Cover main nodes and edges.');
+    });
 });

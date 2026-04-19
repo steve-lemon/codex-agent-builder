@@ -1,0 +1,73 @@
+version: 1
+heuristics:
+  - id: counting-deterministic-first
+    match:
+      operationModels: [count]
+    guidance:
+      executionPosture: deterministic-first
+      rationale:
+        - Counting-style tasks are easier to validate exactly when deterministic capability exists.
+      designPrinciples:
+        - Keep count outputs easy to verify against representative samples.
+      assumptions:
+        - Representative sample inputs should stay minimal and exact.
+  - id: explanation-ai-first
+    match:
+      operationModels: [explain]
+    guidance:
+      executionPosture: ai-first
+      rationale:
+        - Explanation tasks depend primarily on interpretation quality and structural coverage.
+      designPrinciples:
+        - Keep explanations grounded in observable structure rather than generic filler.
+  - id: synthetic-sample-conservatism
+    match:
+      sampleSource: [synthetic-graph-json]
+    guidance:
+      rationale:
+        - Synthetic-only validation is useful for structure checks but should not overclaim final fulfillment.
+      designPrinciples:
+        - Use synthetic evidence to keep design moving, but preserve uncertainty in fulfillment.
+validationPatterns:
+  - id: counting-exact-assertions
+    match:
+      operationModels: [count]
+    recommendedSamples:
+      roles: [representative, edge]
+    assertions:
+      - Output must preserve exact counts for the representative sample.
+    successCriteria:
+      - The final result should make the count outcome unambiguous.
+  - id: explanation-coverage
+    match:
+      operationModels: [explain]
+    recommendedSamples:
+      roles: [representative]
+    assertions:
+      - The explanation should cover the main structure, relationships, and overall purpose.
+    successCriteria:
+      - The explanation should help a reader understand what the input is doing.
+knownRisks:
+  - id: synthetic-overclaim
+    match:
+      sampleSource: [synthetic-graph-json]
+    note:
+      - Synthetic-only validation should not automatically upgrade fulfillment to fulfilled.
+  - id: format-contract-drift
+    match:
+      outputFormats: [json, markdown]
+    note:
+      - Output formatting requirements should stay explicit so downstream design does not drift.
+qualityBars:
+  - id: synthetic-ceiling
+    match:
+      sampleSource: [synthetic-graph-json]
+    fulfillmentCeiling: uncertain
+reviewRules:
+  - id: synthetic-review-warning
+    match:
+      sampleSource: [synthetic-graph-json]
+    findings:
+      - Strategy validation relied on synthetic graph evidence rather than a real user-provided graph.
+    adjustments:
+      - Confirm explanatory quality with a real graph JSON example before promoting confidence.

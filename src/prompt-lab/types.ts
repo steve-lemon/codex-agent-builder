@@ -3,6 +3,7 @@ import type { ProductDesignRunResult, ProductFlowSkill } from '../product/types'
 import type { UnifiedRunEvent } from '../observability/unified-timeline';
 import type { FlowDesignEvent } from '../flow/design-monitor';
 import type { AdvisorEvaluationReport } from '../flow/design/advisor-evaluation';
+import type { ArchitectureReview, DesignBrief } from '../flow/design/types';
 
 export type PromptLabProvider = 'openai' | 'gemini' | 'fake';
 export type PromptLabLanguage = 'ko' | 'en';
@@ -42,6 +43,10 @@ export interface PromptLabArtifactPaths {
     promptMarkdownPath: string;
     summaryPath: string;
     executionTimingJsonPath: string;
+    architectureBriefJsonPath: string;
+    architectureBriefMarkdownPath: string;
+    architectureReviewJsonPath: string;
+    architectureReviewMarkdownPath: string;
     artifactsPath: string;
     failureJsonPath: string;
     failureTextPath: string;
@@ -90,6 +95,8 @@ export interface PromptLabRunArtifacts {
     result: ProductDesignRunResult;
     advisorEvaluation?: AdvisorEvaluationReport;
     executionTiming?: PromptLabExecutionTimingSummary;
+    architectureBrief?: DesignBrief;
+    architectureReview?: ArchitectureReview;
     selfReview: PromptLabSelfReview;
     userFeedback: string;
     codexPrompt: PromptLabCodexPrompt;

@@ -7,6 +7,7 @@ import {
 } from '../../design/resources';
 import {
     collectStrategyNotesFor,
+    ensureDesignBrief,
     inferTaskTypeWithInput,
     applyNodeConfig,
     type NodeBlockConfigStrategy,
@@ -17,11 +18,12 @@ import type { NodeConfigurationDesignInput } from '../types';
 
 async function selectModel(input: NodeConfigurationDesignInput): Promise<string> {
     const taskType = await inferTaskTypeWithInput(input);
+    const brief = await ensureDesignBrief(input);
     const strategyNotes = collectStrategyNotesFor(input, 'ai-generation').join(' ').toLowerCase();
     return await getNodeConfigModelProfile({
         taskType,
-        wantsJson: input.wantsJson,
-        strategyNotes,
+        wantsJson: input.wantsJson || brief.outputContract.format === 'json',
+        strategyNotes: `${strategyNotes} ${brief.executionPosture.strategy}`.trim(),
     });
 }
 
@@ -31,16 +33,17 @@ async function buildAiDefaults(input: NodeConfigurationDesignInput): Promise<{
     outputSchema: string;
 }> {
     const taskType = await inferTaskTypeWithInput(input);
+    const brief = await ensureDesignBrief(input);
     const outputContract = inferFlowOutputContract(input.userRequest);
     const systemPrompt = await getNodeConfigSystemPromptDefault(taskType);
     const countInstruction =
         input.desiredCount > 1 ? `Return exactly ${input.desiredCount} results.` : 'Return one result.';
     const outputInstruction = buildFlowOutputFormatInstruction(outputContract);
     return {
-        systemPrompt,
+        systemPrompt: `${systemPrompt} Strategic posture: ${brief.executionPosture.strategy}. Mission: ${brief.mission.summary}`,
         promptTemplate: `User request: ${input.userRequest}. ${[countInstruction, outputInstruction]
             .filter(Boolean)
-            .join(' ')}`,
+            .join(' ')} Validation targets: ${brief.validationPlan.assertions.slice(0, 2).join(' | ')}`,
         outputSchema: await getNodeConfigOutputSchemaDefault({
             taskType,
             wantsJson: input.wantsJson,

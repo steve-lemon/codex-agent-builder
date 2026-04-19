@@ -6,6 +6,7 @@ import type { NodeConfigurationDesignInput } from '../types';
 import {
     applyNodeConfig,
     collectStrategyNotesFor,
+    ensureDesignBrief,
     inferTaskTypeWithInput,
     type NodeBlockConfigStrategy,
     type NodeBlockConfigStrategyContext,
@@ -14,21 +15,29 @@ import {
 
 async function buildSystemPrompt(input: NodeConfigurationDesignInput): Promise<string> {
     const taskType = await inferTaskTypeWithInput(input);
+    const brief = await ensureDesignBrief(input);
     const basePrompt = await getNodeConfigSystemPromptDefault(taskType);
     const probeHint = input.probeResult?.behaviorNotes?.[0]?.trim()
         ? ` Observed block behavior: ${input.probeResult.behaviorNotes[0].trim()}`
         : '';
     const strategyNotes = collectStrategyNotesFor(input, 'system-input');
     const strategyHint = strategyNotes.length > 0 ? ` Strategy focus: ${strategyNotes.join(' | ')}` : '';
+    const architectureHint =
+        brief.designPrinciples.length > 0 || brief.mission.summary
+            ? ` Strategic framing: ${[brief.mission.summary, ...brief.designPrinciples.slice(0, 2)]
+                  .filter(Boolean)
+                  .join(' | ')}`
+            : '';
     const improvementHint =
         input.improvementNotes && input.improvementNotes.length > 0
             ? ` Improvements to apply: ${input.improvementNotes.join(' | ')}`
             : '';
 
-    return `${basePrompt}${probeHint}${strategyHint}${improvementHint}`;
+    return `${basePrompt}${probeHint}${strategyHint}${architectureHint}${improvementHint}`;
 }
 
-function buildUserPrompt(input: NodeConfigurationDesignInput): string {
+async function buildUserPrompt(input: NodeConfigurationDesignInput): Promise<string> {
+    const brief = await ensureDesignBrief(input);
     const outputContract = inferFlowOutputContract(input.userRequest);
     const desiredCountInstruction =
         input.desiredCount > 1 ? `Return exactly ${input.desiredCount} results.` : 'Return one result.';
@@ -38,13 +47,17 @@ function buildUserPrompt(input: NodeConfigurationDesignInput): string {
         : '';
     const strategyNotes = collectStrategyNotesFor(input, 'prompt-input');
     const strategyHint = strategyNotes.length > 0 ? ` Strategy notes: ${strategyNotes.join(' | ')}` : '';
+    const architectureHint =
+        brief.validationPlan.assertions.length > 0
+            ? ` Validation targets: ${brief.validationPlan.assertions.slice(0, 2).join(' | ')}`
+            : '';
     const improvementText =
         input.improvementNotes && input.improvementNotes.length > 0
             ? ` Improvement notes: ${input.improvementNotes.join(' | ')}`
             : '';
 
     const instructions = [desiredCountInstruction, formatInstruction].filter(Boolean).join(' ');
-    return `User request: ${input.userRequest}. ${instructions}${probeHint}${strategyHint}${improvementText}`;
+    return `User request: ${input.userRequest}. ${instructions}${probeHint}${strategyHint}${architectureHint}${improvementText}`;
 }
 
 /** Strategy for the system input node that constrains downstream AI behavior. */
@@ -103,7 +116,7 @@ export class PromptInputNodeStrategy implements NodeBlockConfigStrategy {
     async apply(node: FlowNode, context: NodeBlockConfigStrategyContext): Promise<NodeBlockConfigStrategyResult> {
         const config = {
             ...(node.config ?? {}),
-            input: buildUserPrompt(context.input),
+            input: await buildUserPrompt(context.input),
         };
 
         return {

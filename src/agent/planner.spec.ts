@@ -149,6 +149,16 @@ describe('Planner', () => {
             userInput: 'Load the customer',
             skillName: 'customer-support-reviewer',
             skillInstructions: 'Use support tools only.',
+            strategyBrief: {
+                mission: 'Load customer context.',
+                operationModel: ['extract'],
+                executionPosture: 'hybrid',
+                outputFormat: 'unspecified',
+                confidenceCeiling: 'fulfilled',
+                riskFlags: [],
+                designPrinciples: [],
+                sampleSource: 'user-provided',
+            },
             allowedTools: ['getCustomerById', 'refundOrder'],
             toolManifests: [buildToolManifest(customerTool), buildToolManifest(refundTool)],
             toolDefinitions: [customerTool, refundTool],
@@ -158,6 +168,14 @@ describe('Planner', () => {
             toolName: 'getCustomerById',
             args: { customerId: 'c_1' },
         });
+        expect(llm.plan).toHaveBeenCalledWith(
+            expect.objectContaining({
+                strategyBrief: expect.objectContaining({
+                    mission: 'Load customer context.',
+                    executionPosture: 'hybrid',
+                }),
+            }),
+        );
     });
 
     it('rejects plans that reference tools outside the available tool definitions', async () => {
