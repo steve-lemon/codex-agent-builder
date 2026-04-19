@@ -4,11 +4,17 @@ import type { ToolExecutionPolicy } from '../agent/types';
 
 /** Resolves execution policy knobs from tool risk metadata. */
 export function resolveToolExecutionPolicy(tool: ToolDefinition): ToolExecutionPolicy {
+    const analysisTimeoutOverrides: Record<string, number> = {
+        analyzeFlowRequest: 5000,
+        assessFlowFeasibility: 5000,
+        prevalidateFlowDesignRequest: 5000,
+    };
+
     if (tool.riskLevel === 'read-only') {
         return {
             riskLevel: tool.riskLevel,
             maxAttempts: 3,
-            timeoutMs: 1500,
+            timeoutMs: analysisTimeoutOverrides[tool.name] ?? 1500,
             useCircuitBreaker: true,
         };
     }

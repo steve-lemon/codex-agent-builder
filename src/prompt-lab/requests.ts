@@ -4,12 +4,18 @@ import type { ProductDesignRunResult } from '../product/types';
 import type { AdvisorEvaluationReport } from '../flow/design/advisor-evaluation';
 import { getPromptLabManifest } from './manifest';
 import { PromptLabCodexPromptSchema, PromptLabSelfReviewSchema } from './schemas';
-import type { PromptLabLanguage, PromptLabSelfReview, PromptLabSessionRecord } from './types';
+import type {
+    PromptLabExecutionTimingSummary,
+    PromptLabLanguage,
+    PromptLabSelfReview,
+    PromptLabSessionRecord,
+} from './types';
 
 function buildRunSnapshot(
     session: PromptLabSessionRecord,
     result: ProductDesignRunResult,
     advisorEvaluation?: AdvisorEvaluationReport,
+    executionTiming?: PromptLabExecutionTimingSummary,
 ) {
     return {
         sessionId: session.sessionId,
@@ -30,6 +36,7 @@ function buildRunSnapshot(
         syntheticValidationUsed: result.requirementAssessment.reasons.some(
             reason => reason.code === 'synthetic-sample-validation',
         ),
+        executionTiming,
         payload: result.finalResult?.payload,
         trace: result.trace.slice(-20),
         advisorEvaluation: advisorEvaluation
@@ -65,6 +72,7 @@ export async function buildPromptLabSelfReviewRequest(args: {
     session: PromptLabSessionRecord;
     result: ProductDesignRunResult;
     advisorEvaluation?: AdvisorEvaluationReport;
+    executionTiming?: PromptLabExecutionTimingSummary;
     language: PromptLabLanguage;
 }): Promise<StructuredGenerationInput<typeof PromptLabSelfReviewSchema>> {
     const manifest = await getPromptLabManifest();
@@ -80,7 +88,7 @@ export async function buildPromptLabSelfReviewRequest(args: {
                 role: 'user',
                 content: JSON.stringify({
                     language: args.language,
-                    run: buildRunSnapshot(args.session, args.result, args.advisorEvaluation),
+                    run: buildRunSnapshot(args.session, args.result, args.advisorEvaluation, args.executionTiming),
                 }),
             },
         ],

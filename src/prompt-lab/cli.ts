@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { emitKeypressEvents } from 'node:readline';
 import { stdin as input, stdout as output } from 'node:process';
+import yaml from 'js-yaml';
 import { ensureProjectEnvLoaded } from '../env/project-env';
 import { getPromptLabLanguageCopy, getPromptLabManifest, getPromptLabModelOptions } from './manifest';
 import { PromptLabProduct, PromptLabRunError } from './product';
@@ -18,11 +19,14 @@ import type {
     PromptLabSessionConfig,
 } from './types';
 import type { ProductFlowSkill } from '../product/types';
-import type { FlowDesignEvent } from '../flow/design-monitor';
+import type { FlowDesignEvent, FlowDesignGraphSnapshot, FlowDesignNodePhase } from '../flow/design-monitor';
 import type { UnifiedRunEvent } from '../observability/unified-timeline';
+import type { TraceEvent } from '../observability/types';
+import { renderFlowDesignSnapshotAsReagraph } from '../graph/renderer';
 import {
     cachePromptLabRequirement,
     getPromptLabAdvisorEvaluationHistoryPath,
+    readPromptLabLastRun,
     readPromptLabRequirementHistory,
     writeText,
 } from './files';
@@ -240,6 +244,7 @@ function summarizeExecutionTiming(args: {
     startedAt: string;
     diagnostics: PromptLabDiagnosticEntry[];
     completedAt?: string;
+    trace?: TraceEvent[];
     stages?: Array<{ stageId: string; startedAt: string; completedAt: string }>;
 }): PromptLabExecutionTimingSummary {
     const totalDurationMs = Math.max(
@@ -308,6 +313,53 @@ function summarizeExecutionTiming(args: {
         durationMs: Math.max(0, new Date(stage.completedAt).getTime() - new Date(stage.startedAt).getTime()),
     }));
 
+    const trace = args.trace ?? [];
+    const plannerCall = trace.find(event => event.type === 'planner_call');
+    const firstStepStart = trace.find(event => event.type === 'step_start');
+    const runEnd = trace.find(event => event.type === 'run_end');
+    if (plannerCall && (firstStepStart || runEnd)) {
+        stages.push({
+            stageId: 'planner',
+            durationMs: Math.max(0, (firstStepStart?.ts ?? runEnd!.ts) - plannerCall.ts),
+        });
+    }
+
+    const toolStarts = new Map<string, number>();
+    let toolExecutionDurationMs = 0;
+    for (const event of trace) {
+        if (event.type === 'tool_start' && typeof event.data?.toolName === 'string') {
+            toolStarts.set(`${event.data.toolName}:${event.seq}`, event.ts);
+        }
+        if (event.type === 'tool_end' && typeof event.data?.toolName === 'string') {
+            const startEntry = [...toolStarts.entries()].find(([key]) => key.startsWith(`${event.data?.toolName}:`));
+            if (startEntry) {
+                toolExecutionDurationMs += Math.max(0, event.ts - startEntry[1]);
+                toolStarts.delete(startEntry[0]);
+            }
+        }
+    }
+    if (toolExecutionDurationMs > 0) {
+        stages.push({
+            stageId: 'tool-execution',
+            durationMs: Number(toolExecutionDurationMs.toFixed(3)),
+        });
+    }
+
+    const reflectorCall = trace.find(event => event.type === 'reflector_call');
+    const finalizerCall = trace.find(event => event.type === 'finalizer_call');
+    if (reflectorCall && (finalizerCall || runEnd)) {
+        stages.push({
+            stageId: 'reflector',
+            durationMs: Math.max(0, (finalizerCall?.ts ?? runEnd!.ts) - reflectorCall.ts),
+        });
+    }
+    if (finalizerCall && runEnd) {
+        stages.push({
+            stageId: 'finalizer',
+            durationMs: Math.max(0, runEnd.ts - finalizerCall.ts),
+        });
+    }
+
     return {
         advisorTimingStatus,
         totalDurationMs,
@@ -354,9 +406,7 @@ function printExecutionTimingSummary(args: {
         );
     }
     for (const stage of args.executionTiming.stages) {
-        output.write(
-            `- ${isKorean ? '단계' : 'Stage'} ${stage.stageId}: durationMs=${stage.durationMs}\n`,
-        );
+        output.write(`- ${isKorean ? '단계' : 'Stage'} ${stage.stageId}: durationMs=${stage.durationMs}\n`);
     }
     output.write(`${isKorean ? '=================' : '======================='}\n\n`);
 }
@@ -659,6 +709,198 @@ function renderFlowSnapshotMarkdown(event: FlowDesignEvent | undefined): string 
     ].join('\n');
 }
 
+function humanizeNodeId(nodeId: string): string {
+    return nodeId
+        .split(/[-_]/g)
+        .filter(Boolean)
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+}
+
+function inferNodeRole(args: { nodeId: string; strategyId: string }): 'input' | 'ai' | 'view' | 'unknown' {
+    const combined = `${args.nodeId} ${args.strategyId}`.toLowerCase();
+    if (
+        combined.includes('system-input') ||
+        combined.includes('prompt-input') ||
+        combined.includes('json-input') ||
+        combined.includes('input') ||
+        combined.includes('capture')
+    ) {
+        return 'input';
+    }
+    if (
+        combined.includes('ai-generate') ||
+        combined.includes('generate') ||
+        combined.includes('explain') ||
+        combined.includes('analy') ||
+        combined.includes('summar')
+    ) {
+        return 'ai';
+    }
+    if (
+        combined.includes('view') ||
+        combined.includes('review') ||
+        combined.includes('output') ||
+        combined.includes('display')
+    ) {
+        return 'view';
+    }
+    return 'unknown';
+}
+
+function synthesizeFlowDesignEventFromResult(result: PromptLabRunArtifacts['result']): FlowDesignEvent | undefined {
+    const assignments =
+        result.finalResult?.designDetails?.nodeStrategyAssignments ?? result.nodeConfiguration.nodeStrategyAssignments;
+    if (!assignments || assignments.length === 0) {
+        return undefined;
+    }
+
+    // TODO(prompt-lab): Prefer an actual persisted flow/finalFlow snapshot when available.
+    // This fallback currently reconstructs an "intended" graph from node strategy metadata,
+    // which is good enough for visibility but can still look more complete than the run truly was.
+
+    const labelByStrategyId: Record<string, string> = {
+        'system-input': 'System Input',
+        'prompt-input': 'Capture User Input',
+        'json-input': 'Capture JSON Input',
+        'ai-generate': 'AI Generate',
+        view: 'Review Output',
+    };
+    const blockIdByStrategyId: Record<string, string> = {
+        'system-input': 'system-input',
+        'prompt-input': 'prompt-input',
+        'json-input': 'json-input',
+        'ai-generate': 'ai-generate',
+        view: 'view-output',
+    };
+    const nodePhaseByStrategyId: Record<string, FlowDesignNodePhase> = {
+        'system-input': 'ready',
+        'prompt-input': 'ready',
+        'json-input': 'ready',
+        'ai-generate': 'connected',
+        view: 'connected',
+    };
+    const nodeStateByStrategyId: Record<string, string> = {
+        'system-input': 'system-prompt-ready',
+        'prompt-input': 'user-prompt-ready',
+        'json-input': 'json-input-ready',
+        'ai-generate': 'generation-graph-wired',
+        view: 'review-graph-wired',
+    };
+    const configuredNodeCount =
+        result.finalResult?.designDetails?.configuredNodeCount ?? result.nodeConfiguration.configuredNodeCount;
+    const nodes = assignments.map((assignment, index) => {
+        const inferredRole = inferNodeRole({
+            nodeId: assignment.nodeId,
+            strategyId: assignment.strategyId,
+        });
+        const inferredBlockId =
+            inferredRole === 'input'
+                ? assignment.nodeId.toLowerCase().includes('json')
+                    ? 'json-input'
+                    : 'prompt-input'
+                : inferredRole === 'ai'
+                ? 'ai-generate'
+                : inferredRole === 'view'
+                ? 'view-output'
+                : undefined;
+        const explicitBlockId = blockIdByStrategyId[assignment.strategyId];
+        return {
+            id: assignment.nodeId,
+            label:
+                labelByStrategyId[assignment.strategyId] ??
+                (inferredRole === 'input'
+                    ? humanizeNodeId(assignment.nodeId)
+                    : inferredRole === 'ai'
+                    ? humanizeNodeId(assignment.nodeId)
+                    : inferredRole === 'view'
+                    ? humanizeNodeId(assignment.nodeId)
+                    : humanizeNodeId(assignment.nodeId)),
+            blockId: explicitBlockId ?? inferredBlockId,
+            phase:
+                nodePhaseByStrategyId[assignment.strategyId] ??
+                (inferredRole === 'input'
+                    ? 'ready'
+                    : inferredRole === 'unknown' && index === 0
+                    ? 'ready'
+                    : 'connected'),
+            state:
+                nodeStateByStrategyId[assignment.strategyId] ??
+                (explicitBlockId || inferredBlockId
+                    ? `strategy=${assignment.strategyId}`
+                    : `unmapped-strategy=${assignment.strategyId}`),
+        };
+    });
+
+    const hasViewNode = nodes.some(node => node.blockId === 'view-output');
+    const hasAiNode = nodes.some(node => node.blockId === 'ai-generate');
+    if (configuredNodeCount > nodes.length && hasAiNode && !hasViewNode) {
+        nodes.push({
+            id: 'review-output',
+            label: 'Review Output',
+            blockId: 'view-output',
+            phase: 'connected',
+            state: 'review-graph-wired',
+        });
+    }
+
+    const inputNodes = nodes.filter(node =>
+        ['system-input', 'prompt-input', 'json-input'].includes(node.blockId ?? ''),
+    );
+    const aiNode = nodes.find(node => node.blockId === 'ai-generate');
+    const viewNode = nodes.find(node => node.blockId === 'view-output');
+    const edges: Array<{
+        id: string;
+        source: string;
+        target: string;
+        flowHint?: 'horizontal';
+    }> = [];
+
+    if (aiNode) {
+        for (const inputNode of inputNodes) {
+            edges.push({
+                id: `${inputNode.id}->${aiNode.id}`,
+                source: inputNode.id,
+                target: aiNode.id,
+                flowHint: 'horizontal',
+            });
+        }
+        if (viewNode) {
+            edges.push({
+                id: `${aiNode.id}->${viewNode.id}`,
+                source: aiNode.id,
+                target: viewNode.id,
+                flowHint: 'horizontal',
+            });
+        }
+    }
+
+    if (edges.length === 0) {
+        for (let index = 0; index < nodes.length - 1; index += 1) {
+            edges.push({
+                id: `${nodes[index]!.id}->${nodes[index + 1]!.id}`,
+                source: nodes[index]!.id,
+                target: nodes[index + 1]!.id,
+                flowHint: 'horizontal',
+            });
+        }
+    }
+
+    const snapshot: FlowDesignGraphSnapshot = { nodes, edges };
+    return {
+        sessionId: result.runId,
+        ts: Date.now(),
+        type: 'graph_completed',
+        message: 'Synthesized design snapshot from final node configuration.',
+        snapshot,
+        reagraph: renderFlowDesignSnapshotAsReagraph(snapshot),
+        data: {
+            synthesized: true,
+            source: 'nodeStrategyAssignments',
+        },
+    };
+}
+
 function dedupeAssessmentCaveats(args: {
     language: PromptLabLanguage;
     caveats: string[];
@@ -713,6 +955,10 @@ function localizeAssessmentInline(text: string, isKorean: boolean): string {
             '실행이 성공적으로 완료되었고, 현재 설계는 요구사항을 충족하는 것으로 보입니다.',
         ],
         [
+            'The run completed successfully, but requirement fulfillment is still uncertain because validation relied on a synthetic sample input (synthetic-graph-json).',
+            '실행은 성공적으로 완료되었지만, synthetic graph JSON 샘플 기반으로만 검증되었기 때문에 요구사항 충족 여부는 아직 불확실합니다.',
+        ],
+        [
             'Task-graph classification fell back to a generic template.',
             'task graph 분류가 일반 템플릿 fallback으로 처리되었습니다.',
         ],
@@ -730,6 +976,14 @@ function localizeAssessmentInline(text: string, isKorean: boolean): string {
         [
             'the flow output format drifted away from the requested plain-text preference',
             '출력 형식이 요청된 평문 선호에서 벗어났습니다.',
+        ],
+        [
+            'validation relied on a synthetic sample input (synthetic-graph-json)',
+            'synthetic graph JSON 샘플 입력에 기반해 검증되었습니다.',
+        ],
+        [
+            'Validation relied on a synthetic sample input (synthetic-graph-json).',
+            'synthetic graph JSON 샘플 입력에 기반해 검증되었습니다.',
         ],
         ['the run did not complete successfully', '실행이 성공적으로 완료되지 않았습니다.'],
         [
@@ -764,6 +1018,9 @@ function printDesignedFlowSummary(
         return;
     }
 
+    // TODO(prompt-lab): Mark synthesized/reconstructed snapshots explicitly in the CLI so
+    // users can distinguish a true live design stream from a fallback reconstruction.
+
     const nodes = event.snapshot.nodes;
     const edges = event.snapshot.edges;
     output.write(`nodes: ${nodes.length}, edges: ${edges.length}\n`);
@@ -797,6 +1054,7 @@ function printRequirementAssessment(args: {
     const executionLabel = isKorean ? '실행 성공' : 'execution succeeded';
     const fulfillmentLabel = isKorean ? '충족도 수준' : 'fulfillment level';
     const reasonsLabel = isKorean ? '판단 근거' : 'assessment signals';
+    const notesLabel = isKorean ? '참고 사항' : 'notes';
     const normalizedLevel = isKorean
         ? {
               fulfilled: '충족',
@@ -827,13 +1085,17 @@ function printRequirementAssessment(args: {
                       classification: '분류',
                       'output-contract': '출력 계약',
                       runtime: '런타임',
+                      evidence: '검증 근거',
                   }[reason.category] ?? reason.category
                 : reason.category;
             output.write(`- [${category}] ${localizeAssessmentText(reason.message)}\n`);
         }
     }
-    for (const caveat of visibleCaveats) {
-        output.write(`- ${localizeAssessmentText(caveat)}\n`);
+    if (visibleCaveats.length > 0) {
+        output.write(`${notesLabel}:\n`);
+        for (const caveat of visibleCaveats) {
+            output.write(`- ${localizeAssessmentText(caveat)}\n`);
+        }
     }
     output.write(`${footer}\n\n`);
 }
@@ -925,34 +1187,45 @@ async function main() {
     ensureProjectEnvLoaded();
     const manifest = await getPromptLabManifest();
     const defaultLanguage = manifest.defaults.language as PromptLabLanguage;
+    const useLastRun = process.argv.slice(2).includes('--last');
     const rl = createInterface({ input, output });
 
     try {
-        const language = await selectWithArrows({
-            prompt: `${(await getPromptLabLanguageCopy(defaultLanguage)).languagePrompt} (↑/↓ 후 Enter)`,
-            options: [
-                { value: 'ko', label: '한국어 (기본)' },
-                { value: 'en', label: 'English' },
-            ],
-            defaultValue: defaultLanguage,
-        });
+        const cachedLastRun = useLastRun
+            ? await readPromptLabLastRun({ outputRoot: manifest.defaults.outputRoot })
+            : undefined;
+        const language = cachedLastRun?.config.language
+            ? cachedLastRun.config.language
+            : await selectWithArrows({
+                  prompt: `${(await getPromptLabLanguageCopy(defaultLanguage)).languagePrompt} (↑/↓ 후 Enter)`,
+                  options: [
+                      { value: 'ko', label: '한국어 (기본)' },
+                      { value: 'en', label: 'English' },
+                  ],
+                  defaultValue: defaultLanguage,
+              });
         const copy = await getPromptLabLanguageCopy(language);
 
         output.write(`${copy.welcome}\n`);
-        const mode = await selectWithArrows({
-            prompt: `${copy.modePrompt} (↑/↓ 후 Enter)`,
-            options: [
-                { value: 'run', label: language === 'ko' ? '일반 실행' : 'Run session' },
-                { value: 'advisor-eval', label: language === 'ko' ? 'Advisor 평가 전용' : 'Advisor evaluation only' },
-            ],
-            defaultValue: manifest.defaults.mode as PromptLabMode,
-        });
+        const mode = cachedLastRun?.config.mode
+            ? cachedLastRun.config.mode
+            : await selectWithArrows({
+                  prompt: `${copy.modePrompt} (↑/↓ 후 Enter)`,
+                  options: [
+                      { value: 'run', label: language === 'ko' ? '일반 실행' : 'Run session' },
+                      {
+                          value: 'advisor-eval',
+                          label: language === 'ko' ? 'Advisor 평가 전용' : 'Advisor evaluation only',
+                      },
+                  ],
+                  defaultValue: manifest.defaults.mode as PromptLabMode,
+              });
         const defaultSkill = manifest.defaults.skillName;
         const defaultProvider = resolveDefaultProvider(manifest.defaults.providerOrder);
-        let provider = defaultProvider;
-        let skillName = mode === 'run' ? defaultSkill : undefined;
-        let mainModel = defaultMainModel(provider);
-        let liteModel = defaultLiteModel(provider, mainModel);
+        let provider = cachedLastRun?.config.provider ?? defaultProvider;
+        let skillName = mode === 'run' ? cachedLastRun?.config.skillName ?? defaultSkill : undefined;
+        let mainModel = cachedLastRun?.config.mainModel ?? defaultMainModel(provider);
+        let liteModel = cachedLastRun?.config.liteModel ?? defaultLiteModel(provider, mainModel);
 
         printSelectedDefaults({
             language,
@@ -963,20 +1236,23 @@ async function main() {
             liteModel,
         });
 
-        const useDefaultSettings = await selectWithArrows({
-            prompt: `${copy.settingsPrompt} (↑/↓ 후 Enter)`,
-            options: [
-                {
-                    value: 'default',
-                    label: language === 'ko' ? '기본 설정으로 계속 (권장)' : 'Continue with defaults (Recommended)',
-                },
-                {
-                    value: 'customize',
-                    label: language === 'ko' ? '설정 변경' : 'Customize settings',
-                },
-            ],
-            defaultValue: 'default',
-        });
+        const useDefaultSettings = useLastRun
+            ? 'default'
+            : await selectWithArrows({
+                  prompt: `${copy.settingsPrompt} (↑/↓ 후 Enter)`,
+                  options: [
+                      {
+                          value: 'default',
+                          label:
+                              language === 'ko' ? '기본 설정으로 계속 (권장)' : 'Continue with defaults (Recommended)',
+                      },
+                      {
+                          value: 'customize',
+                          label: language === 'ko' ? '설정 변경' : 'Customize settings',
+                      },
+                  ],
+                  defaultValue: 'default',
+              });
 
         if (useDefaultSettings === 'customize') {
             provider = await selectWithArrows({
@@ -1008,13 +1284,15 @@ async function main() {
         }
         const requirement =
             mode === 'run'
-                ? await selectRequirementWithHistory({
-                      prompt: copy.requirementPrompt,
-                      historyPrompt: copy.recentRequirementsPrompt,
-                      newRequirementOptionLabel: copy.newRequirementOptionLabel,
-                      outputRoot: manifest.defaults.outputRoot,
-                      rl,
-                  })
+                ? useLastRun && cachedLastRun?.config.mode === 'run' && cachedLastRun.requirement
+                    ? cachedLastRun.requirement
+                    : await selectRequirementWithHistory({
+                          prompt: copy.requirementPrompt,
+                          historyPrompt: copy.recentRequirementsPrompt,
+                          newRequirementOptionLabel: copy.newRequirementOptionLabel,
+                          outputRoot: manifest.defaults.outputRoot,
+                          rl,
+                      })
                 : 'advisor-evaluation';
         if (mode === 'run' && !requirement) {
             throw new Error('Requirement is required.');
@@ -1100,11 +1378,19 @@ async function main() {
         status.finish('agent execution completed');
         const agentRunCompletedAt = new Date().toISOString();
 
+        const resolvedDesignEvent = latestDesignEvent ?? synthesizeFlowDesignEventFromResult(result);
+
         if (latestPaths) {
-            await writeText(latestPaths.designedFlowPath, renderFlowSnapshotMarkdown(latestDesignEvent));
-            await writeText(latestPaths.designedFlowGraphPath, renderReagraphHtml(latestDesignEvent));
+            await writeText(latestPaths.designedFlowPath, renderFlowSnapshotMarkdown(resolvedDesignEvent));
+            await writeText(latestPaths.designedFlowGraphPath, renderReagraphHtml(resolvedDesignEvent));
+            if (!latestDesignEvent && resolvedDesignEvent) {
+                await writeText(
+                    latestPaths.designedFlowYamlPath,
+                    yaml.dump(resolvedDesignEvent.snapshot, { noRefs: true }),
+                );
+            }
         }
-        printDesignedFlowSummary(latestDesignEvent, {
+        printDesignedFlowSummary(resolvedDesignEvent, {
             executionSucceeded: result.requirementAssessment.executionSucceeded,
         });
         printRequirementAssessment({
@@ -1112,12 +1398,26 @@ async function main() {
             ...result.requirementAssessment,
         });
         const selfReviewStartedAt = new Date().toISOString();
-        const selfReview = await product.createSelfReview({ session, result, gateway });
-        const selfReviewCompletedAt = new Date().toISOString();
         const executionTiming = summarizeExecutionTiming({
+            startedAt: session.startedAt,
+            completedAt: new Date().toISOString(),
+            diagnostics: diagnosticEntries,
+            trace: result.trace,
+            stages: [
+                {
+                    stageId: 'agent-run',
+                    startedAt: agentRunStartedAt,
+                    completedAt: agentRunCompletedAt,
+                },
+            ],
+        });
+        const selfReview = await product.createSelfReview({ session, result, executionTiming, gateway });
+        const selfReviewCompletedAt = new Date().toISOString();
+        const reviewedExecutionTiming = summarizeExecutionTiming({
             startedAt: session.startedAt,
             completedAt: selfReviewCompletedAt,
             diagnostics: diagnosticEntries,
+            trace: result.trace,
             stages: [
                 {
                     stageId: 'agent-run',
@@ -1133,7 +1433,7 @@ async function main() {
         });
         printExecutionTimingSummary({
             language,
-            executionTiming,
+            executionTiming: reviewedExecutionTiming,
         });
 
         output.write(`${copy.selfReviewMessage}\n`);
@@ -1150,6 +1450,7 @@ async function main() {
                 startedAt: session.startedAt,
                 completedAt: new Date().toISOString(),
                 diagnostics: diagnosticEntries,
+                trace: result.trace,
                 stages: [
                     {
                         stageId: 'agent-run',

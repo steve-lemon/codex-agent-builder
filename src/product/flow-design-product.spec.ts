@@ -77,6 +77,16 @@ describe('FlowDesignProduct', () => {
         );
     });
 
+    it('still marks graph explanation as uncertain when the request does not include concrete graph json', async () => {
+        const product = new FlowDesignProduct();
+        const result = await product.design('그래프(json)를 보고 이게 뭐하는 것인지 설명(md) 해줘');
+
+        expect(result.requirementAssessment.fulfillmentLevel).toBe('uncertain');
+        expect(result.requirementAssessment.caveats).toEqual(
+            expect.arrayContaining(['Validation relied on a synthetic sample input (synthetic-graph-json).']),
+        );
+    });
+
     it('streams monitoring hooks through a per-call runtime', async () => {
         const product = new FlowDesignProduct();
         const designEvents: string[] = [];

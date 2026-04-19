@@ -306,6 +306,54 @@ describe('PromptLabProduct', () => {
         expect(sanitized).not.toContain("'title'");
     });
 
+    it('removes inline graph JSON example scaffolding from the final Codex prompt', () => {
+        const sanitized = sanitizeCodexPromptText(
+            '그래프(json)를 보고 이게 뭐하는 것인지 설명(md) 해줘',
+            '',
+            '아래에 그래프 형식의 JSON 데이터가 주어집니다. 결과는 마크다운 형식으로 작성하십시오. { "nodes": [...], "edges": [...] } 위와 같은 그래프 JSON을 보고, 그래프의 목적과 구조를 설명해 주세요.',
+            {
+                skillName: 'flow-designer',
+                runId: 'run_3',
+                status: 'completed',
+                requirementAssessment: {
+                    executionSucceeded: true,
+                    fulfillmentLevel: 'uncertain',
+                    summary: 'The run completed successfully, but requirement fulfillment is still uncertain.',
+                    caveats: [],
+                    reasons: [],
+                },
+                outputContract: {
+                    format: 'plain-text',
+                    explicitFormat: true,
+                    desiredCount: 1,
+                    wantsMultiple: false,
+                    wantsJson: false,
+                },
+                nextActions: [],
+                flowDesign: {
+                    feasible: true,
+                    missingCapabilities: [],
+                    improvements: [],
+                    designPassCount: 0,
+                    taskGraphRefinementCount: 0,
+                },
+                nodeConfiguration: {
+                    improvements: [],
+                    appliedStrategies: [],
+                    nodeStrategyAssignments: [],
+                    configuredNodeCount: 0,
+                    probeInsightCount: 0,
+                },
+                trace: [],
+            },
+        );
+
+        expect(sanitized).not.toContain('{ "nodes": [...], "edges": [...] }');
+        expect(sanitized).not.toContain('위와 같은 그래프 JSON');
+        expect(sanitized).toContain('그래프 형식의 JSON 데이터');
+        expect(sanitized).toContain('마크다운 형식');
+    });
+
     it('can run advisor evaluation as a separate prompt-lab mode', async () => {
         const outputRoot = await mkdtemp(join(tmpdir(), 'prompt-lab-'));
         const product = new PromptLabProduct();

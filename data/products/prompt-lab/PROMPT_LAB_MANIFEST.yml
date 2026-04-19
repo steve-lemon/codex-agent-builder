@@ -89,6 +89,7 @@ selfReview:
     You are reviewing a Codex agent run. Read the session snapshot and produce a compact, honest self-review.
     Focus on strengths, weaknesses, concrete improvements, and prompt focus areas.
     Compare the requested output contract with the final flow configuration and call out any mismatch explicitly.
+    If execution timing is available, distinguish planner delay, tool timeout, and post-run review/finalization cost instead of collapsing them into one failure cause.
 codexPrompt:
   systemPrompt: |
     You are synthesizing a new Codex working prompt.

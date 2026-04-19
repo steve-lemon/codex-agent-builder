@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 import { now } from '../tools/now';
 import type { AdvisorEvaluationReport } from '../flow/design/advisor-evaluation';
@@ -25,6 +25,7 @@ function resolvePromptLabRoot(outputRoot?: string): string {
 
 const REQUIREMENT_HISTORY_FILE = 'prompt-lab-history.json';
 const ADVISOR_EVAL_HISTORY_FILE = 'advisor-evaluation-history.json';
+const LAST_RUN_FILE = 'prompt-lab-last-run.json';
 const MAX_REQUIREMENT_HISTORY = 20;
 const MAX_ADVISOR_EVAL_HISTORY = 50;
 
@@ -65,7 +66,64 @@ export async function createPromptLabSession(
     };
 
     await writeJson(join(sessionDir, 'session.json'), session);
+    await writeJson(join(rootDir, LAST_RUN_FILE), session);
     return session;
+}
+
+export async function readPromptLabLastRun(
+    config: Pick<PromptLabSessionConfig, 'outputRoot'>,
+): Promise<PromptLabSessionRecord | undefined> {
+    const rootDir = resolvePromptLabRoot(config.outputRoot);
+    const lastRunPath = join(rootDir, LAST_RUN_FILE);
+
+    try {
+        const raw = await readFile(lastRunPath, 'utf8');
+        const parsed = JSON.parse(raw) as PromptLabSessionRecord;
+        if (
+            typeof parsed?.sessionId === 'string' &&
+            typeof parsed?.sessionDir === 'string' &&
+            typeof parsed?.startedAt === 'string' &&
+            typeof parsed?.requirement === 'string' &&
+            typeof parsed?.config === 'object' &&
+            parsed.config !== null
+        ) {
+            return parsed;
+        }
+    } catch {
+        // Fall through to session directory scan.
+    }
+
+    try {
+        const entries = await readdir(rootDir, { withFileTypes: true });
+        const sessionDirs = entries
+            .filter(entry => entry.isDirectory())
+            .map(entry => entry.name)
+            .sort((left, right) => right.localeCompare(left));
+
+        for (const dirName of sessionDirs) {
+            try {
+                const sessionPath = join(rootDir, dirName, 'session.json');
+                const raw = await readFile(sessionPath, 'utf8');
+                const parsed = JSON.parse(raw) as PromptLabSessionRecord;
+                if (
+                    typeof parsed?.sessionId === 'string' &&
+                    typeof parsed?.sessionDir === 'string' &&
+                    typeof parsed?.startedAt === 'string' &&
+                    typeof parsed?.requirement === 'string' &&
+                    typeof parsed?.config === 'object' &&
+                    parsed.config !== null
+                ) {
+                    return parsed;
+                }
+            } catch {
+                // Continue scanning older sessions.
+            }
+        }
+    } catch {
+        return undefined;
+    }
+
+    return undefined;
 }
 
 export async function appendNdjson(filePath: string, value: unknown): Promise<void> {

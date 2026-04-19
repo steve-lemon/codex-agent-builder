@@ -60,6 +60,10 @@ const REFERENCE_ARG_PRODUCERS: Readonly<
     },
 };
 
+// TODO(planner): Planner remains the dominant end-to-end latency cost in prompt-lab runs.
+// Next step should focus on reducing planner payload/step complexity and measuring whether
+// structured output itself is the main bottleneck before adding more tool-level optimizations.
+
 function findPreviousReference(
     steps: PlanStep[],
     currentStepIndex: number,

@@ -18,15 +18,22 @@ import type {
 
 function detectSyntheticSampleSource(args: { userInput: string; finalFlow?: FlowDocument }): string | undefined {
     const lowered = args.userInput.toLowerCase();
+    const looksLikeConcreteJson =
+        /[\{\[]/.test(args.userInput) &&
+        (((/"nodes"\s*:/.test(args.userInput) || /["']nodes["']\s*:/.test(args.userInput)) &&
+            (/"edges"\s*:/.test(args.userInput) || /["']edges["']\s*:/.test(args.userInput))) ||
+            /"blockId"\s*:/.test(args.userInput) ||
+            /["']blockId["']\s*:/.test(args.userInput));
+
     if (
-        args.finalFlow &&
         (lowered.includes('graph') || lowered.includes('그래프')) &&
         lowered.includes('json') &&
         (lowered.includes('explain') ||
             lowered.includes('설명') ||
             lowered.includes('markdown') ||
             lowered.includes('(md)') ||
-            lowered.includes('md'))
+            lowered.includes('md')) &&
+        !looksLikeConcreteJson
     ) {
         return 'synthetic-graph-json';
     }
@@ -151,13 +158,12 @@ function collectRequirementAssessment(args: {
             message: `some capabilities are still missing (${missingCapabilities.join(', ')})`,
         });
     }
-    if (sampleInputSource && sampleInputSource !== 'default') {
-        caveats.push(`Validation relied on a synthetic sample input (${sampleInputSource}).`);
-        reasons.push({
-            category: 'evidence',
-            code: 'synthetic-sample-validation',
-            message: `validation relied on a synthetic sample input (${sampleInputSource})`,
-        });
+    const syntheticSampleCaveat =
+        sampleInputSource && sampleInputSource !== 'default'
+            ? `Validation relied on a synthetic sample input (${sampleInputSource}).`
+            : undefined;
+    if (syntheticSampleCaveat) {
+        caveats.push(syntheticSampleCaveat);
     }
 
     if (!runCompleted) {
@@ -210,6 +216,14 @@ function collectRequirementAssessment(args: {
             caveats,
             reasons,
         };
+    }
+
+    if (syntheticSampleCaveat) {
+        reasons.push({
+            category: 'evidence',
+            code: 'synthetic-sample-validation',
+            message: `validation relied on a synthetic sample input (${sampleInputSource})`,
+        });
     }
 
     if (reasons.length > 0) {

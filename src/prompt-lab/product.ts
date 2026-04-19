@@ -305,6 +305,13 @@ export function sanitizeCodexPromptText(
             return false;
         }
 
+        if (
+            /\{\s*"nodes"\s*:\s*\[\.\.\.\]\s*,\s*"edges"\s*:\s*\[\.\.\.\]\s*\}/i.test(sentence) ||
+            /위와 같은 그래프 json/i.test(normalized)
+        ) {
+            return false;
+        }
+
         return true;
     });
 
@@ -467,6 +474,7 @@ function renderSummaryMarkdown(args: {
               executionSucceeded: '실행 성공',
               fulfillmentLevel: '충족도 수준',
               assessmentReasons: '판단 근거',
+              assessmentNotes: '참고 사항',
           }
         : {
               title: 'Prompt Lab Session',
@@ -490,6 +498,7 @@ function renderSummaryMarkdown(args: {
               executionSucceeded: 'Execution Succeeded',
               fulfillmentLevel: 'Fulfillment Level',
               assessmentReasons: 'Assessment Signals',
+              assessmentNotes: 'Notes',
           };
     const fulfillmentLevel = isKorean
         ? {
@@ -549,7 +558,10 @@ function renderSummaryMarkdown(args: {
         ...(visibleCaveats.length > 0
             ? [
                   '',
-                  ...visibleCaveats.map(item => `- ${localizeAssessmentCaveat(args.session.config.language, item)}`),
+                  `- ${sections.assessmentNotes}:`,
+                  ...visibleCaveats.map(
+                      item => `  - ${localizeAssessmentCaveat(args.session.config.language, item)}`,
+                  ),
                   '',
               ]
             : ['']),
@@ -847,6 +859,7 @@ export class PromptLabProduct {
         session: PromptLabSessionRecord;
         result: ProductDesignRunResult;
         advisorEvaluation?: AdvisorEvaluationReport;
+        executionTiming?: PromptLabExecutionTimingSummary;
         gateway: LlmGateway;
     }): Promise<PromptLabSelfReview> {
         const selfReview = await args.gateway.generateStructured(
@@ -854,6 +867,7 @@ export class PromptLabProduct {
                 session: args.session,
                 result: args.result,
                 advisorEvaluation: args.advisorEvaluation,
+                executionTiming: args.executionTiming,
                 language: args.session.config.language,
             }),
         );
