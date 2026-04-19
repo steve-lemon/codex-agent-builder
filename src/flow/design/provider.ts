@@ -2,7 +2,8 @@
 import type { FlowDesignConnection, FlowDesignSession } from '../design-monitor';
 import type { FlowBlockDefinition } from '../types';
 import type { FlowFeasibilityAssessment } from './analysis';
-import { analyzeFlowRequest, designFlowDraft, reflectFlowExecution } from './core';
+import { buildLegacyFlowDesignIntent, designFlowDraft, normalizeFlowRequest, reflectFlowExecution } from './core';
+import { buildDesignBrief } from './architecture';
 import { defaultFlowDesignKnowledgeSource, type FlowDesignKnowledgeSource } from './knowledge';
 import { createDefaultFlowDesignKnowledgeSource } from './knowledge-sources';
 import {
@@ -10,10 +11,18 @@ import {
     getFlowDesignTaskTypeCatalog,
     type FlowDesignTaskTypeAdvisor,
 } from './task-types';
-import type { FlowDesignDraftResult, FlowDesignIntent, FlowDesignReflection } from './types';
+import type {
+    DesignBrief,
+    FlowDesignDraftResult,
+    FlowDesignIntent,
+    FlowDesignReflection,
+    FlowDesignRequestNormalization,
+} from './types';
 
 /** Provider contract for higher-level flow-design reasoning steps. */
 export interface FlowDesignProvider {
+    normalizeRequest?(userRequest: string): Promise<FlowDesignRequestNormalization> | FlowDesignRequestNormalization;
+    buildBrief?(userRequest: string): Promise<DesignBrief> | DesignBrief;
     analyzeRequest(userRequest: string): Promise<FlowDesignIntent> | FlowDesignIntent;
     composeDraft(args: {
         userRequest: string;
@@ -47,17 +56,36 @@ export class DeterministicFlowDesignProvider implements FlowDesignProvider {
         private readonly taskTypeAdvisor: FlowDesignTaskTypeAdvisor = defaultFlowDesignTaskTypeAdvisor,
     ) {}
 
-    async analyzeRequest(userRequest: string): Promise<FlowDesignIntent> {
+    async normalizeRequest(userRequest: string): Promise<FlowDesignRequestNormalization> {
         const taskTypes = await getFlowDesignTaskTypeCatalog();
-        return await analyzeFlowRequest(userRequest, {
+        return await normalizeFlowRequest(userRequest, {
             taskTypeAdvisor: this.taskTypeAdvisor,
             taskTypes,
         });
     }
 
+    async buildBrief(userRequest: string): Promise<DesignBrief> {
+        return await buildDesignBrief(await this.normalizeRequest(userRequest));
+    }
+
+    async analyzeRequest(userRequest: string): Promise<FlowDesignIntent> {
+        const normalizedRequest = await this.normalizeRequest(userRequest);
+        const designBrief = await this.buildBrief(userRequest);
+        return buildLegacyFlowDesignIntent({
+            normalizedRequest,
+            designBrief,
+        });
+    }
+
     async composeDraft(args: Parameters<FlowDesignProvider['composeDraft']>[0]): Promise<FlowDesignDraftResult> {
-        const intent = await this.analyzeRequest(args.userRequest);
-        const guidanceNotes = await Promise.resolve(this.knowledgeSource.getDraftNotes(intent));
+        const normalizedRequest = await this.normalizeRequest(args.userRequest);
+        const designBrief = await this.buildBrief(args.userRequest);
+        const guidanceNotes = await Promise.resolve(
+            this.knowledgeSource.getDraftNotes({
+                brief: designBrief,
+                request: normalizedRequest,
+            }),
+        );
         return await designFlowDraft({
             ...args,
             guidanceNotes,
@@ -65,11 +93,13 @@ export class DeterministicFlowDesignProvider implements FlowDesignProvider {
     }
 
     async reflectExecution(args: Parameters<FlowDesignProvider['reflectExecution']>[0]): Promise<FlowDesignReflection> {
-        const intent = await this.analyzeRequest(args.userRequest);
+        const normalizedRequest = await this.normalizeRequest(args.userRequest);
+        const designBrief = await this.buildBrief(args.userRequest);
         const baseReflection = await reflectFlowExecution(args);
         const reflectionNotes = await Promise.resolve(
             this.knowledgeSource.getReflectionNotes({
-                intent,
+                brief: designBrief,
+                request: normalizedRequest,
                 sampleResult: args.sampleResult,
                 reflection: baseReflection,
             }),

@@ -6,6 +6,30 @@ import type { PlannerInput } from './types';
 
 type EnsureToolAvailable = (toolName: string) => string;
 
+function inferDesiredCount(userInput: string): number {
+    const text = userInput.toLowerCase();
+    if (
+        text.includes('여러') ||
+        text.includes('multiple') ||
+        text.includes('several') ||
+        text.includes('목록') ||
+        text.includes('list')
+    ) {
+        return 3;
+    }
+    return 1;
+}
+
+function inferWantsJson(userInput: string): boolean {
+    const text = userInput.toLowerCase();
+    return text.includes('json');
+}
+
+function inferSampleInput(userInput: string): string {
+    const trimmed = userInput.trim();
+    return trimmed.length > 0 ? trimmed : '샘플 입력';
+}
+
 /** Builds a deterministic research skill plan. */
 export async function buildResearchBriefPlan(
     input: PlannerInput,
@@ -176,17 +200,6 @@ export async function buildFlowDesignerPlan(
                 {
                     id: 's1',
                     mode: 'single-tool',
-                    description: fakePlanCopy.flowDesigner.analyzeIntentDescription,
-                    toolCalls: [
-                        {
-                            toolName: ensureToolAvailable('analyzeFlowRequest'),
-                            args: { userRequest: input.userInput },
-                        },
-                    ],
-                },
-                {
-                    id: 's2',
-                    mode: 'single-tool',
                     description: fakePlanCopy.flowDesigner.prevalidateDescription,
                     toolCalls: [
                         {
@@ -196,13 +209,13 @@ export async function buildFlowDesignerPlan(
                     ],
                 },
                 {
-                    id: 's3',
+                    id: 's2',
                     mode: 'reasoning',
                     description: fakePlanCopy.flowDesigner.infeasibleStopDescription,
                     reasoning: fakePlanCopy.flowDesigner.infeasibleStopReasoning,
                 },
                 {
-                    id: 's4',
+                    id: 's3',
                     mode: 'finalize',
                     description: fakePlanCopy.flowDesigner.infeasibleFinalizeDescription,
                 },
@@ -222,20 +235,12 @@ export async function buildFlowDesignerPlan(
     // planner-visible policy object so pass limits are explainable and
     // configurable per skill or request class.
     const maxDesignPasses = shouldUseExtendedRetryPolicy ? 3 : 2;
+    const desiredCount = inferDesiredCount(input.userInput);
+    const wantsJson = inferWantsJson(input.userInput);
+    const sampleInput = inferSampleInput(input.userInput);
     const steps: Plan['steps'] = [
         {
             id: 's1',
-            mode: 'single-tool',
-            description: fakePlanCopy.flowDesigner.analyzeIntentDescription,
-            toolCalls: [
-                {
-                    toolName: ensureToolAvailable('analyzeFlowRequest'),
-                    args: { userRequest: input.userInput },
-                },
-            ],
-        },
-        {
-            id: 's2',
             mode: 'single-tool',
             description: fakePlanCopy.flowDesigner.prevalidateDescription,
             toolCalls: [
@@ -246,7 +251,7 @@ export async function buildFlowDesignerPlan(
             ],
         },
         {
-            id: 's3',
+            id: 's2',
             mode: 'single-tool',
             description: fakePlanCopy.flowDesigner.probeDescription,
             toolCalls: [
@@ -266,8 +271,8 @@ export async function buildFlowDesignerPlan(
     ];
 
     let previousReflectionStepId: string | undefined;
-    let currentPreflightStepId = 's2';
-    let stepNumber = 4;
+    let currentPreflightStepId = 's1';
+    let stepNumber = 3;
 
     for (let pass = 1; pass <= maxDesignPasses; pass += 1) {
         if (previousReflectionStepId) {
@@ -341,9 +346,9 @@ export async function buildFlowDesignerPlan(
                     toolName: ensureToolAvailable('designFlowDraft'),
                     args: {
                         userRequest: input.userInput,
-                        sampleInput: { $fromStep: 's1', path: 'toolResults.0.data.sampleInput' },
-                        desiredCount: { $fromStep: 's1', path: 'toolResults.0.data.desiredCount' },
-                        wantsJson: { $fromStep: 's1', path: 'toolResults.0.data.wantsJson' },
+                        sampleInput,
+                        desiredCount,
+                        wantsJson,
                         preflight: { $fromStep: currentPreflightStepId, path: 'toolResults.0.data' },
                         ...(previousReflectionStepId
                             ? {
@@ -369,9 +374,9 @@ export async function buildFlowDesignerPlan(
                     args: {
                         userRequest: input.userInput,
                         flow: { $fromStep: designStepId, path: 'toolResults.0.data.flow' },
-                        desiredCount: { $fromStep: 's1', path: 'toolResults.0.data.desiredCount' },
-                        wantsJson: { $fromStep: 's1', path: 'toolResults.0.data.wantsJson' },
-                        probeResult: { $fromStep: 's3', path: 'toolResults.0.data' },
+                        desiredCount,
+                        wantsJson,
+                        probeResult: { $fromStep: 's2', path: 'toolResults.0.data' },
                         ...(previousReflectionStepId
                             ? {
                                   strategyDirectives: {
@@ -460,8 +465,8 @@ export async function buildFlowDesignerPlan(
                     toolName: ensureToolAvailable('reflectFlowResult'),
                     args: {
                         userRequest: input.userInput,
-                        desiredCount: { $fromStep: 's1', path: 'toolResults.0.data.desiredCount' },
-                        wantsJson: { $fromStep: 's1', path: 'toolResults.0.data.wantsJson' },
+                        desiredCount,
+                        wantsJson,
                         sampleResult: { $fromStep: runStepId, path: 'toolResults.0.data' },
                     },
                 },

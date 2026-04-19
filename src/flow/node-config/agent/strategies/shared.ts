@@ -1,9 +1,13 @@
 // Shared contracts and helpers for block-specific node-configuration strategies.
 import type { FlowDocument, FlowNode } from '../../../types';
-import { analyzeFlowRequest } from '../../../design/core';
+import { normalizeFlowRequest } from '../../../design/core';
+import { buildDesignBrief } from '../../../design/architecture';
 import { createFlowDesignTaskTypeAdvisor, getFlowDesignTaskTypeCatalog } from '../../../design/task-types';
 import type { DesignBrief } from '../../../design/types';
 import type { NodeConfigurationDesignInput, NodeConfigurationSuggestion } from '../types';
+
+const designBriefCache = new WeakMap<NodeConfigurationDesignInput, Promise<DesignBrief>>();
+const taskTypeCache = new WeakMap<NodeConfigurationDesignInput, Promise<string>>();
 
 export interface NodeBlockConfigStrategyContext {
     flow: FlowDocument;
@@ -44,14 +48,24 @@ export async function inferTaskType(userRequest: string, wantsJson: boolean): Pr
 }
 
 export async function inferTaskTypeWithInput(input: NodeConfigurationDesignInput): Promise<string> {
-    const taskTypes = await getFlowDesignTaskTypeCatalog();
-    return (
-        await createFlowDesignTaskTypeAdvisor(input.llm).recommend({
-            userRequest: input.userRequest,
-            wantsJson: input.wantsJson,
-            taskTypes,
-        })
-    ).taskType;
+    const cached = taskTypeCache.get(input);
+    if (cached) {
+        return await cached;
+    }
+
+    const pending = (async () => {
+        const taskTypes = await getFlowDesignTaskTypeCatalog();
+        return (
+            await createFlowDesignTaskTypeAdvisor(input.llm).recommend({
+                userRequest: input.userRequest,
+                wantsJson: input.wantsJson,
+                taskTypes,
+            })
+        ).taskType;
+    })();
+
+    taskTypeCache.set(input, pending);
+    return await pending;
 }
 
 export async function ensureDesignBrief(input: NodeConfigurationDesignInput): Promise<DesignBrief> {
@@ -59,12 +73,22 @@ export async function ensureDesignBrief(input: NodeConfigurationDesignInput): Pr
         return input.designBrief;
     }
 
-    const analyzedIntent = await analyzeFlowRequest(input.userRequest, {
-        taskTypeAdvisor: createFlowDesignTaskTypeAdvisor(input.llm),
-        taskTypes: await getFlowDesignTaskTypeCatalog(),
-    });
+    const cached = designBriefCache.get(input);
+    if (cached) {
+        return await cached;
+    }
 
-    return analyzedIntent.designBrief!;
+    const pending = (async () => {
+        const normalizedRequest = await normalizeFlowRequest(input.userRequest, {
+            taskTypeAdvisor: createFlowDesignTaskTypeAdvisor(input.llm),
+            taskTypes: await getFlowDesignTaskTypeCatalog(),
+        });
+
+        return await buildDesignBrief(normalizedRequest);
+    })();
+
+    designBriefCache.set(input, pending);
+    return await pending;
 }
 
 export function collectStrategyNotes(input: NodeConfigurationDesignInput): string[] {

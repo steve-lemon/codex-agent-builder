@@ -1,5 +1,5 @@
 // Built-in knowledge-source implementations for flow-design.
-import type { FlowDesignIntent, FlowDesignReflection } from './types';
+import type { DesignBrief, FlowDesignReflection, FlowDesignRequestNormalization } from './types';
 import type { FlowDesignKnowledgeSource } from './knowledge';
 import { getFlowDesignManifest, type FlowDesignManifest } from './manifest';
 
@@ -11,18 +11,18 @@ function unique(values: string[]): string[] {
 export class ManifestFlowDesignKnowledgeSource implements FlowDesignKnowledgeSource {
     constructor(private readonly manifestLoader: () => Promise<FlowDesignManifest> = getFlowDesignManifest) {}
 
-    async getDraftNotes(intent: FlowDesignIntent): Promise<string[]> {
+    async getDraftNotes(args: { brief: DesignBrief; request: FlowDesignRequestNormalization }): Promise<string[]> {
         const { knowledge } = await this.manifestLoader();
         const conditionalNotes = (knowledge.conditionalDraftNotes ?? [])
             .filter(entry => {
                 const match = entry.match ?? {};
-                if (match.taskTypes && !match.taskTypes.includes(intent.taskType)) {
+                if (match.taskTypes && !match.taskTypes.includes(args.request.taskType)) {
                     return false;
                 }
-                if (typeof match.wantsJson === 'boolean' && match.wantsJson !== intent.wantsJson) {
+                if (typeof match.wantsJson === 'boolean' && match.wantsJson !== args.request.wantsJson) {
                     return false;
                 }
-                if (typeof match.wantsMultiple === 'boolean' && match.wantsMultiple !== intent.wantsMultiple) {
+                if (typeof match.wantsMultiple === 'boolean' && match.wantsMultiple !== args.request.wantsMultiple) {
                     return false;
                 }
                 return true;
@@ -33,7 +33,8 @@ export class ManifestFlowDesignKnowledgeSource implements FlowDesignKnowledgeSou
     }
 
     async getReflectionNotes(args: {
-        intent: FlowDesignIntent;
+        brief: DesignBrief;
+        request: FlowDesignRequestNormalization;
         sampleResult: {
             status: 'completed' | 'failed' | 'cancelled';
             output?: unknown;
@@ -47,7 +48,7 @@ export class ManifestFlowDesignKnowledgeSource implements FlowDesignKnowledgeSou
         if (args.sampleResult.status !== 'completed') {
             notes.push('Stabilize the sample execution path before concluding that the design is acceptable.');
         }
-        if (args.intent.wantsJson) {
+        if (args.request.wantsJson) {
             notes.push('Reflection should keep checking that structured outputs stay machine-readable.');
         }
 

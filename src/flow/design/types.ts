@@ -8,8 +8,8 @@ import type { ArchitectureReviewRecord, DesignBriefRecord } from './architecture
 /** Coarse-grained task classification used by flow-design layers. */
 export type FlowDesignTaskType = string;
 
-/** Parsed intent derived from a natural-language user request. */
-export interface FlowDesignIntent {
+/** Thin normalization layer produced before architecture builds a strategic brief. */
+export interface FlowDesignRequestNormalization {
     userRequest: string;
     taskType: FlowDesignTaskType;
     taskTypeConfidence?: number;
@@ -19,6 +19,10 @@ export interface FlowDesignIntent {
     wantsJson: boolean;
     wantsMultiple: boolean;
     desiredCount: number;
+}
+
+/** Parsed intent derived from a natural-language user request. */
+export interface FlowDesignIntent extends FlowDesignRequestNormalization {
     sampleInput: string;
     sampleInputSource?: 'default' | 'synthetic-graph-json';
     sampleInputReadyForDesign?: boolean;

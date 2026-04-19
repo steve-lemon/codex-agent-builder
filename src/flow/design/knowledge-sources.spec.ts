@@ -1,13 +1,14 @@
 // Vitest specs for manifest-backed flow-design knowledge sources.
 import { describe, expect, it } from 'vitest';
-import { analyzeFlowRequest, designFlowDraft, reflectFlowExecution } from './core';
+import { designFlowDraft, normalizeFlowRequest, reflectFlowExecution } from './core';
+import { buildDesignBrief } from './architecture';
 import { getCatalogAvailableFlowBlocks } from './catalog';
 import { ManifestFlowDesignKnowledgeSource, createDefaultFlowDesignKnowledgeSource } from './knowledge-sources';
 import { DeterministicFlowDesignProvider } from './provider';
 
 describe('flow-design knowledge sources', () => {
     it('loads draft and reflection notes from a manifest file', async () => {
-        const intent = await analyzeFlowRequest('상품 소개 문구를 JSON 형태로 여러개 만들어줘');
+        const brief = await buildDesignBrief(await normalizeFlowRequest('상품 소개 문구를 JSON 형태로 여러개 만들어줘'));
         const source = new ManifestFlowDesignKnowledgeSource(async () => ({
             taskTypes: [],
             taskGraphTemplates: [],
@@ -54,12 +55,15 @@ describe('flow-design knowledge sources', () => {
             },
         }));
 
-        expect(await source.getDraftNotes(intent)).toEqual(
+        const request = await normalizeFlowRequest('상품 소개 문구를 JSON 형태로 여러개 만들어줘');
+
+        expect(await source.getDraftNotes({ brief, request })).toEqual(
             expect.arrayContaining(['base draft note', 'json draft note']),
         );
         expect(
             await source.getReflectionNotes({
-                intent,
+                brief,
+                request,
                 sampleResult: {
                     status: 'completed',
                     logs: [],

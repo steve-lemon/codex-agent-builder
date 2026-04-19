@@ -4,7 +4,7 @@ import { AgentError } from '../errors/agent-error';
 import { evaluateFlowDesignAdvisors, type AdvisorEvaluationReport } from '../flow/design/advisor-evaluation';
 import { buildArchitectureReview, buildDesignBrief } from '../flow/design/architecture';
 import { loadArchitectureKnowledgeResource } from '../flow/design/architecture-resources';
-import { analyzeFlowRequest } from '../flow/design/core';
+import { normalizeFlowRequest } from '../flow/design/core';
 import type { ArchitectureReview, DesignBrief } from '../flow/design/types';
 import { FlowDesignProduct } from '../product';
 import type { ProductDesignRunResult, ProductFlowSkill } from '../product/types';
@@ -1093,8 +1093,8 @@ export class PromptLabProduct {
                 },
             });
 
-            const analyzedIntent = await analyzeFlowRequest(args.requirement);
-            const architectureBrief = analyzedIntent.designBrief ?? (await buildDesignBrief(analyzedIntent));
+            const normalizedRequest = await normalizeFlowRequest(args.requirement);
+            const architectureBrief = await buildDesignBrief(normalizedRequest);
             const architectureKnowledge = await loadArchitectureKnowledgeResource();
             const architectureReview = buildArchitectureReview({
                 brief: architectureBrief,

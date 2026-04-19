@@ -6,8 +6,9 @@ import {
     probeFlowBlockRuntime,
     proposeBlockSpecUpdate,
     validateDesignedFlow,
-    analyzeFlowRequest as analyzeFlowIntent,
+    normalizeFlowRequest,
 } from '../design/core';
+import { buildDesignBrief } from '../design/architecture';
 import { getCatalogAvailableFlowBlocks } from '../design/catalog';
 import { defaultFlowDesignProvider, type FlowDesignProvider } from '../design/provider';
 import { createFlowDesignTaskTypeAdvisor } from '../design/task-types';
@@ -446,31 +447,41 @@ export async function createFlowDesignToolBundle(
     const executors = {
         [FLOW_DESIGN_EXECUTE_IDS.analyzeFlowRequest]: defineFlowToolExecutor<{ userRequest: string }>(
             async ({ userRequest }, context) => {
-                const intent = await analyzeFlowIntent(userRequest, {
+                const normalizedRequest = await normalizeFlowRequest(userRequest, {
                     taskTypeAdvisor: createFlowDesignTaskTypeAdvisor(context.llm),
                 });
+                const designBrief = await buildDesignBrief(normalizedRequest);
+                const representativeSample = designBrief.validationPlan.sampleCases[0];
+                const rawInput = representativeSample?.input;
+                const sampleInput =
+                    typeof rawInput === 'string'
+                        ? rawInput
+                        : rawInput === undefined
+                        ? '샘플 입력'
+                        : JSON.stringify(rawInput);
                 return {
-                    taskType: intent.taskType,
-                    outputContract: intent.outputContract,
-                    wantsJson: intent.wantsJson,
-                    wantsMultiple: intent.wantsMultiple,
-                    desiredCount: intent.desiredCount,
-                    sampleInput: intent.sampleInput,
-                    sampleInputSource: intent.sampleInputSource ?? 'default',
-                    sampleInputReadyForDesign: intent.sampleInputReadyForDesign ?? true,
+                    taskType: normalizedRequest.taskType,
+                    outputContract: normalizedRequest.outputContract,
+                    wantsJson: normalizedRequest.wantsJson,
+                    wantsMultiple: normalizedRequest.wantsMultiple,
+                    desiredCount: normalizedRequest.desiredCount,
+                    sampleInput,
+                    sampleInputSource:
+                        designBrief.inputContract.source === 'synthetic' ? 'synthetic-graph-json' : 'default',
+                    sampleInputReadyForDesign: true,
                     constraints: ['Use only available blocks from the repository.'],
                     guidanceNotes:
-                        intent.sampleInputSource === 'synthetic-graph-json'
+                        designBrief.inputContract.source === 'synthetic'
                             ? [
                                   'A synthetic graph JSON sample is already available for drafting and sample validation.',
                                   'Do not stop early just because the user did not paste the concrete graph JSON yet; use the synthetic sample to continue the design pass.',
                               ]
                             : [],
                     successCriteria:
-                        intent.desiredCount > 1
-                            ? [`Produce ${intent.desiredCount} useful outputs.`]
+                        normalizedRequest.desiredCount > 1
+                            ? [`Produce ${normalizedRequest.desiredCount} useful outputs.`]
                             : ['Produce one useful output.'],
-                    designBrief: intent.designBrief,
+                    designBrief,
                 };
             },
         ),
@@ -492,14 +503,15 @@ export async function createFlowDesignToolBundle(
         ),
         [FLOW_DESIGN_EXECUTE_IDS.assessFlowFeasibility]: defineFlowToolExecutor<{ userRequest: string }>(
             async ({ userRequest }, context) => {
-                const intent = await analyzeFlowIntent(userRequest as string, {
+                const normalizedRequest = await normalizeFlowRequest(userRequest as string, {
                     taskTypeAdvisor: createFlowDesignTaskTypeAdvisor(context.llm),
                 });
+                const designBrief = await buildDesignBrief(normalizedRequest);
                 return await assessFlowFeasibility(userRequest as string, {
                     aiDelegationAdvisor: createFlowAiDelegationAdvisor(context.llm),
                     taskGraphAdvisor: createFlowDesignTaskGraphAdvisor(context.llm),
-                    taskType: intent.taskType,
-                    operationModel: intent.designBrief?.mission.operationModel,
+                    taskType: normalizedRequest.taskType,
+                    operationModel: designBrief.mission.operationModel,
                 });
             },
         ),
@@ -523,16 +535,17 @@ export async function createFlowDesignToolBundle(
             improvementNotes?: string[];
             preflight?: FlowFeasibilityAssessment;
         }>(async ({ userRequest, sampleInput, desiredCount, wantsJson, improvementNotes = [], preflight }, context) => {
-            const intent = await analyzeFlowIntent(userRequest as string, {
+            const normalizedRequest = await normalizeFlowRequest(userRequest as string, {
                 taskTypeAdvisor: createFlowDesignTaskTypeAdvisor(context.llm),
             });
+            const designBrief = await buildDesignBrief(normalizedRequest);
             const feasibility =
                 (preflight as FlowFeasibilityAssessment | undefined) ??
                 (await assessFlowFeasibility(userRequest as string, {
                     aiDelegationAdvisor: createFlowAiDelegationAdvisor(context.llm),
                     taskGraphAdvisor: createFlowDesignTaskGraphAdvisor(context.llm),
-                    taskType: intent.taskType,
-                    operationModel: intent.designBrief?.mission.operationModel,
+                    taskType: normalizedRequest.taskType,
+                    operationModel: designBrief.mission.operationModel,
                 }));
             return await Promise.resolve(
                 provider.composeDraft({

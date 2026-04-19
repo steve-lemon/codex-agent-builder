@@ -20,6 +20,8 @@ function snapshotAttempt(state: FlowDesignAttemptState): FlowDesignAttemptResult
     return {
         iteration: state.iteration,
         usedSkills: [...state.usedSkills],
+        normalizedRequest: state.normalizedRequest,
+        designBrief: state.designBrief,
         intent: state.intent,
         flow: state.flow,
         validation: state.validation,
@@ -100,6 +102,8 @@ export class FlowDesignAgent {
                     return {
                         status: 'failed',
                         userRequest,
+                        normalizedRequest: state.normalizedRequest,
+                        designBrief: state.designBrief,
                         intent: state.intent,
                         finalFlow: state.flow,
                         validation: state.validation,
@@ -127,6 +131,8 @@ export class FlowDesignAgent {
                     return {
                         status: 'completed',
                         userRequest,
+                        normalizedRequest: attempt.normalizedRequest,
+                        designBrief: attempt.designBrief,
                         intent: attempt.intent,
                         finalFlow: attempt.flow,
                         validation: attempt.validation,
@@ -147,6 +153,8 @@ export class FlowDesignAgent {
             return {
                 status: 'failed',
                 userRequest,
+                normalizedRequest: lastAttempt?.normalizedRequest,
+                designBrief: lastAttempt?.designBrief,
                 intent: lastAttempt?.intent,
                 finalFlow: lastAttempt?.flow,
                 validation: lastAttempt?.validation,

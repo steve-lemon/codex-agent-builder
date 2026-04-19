@@ -8,6 +8,7 @@ export function resolveToolExecutionPolicy(tool: ToolDefinition): ToolExecutionP
         analyzeFlowRequest: 5000,
         assessFlowFeasibility: 5000,
         prevalidateFlowDesignRequest: 5000,
+        designFlowNodeConfigurations: 6000,
     };
 
     if (tool.riskLevel === 'read-only') {

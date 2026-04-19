@@ -1,11 +1,12 @@
 import type { ProductDesignRunResult } from '../../product/types';
 import { inferFlowOutputContract } from '../output-contract';
+import { getFlowDesignSampleInputDefaults } from './resources';
 import type {
     ArchitectureKnowledgeResourceRecord,
     DesignBriefRecord,
     ArchitectureReviewRecord,
 } from './architecture-schemas';
-import type { FlowDesignIntent } from './types';
+import type { FlowDesignIntent, FlowDesignRequestNormalization } from './types';
 import { loadArchitectureKnowledgeResource } from './architecture-resources';
 
 function unique(values: string[]): string[] {
@@ -167,25 +168,50 @@ function matchesKnowledge(args: {
     return true;
 }
 
-export async function buildDesignBrief(intent: FlowDesignIntent): Promise<DesignBriefRecord> {
+function isFlowDesignIntent(input: FlowDesignIntent | FlowDesignRequestNormalization): input is FlowDesignIntent {
+    return 'sampleInput' in input;
+}
+
+async function resolveArchitectureSample(input: FlowDesignIntent | FlowDesignRequestNormalization) {
+    if (isFlowDesignIntent(input)) {
+        return {
+            sampleInput: input.sampleInput,
+            sampleInputSource: input.sampleInputSource,
+        };
+    }
+    const defaults = await getFlowDesignSampleInputDefaults(input.taskType, input.userRequest);
+    return {
+        sampleInput: defaults.sampleInput,
+        sampleInputSource: defaults.source,
+    };
+}
+
+export async function buildDesignBrief(
+    input: FlowDesignIntent | FlowDesignRequestNormalization,
+): Promise<DesignBriefRecord> {
     const knowledge = await loadArchitectureKnowledgeResource();
-    const operationModel = inferOperationModel(intent.userRequest, intent.taskType);
-    const outputFormat = mapOutputFormat(intent.outputContract);
-    const concreteGraphJson = detectConcreteGraphJson(intent.userRequest);
+    const { sampleInput, sampleInputSource } = await resolveArchitectureSample(input);
+    const operationModel = inferOperationModel(input.userRequest, input.taskType);
+    const outputFormat = mapOutputFormat(input.outputContract);
+    const concreteGraphJson = detectConcreteGraphJson(input.userRequest);
     const inputSource: DesignBriefRecord['inputContract']['source'] =
-        intent.sampleInputSource && intent.sampleInputSource !== 'default'
+        sampleInputSource && sampleInputSource !== 'default'
             ? 'synthetic'
             : concreteGraphJson
             ? 'user-provided'
             : 'inferred';
 
-    const representativeSamples = makeRepresentativeSample(intent);
+    const representativeSamples = makeRepresentativeSample({
+        ...input,
+        sampleInput,
+        sampleInputSource,
+    });
     const heuristicMatches = knowledge.heuristics.filter(entry =>
         matchesKnowledge({
             resourceEntryMatch: entry.match,
             operationModel,
-            taskType: intent.taskType,
-            sampleInputSource: intent.sampleInputSource,
+            taskType: input.taskType,
+            sampleInputSource,
             outputFormat,
         }),
     );
@@ -193,8 +219,8 @@ export async function buildDesignBrief(intent: FlowDesignIntent): Promise<Design
         matchesKnowledge({
             resourceEntryMatch: entry.match,
             operationModel,
-            taskType: intent.taskType,
-            sampleInputSource: intent.sampleInputSource,
+            taskType: input.taskType,
+            sampleInputSource,
             outputFormat,
         }),
     );
@@ -202,8 +228,8 @@ export async function buildDesignBrief(intent: FlowDesignIntent): Promise<Design
         matchesKnowledge({
             resourceEntryMatch: entry.match,
             operationModel,
-            taskType: intent.taskType,
-            sampleInputSource: intent.sampleInputSource,
+            taskType: input.taskType,
+            sampleInputSource,
             outputFormat,
         }),
     );
@@ -211,8 +237,8 @@ export async function buildDesignBrief(intent: FlowDesignIntent): Promise<Design
         matchesKnowledge({
             resourceEntryMatch: entry.match,
             operationModel,
-            taskType: intent.taskType,
-            sampleInputSource: intent.sampleInputSource,
+            taskType: input.taskType,
+            sampleInputSource,
             outputFormat,
         }),
     );
@@ -231,8 +257,8 @@ export async function buildDesignBrief(intent: FlowDesignIntent): Promise<Design
         ...validationMatches.flatMap(entry => entry.assertions ?? []),
     ]);
     const successCriteria = unique([
-        ...(intent.desiredCount > 1
-            ? [`Produce exactly ${intent.desiredCount} useful outputs.`]
+        ...(input.desiredCount > 1
+            ? [`Produce exactly ${input.desiredCount} useful outputs.`]
             : ['Produce one useful output.']),
         ...validationMatches.flatMap(entry => entry.successCriteria ?? []),
         ...(outputFormat === 'json' ? ['Preserve the requested JSON output contract.'] : []),
@@ -293,28 +319,28 @@ export async function buildDesignBrief(intent: FlowDesignIntent): Promise<Design
 
     return {
         mission: {
-            summary: buildMissionSummary(intent.userRequest, intent.taskType, operationModel),
-            goal: intent.userRequest,
+            summary: buildMissionSummary(input.userRequest, input.taskType, operationModel),
+            goal: input.userRequest,
             operationModel,
         },
         inputContract: {
-            format: inferInputFormat(intent.userRequest),
+            format: inferInputFormat(input.userRequest),
             source: inputSource,
             concreteInputPresent: inputSource === 'user-provided',
             missingRequiredInput:
                 inputSource !== 'user-provided' &&
                 operationModel.includes('explain') &&
-                intent.userRequest.toLowerCase().includes('json'),
+                input.userRequest.toLowerCase().includes('json'),
             notes: unique([
-                ...(intent.sampleInputSource === 'synthetic-graph-json'
+                ...(sampleInputSource === 'synthetic-graph-json'
                     ? ['A conservative synthetic graph JSON sample is being used for design-time validation.']
                     : []),
             ]),
         },
         outputContract: {
             format: outputFormat,
-            structured: intent.outputContract.format === 'json',
-            cardinality: intent.desiredCount > 1 ? 'multiple' : 'single',
+            structured: input.outputContract.format === 'json',
+            cardinality: input.desiredCount > 1 ? 'multiple' : 'single',
             schemaExpectation:
                 outputFormat === 'json' ? 'machine-readable object or array matching the request contract' : undefined,
         },

@@ -132,6 +132,8 @@ export class AgentTracer {
                 return `Calling tool ${String(data?.toolName ?? 'unknown')}`;
             case 'tool_end':
                 return `Tool ${String(data?.toolName ?? 'unknown')} completed`;
+            case 'tool_error':
+                return `Tool ${String(data?.toolName ?? 'unknown')} failed: ${String(data?.message ?? 'unknown')}`;
             case 'approval_wait':
                 return `Waiting for approval on ${String(data?.toolName ?? 'unknown')}`;
             case 'approval_decision':

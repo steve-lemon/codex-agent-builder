@@ -3,9 +3,11 @@ import type { FlowDesignConnection, FlowDesignSession } from '../design-monitor'
 import type { FlowDesignProvider } from '../design/provider';
 import type { FlowBlockDefinition } from '../types';
 import type {
+    DesignBrief,
     FlowDesignAiGenerateRequest,
     FlowDesignExecution,
     FlowDesignIntent,
+    FlowDesignRequestNormalization,
     FlowDesignReflection,
     FlowDesignValidation,
 } from '../design/types';
@@ -18,6 +20,8 @@ export interface FlowDesignAttemptState {
     userRequest: string;
     availableBlocks: FlowBlockDefinition[];
     improvementNotes: string[];
+    normalizedRequest?: FlowDesignRequestNormalization;
+    designBrief?: DesignBrief;
     intent?: FlowDesignIntent;
     flow?: import('../types').FlowDocument;
     validation?: FlowDesignValidation;
@@ -36,12 +40,16 @@ export interface FlowDesignAttemptResult {
     execution?: FlowDesignExecution;
     reflection?: FlowDesignReflection;
     improvementNotes: string[];
+    normalizedRequest?: FlowDesignRequestNormalization;
+    designBrief?: DesignBrief;
 }
 
 /** Final result returned by the flow design agent. */
 export interface FlowDesignAgentResult {
     status: 'completed' | 'failed';
     userRequest: string;
+    normalizedRequest?: FlowDesignRequestNormalization;
+    designBrief?: DesignBrief;
     intent?: FlowDesignIntent;
     finalFlow?: import('../types').FlowDocument;
     validation?: FlowDesignValidation;

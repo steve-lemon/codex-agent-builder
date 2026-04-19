@@ -83,18 +83,17 @@ describe('fake plan builders', () => {
     it('builds an infeasible flow-designer plan for missing-capability requests', async () => {
         const plan = await buildFlowDesignerPlan(
             { ...baseInput, skillName: 'flow-designer', userInput: '이메일을 확인해서 답장 해줘' },
-            buildEnsureToolAvailable('analyzeFlowRequest', 'prevalidateFlowDesignRequest'),
+            buildEnsureToolAvailable('prevalidateFlowDesignRequest'),
         );
 
-        expect(plan.steps).toHaveLength(4);
-        expect(plan.steps[2]).toEqual(expect.objectContaining({ mode: 'reasoning' }));
+        expect(plan.steps).toHaveLength(3);
+        expect(plan.steps[1]).toEqual(expect.objectContaining({ mode: 'reasoning' }));
     });
 
     it('builds a multi-pass flow-designer plan for richer requests', async () => {
         const plan = await buildFlowDesignerPlan(
             { ...baseInput, skillName: 'flow-designer', userInput: '키워드로 블로그 제목 여러개를 json으로 만들어줘' },
             buildEnsureToolAvailable(
-                'analyzeFlowRequest',
                 'prevalidateFlowDesignRequest',
                 'probeFlowBlock',
                 'designFlowDraft',

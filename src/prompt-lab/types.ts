@@ -80,6 +80,21 @@ export interface PromptLabStageTimingDetail {
     durationMs: number;
 }
 
+export interface PromptLabToolTimingDetail {
+    toolName: string;
+    callCount: number;
+    totalDurationMs: number;
+    averageDurationMs: number;
+    maxDurationMs: number;
+    lastError?: string;
+}
+
+export interface PromptLabFailureSummary {
+    toolName?: string;
+    stepId?: string;
+    message: string;
+}
+
 export interface PromptLabExecutionTimingSummary {
     advisorTimingStatus: 'observed' | 'not-observed';
     totalDurationMs: number;
@@ -88,6 +103,8 @@ export interface PromptLabExecutionTimingSummary {
     advisorTimeShare: number | null;
     advisors: PromptLabAdvisorTimingDetail[];
     stages: PromptLabStageTimingDetail[];
+    tools: PromptLabToolTimingDetail[];
+    lastFailure?: PromptLabFailureSummary;
 }
 
 export interface PromptLabRunArtifacts {

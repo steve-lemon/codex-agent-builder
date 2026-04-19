@@ -1,11 +1,13 @@
 // Skill implementations for the flow design agent wrapper built on shared flow-design core.
 import {
-    analyzeFlowRequest,
+    buildLegacyFlowDesignIntent,
     designFlowDraft,
     executeFlowDesignSample,
+    normalizeFlowRequest,
     reflectFlowExecution,
     validateDesignedFlow,
 } from '../design/core';
+import { buildDesignBrief } from '../design/architecture';
 import type {
     FlowDesignAiGenerateRequest,
     FlowDesignAttemptState,
@@ -22,9 +24,28 @@ export class IntentAnalysisSkill implements FlowDesignSkill {
     }
 
     async run(state: FlowDesignAttemptState, services: FlowDesignSkillServices): Promise<void> {
-        state.intent = await Promise.resolve(
-            services.provider?.analyzeRequest(state.userRequest) ?? analyzeFlowRequest(state.userRequest),
-        );
+        if (services.provider?.buildBrief && services.provider?.normalizeRequest) {
+            state.normalizedRequest = await Promise.resolve(services.provider.normalizeRequest(state.userRequest));
+            state.designBrief = await Promise.resolve(services.provider.buildBrief(state.userRequest));
+            state.intent = buildLegacyFlowDesignIntent({
+                normalizedRequest: state.normalizedRequest,
+                designBrief: state.designBrief,
+            });
+            return;
+        }
+
+        if (services.provider?.analyzeRequest) {
+            state.intent = await Promise.resolve(services.provider.analyzeRequest(state.userRequest));
+            state.designBrief = state.intent.designBrief;
+            return;
+        }
+
+        state.normalizedRequest = await normalizeFlowRequest(state.userRequest);
+        state.designBrief = await buildDesignBrief(state.normalizedRequest);
+        state.intent = buildLegacyFlowDesignIntent({
+            normalizedRequest: state.normalizedRequest,
+            designBrief: state.designBrief,
+        });
     }
 }
 
@@ -38,11 +59,18 @@ export class FlowCompositionSkill implements FlowDesignSkill {
 
     async run(state: FlowDesignAttemptState, services: FlowDesignSkillServices): Promise<void> {
         const intent = state.intent!;
+        const representativeSample = state.designBrief?.validationPlan.sampleCases[0]?.input;
+        const sampleInput =
+            typeof representativeSample === 'string'
+                ? representativeSample
+                : representativeSample === undefined
+                ? intent.sampleInput
+                : JSON.stringify(representativeSample);
         const result = services.provider
             ? await Promise.resolve(
                   services.provider.composeDraft({
                       userRequest: state.userRequest,
-                      sampleInput: intent.sampleInput,
+                      sampleInput,
                       desiredCount: intent.desiredCount,
                       wantsJson: intent.wantsJson,
                       improvementNotes: state.improvementNotes,
@@ -53,7 +81,7 @@ export class FlowCompositionSkill implements FlowDesignSkill {
               )
             : await designFlowDraft({
                   userRequest: state.userRequest,
-                  sampleInput: intent.sampleInput,
+                  sampleInput,
                   desiredCount: intent.desiredCount,
                   wantsJson: intent.wantsJson,
                   improvementNotes: state.improvementNotes,

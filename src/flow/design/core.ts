@@ -1,7 +1,7 @@
 // Shared flow-design core used by skill wrappers, tools, and mock/example agents.
 import { AgentError } from '../../errors/agent-error';
 import { BuiltinFlowBlockIds } from '../block-pool';
-import { buildFlowOutputFormatInstruction, inferFlowOutputContract, parseDesiredCount } from '../output-contract';
+import { buildFlowOutputFormatInstruction, inferFlowOutputContract } from '../output-contract';
 import { FlowDesignSession, type FlowDesignConnection } from '../design-monitor';
 import {
     connectFlowPorts,
@@ -29,6 +29,7 @@ import type {
     FlowDesignDraftResult,
     FlowDesignExecution,
     FlowDesignIntent,
+    FlowDesignRequestNormalization,
     FlowDesignReflection,
     FlowDesignTaskType,
     FlowDesignValidation,
@@ -81,14 +82,42 @@ export async function buildFlowDesignSampleInput(taskType: FlowDesignTaskType, u
     return (await getFlowDesignSampleInputDefaults(taskType, userRequest)).sampleInput;
 }
 
-/** Produces a normalized intent object from a raw user request. */
-export async function analyzeFlowRequest(
+function deriveLegacySampleInputFromBrief(brief: Awaited<ReturnType<typeof buildDesignBrief>>): {
+    sampleInput: string;
+    sampleInputSource: FlowDesignIntent['sampleInputSource'];
+    sampleInputReadyForDesign: boolean;
+} {
+    const representativeSample = brief.validationPlan.sampleCases[0];
+    const rawInput = representativeSample?.input;
+    const sampleInput =
+        typeof rawInput === 'string' ? rawInput : rawInput === undefined ? '샘플 입력' : JSON.stringify(rawInput);
+
+    return {
+        sampleInput,
+        sampleInputSource: brief.inputContract.source === 'synthetic' ? 'synthetic-graph-json' : 'default',
+        sampleInputReadyForDesign: true,
+    };
+}
+
+export function buildLegacyFlowDesignIntent(args: {
+    normalizedRequest: FlowDesignRequestNormalization;
+    designBrief: Awaited<ReturnType<typeof buildDesignBrief>>;
+}): FlowDesignIntent {
+    return {
+        ...args.normalizedRequest,
+        ...deriveLegacySampleInputFromBrief(args.designBrief),
+        designBrief: args.designBrief,
+    };
+}
+
+/** Produces a thin normalized request object before strategic architecture framing. */
+export async function normalizeFlowRequest(
     userRequest: string,
     options: {
         taskTypeAdvisor?: FlowDesignTaskTypeAdvisor;
         taskTypes?: FlowDesignTaskTypeDefinition[];
     } = {},
-): Promise<FlowDesignIntent> {
+): Promise<FlowDesignRequestNormalization> {
     const outputContract = inferFlowOutputContract(userRequest);
     const taskTypeRecommendation = await inferFlowDesignTaskType({
         userRequest,
@@ -96,8 +125,8 @@ export async function analyzeFlowRequest(
         taskTypeAdvisor: options.taskTypeAdvisor,
         taskTypes: options.taskTypes,
     });
-    const sampleInputDefaults = await getFlowDesignSampleInputDefaults(taskTypeRecommendation.taskType, userRequest);
-    const baseIntent: FlowDesignIntent = {
+
+    return {
         userRequest,
         taskType: taskTypeRecommendation.taskType,
         taskTypeConfidence: taskTypeRecommendation.confidence,
@@ -107,16 +136,26 @@ export async function analyzeFlowRequest(
         wantsJson: outputContract.wantsJson,
         wantsMultiple: outputContract.wantsMultiple,
         desiredCount: outputContract.desiredCount,
-        sampleInput: sampleInputDefaults.sampleInput,
-        sampleInputSource: sampleInputDefaults.source,
-        sampleInputReadyForDesign: sampleInputDefaults.readyForDesign,
     };
-    const designBrief = await buildDesignBrief(baseIntent);
+}
 
-    return {
-        ...baseIntent,
+/** Produces a normalized intent object from a raw user request.
+ * Compatibility wrapper: prefer `normalizeFlowRequest()` + `buildDesignBrief()`
+ * for new strategic call sites.
+ */
+export async function analyzeFlowRequest(
+    userRequest: string,
+    options: {
+        taskTypeAdvisor?: FlowDesignTaskTypeAdvisor;
+        taskTypes?: FlowDesignTaskTypeDefinition[];
+    } = {},
+): Promise<FlowDesignIntent> {
+    const normalizedRequest = await normalizeFlowRequest(userRequest, options);
+    const designBrief = await buildDesignBrief(normalizedRequest);
+    return buildLegacyFlowDesignIntent({
+        normalizedRequest,
         designBrief,
-    };
+    });
 }
 
 /** Builds the system prompt used by the default AI generation node. */
@@ -217,10 +256,11 @@ export async function designFlowDraft(args: {
     toolName?: string;
 }): Promise<FlowDesignDraftResult> {
     const availableBlocks = args.availableBlocks ?? (await getCatalogAvailableFlowBlocks());
-    const architectureIntent = await analyzeFlowRequest(args.userRequest);
+    const normalizedRequest = await normalizeFlowRequest(args.userRequest);
+    const designBrief = await buildDesignBrief(normalizedRequest);
     const architectureNotes = [
-        ...architectureIntent.designBrief!.designPrinciples,
-        ...architectureIntent.designBrief!.validationPlan.assertions.map(item => `Validation target: ${item}`),
+        ...designBrief.designPrinciples,
+        ...designBrief.validationPlan.assertions.map(item => `Validation target: ${item}`),
     ];
     const improvementNotes = [...architectureNotes, ...(args.guidanceNotes ?? []), ...(args.improvementNotes ?? [])];
     ensureRequiredFlowBlocks(availableBlocks, [

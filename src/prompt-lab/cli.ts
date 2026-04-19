@@ -396,6 +396,16 @@ function summarizeExecutionTiming(args: {
         stageId: stage.stageId,
         durationMs: Math.max(0, new Date(stage.completedAt).getTime() - new Date(stage.startedAt).getTime()),
     }));
+    const toolBuckets = new Map<
+        string,
+        {
+            callCount: number;
+            totalDurationMs: number;
+            maxDurationMs: number;
+            lastError?: string;
+        }
+    >();
+    const activeToolStarts = new Map<string, number[]>();
 
     const trace = args.trace ?? [];
     const plannerCall = trace.find(event => event.type === 'planner_call');
@@ -423,18 +433,70 @@ function summarizeExecutionTiming(args: {
     findDurationBetween('planner_validation_start', 'planner_validation_end', 'planner-validation');
     findDurationBetween('planner_fallback_start', 'planner_fallback_end', 'planner-fallback');
 
-    const toolStarts = new Map<string, number>();
     let toolExecutionDurationMs = 0;
+    let lastFailure: PromptLabExecutionTimingSummary['lastFailure'];
     for (const event of trace) {
         if (event.type === 'tool_start' && typeof event.data?.toolName === 'string') {
-            toolStarts.set(`${event.data.toolName}:${event.seq}`, event.ts);
+            const starts = activeToolStarts.get(event.data.toolName) ?? [];
+            starts.push(event.ts);
+            activeToolStarts.set(event.data.toolName, starts);
         }
         if (event.type === 'tool_end' && typeof event.data?.toolName === 'string') {
-            const startEntry = [...toolStarts.entries()].find(([key]) => key.startsWith(`${event.data?.toolName}:`));
-            if (startEntry) {
-                toolExecutionDurationMs += Math.max(0, event.ts - startEntry[1]);
-                toolStarts.delete(startEntry[0]);
+            const toolName = event.data.toolName;
+            const starts = activeToolStarts.get(toolName) ?? [];
+            const startedAt = starts.shift();
+            if (starts.length > 0) {
+                activeToolStarts.set(toolName, starts);
+            } else {
+                activeToolStarts.delete(toolName);
             }
+            if (startedAt !== undefined) {
+                const durationMs = Math.max(0, event.ts - startedAt);
+                toolExecutionDurationMs += durationMs;
+                const bucket = toolBuckets.get(toolName) ?? {
+                    callCount: 0,
+                    totalDurationMs: 0,
+                    maxDurationMs: 0,
+                };
+                bucket.callCount += 1;
+                bucket.totalDurationMs += durationMs;
+                bucket.maxDurationMs = Math.max(bucket.maxDurationMs, durationMs);
+                toolBuckets.set(toolName, bucket);
+            }
+        }
+        if (event.type === 'tool_error' && typeof event.data?.toolName === 'string') {
+            const toolName = event.data.toolName;
+            const starts = activeToolStarts.get(toolName) ?? [];
+            const startedAt = starts.shift();
+            if (starts.length > 0) {
+                activeToolStarts.set(toolName, starts);
+            } else {
+                activeToolStarts.delete(toolName);
+            }
+            const bucket = toolBuckets.get(toolName) ?? {
+                callCount: 0,
+                totalDurationMs: 0,
+                maxDurationMs: 0,
+            };
+            if (startedAt !== undefined) {
+                const durationMs = Math.max(0, event.ts - startedAt);
+                toolExecutionDurationMs += durationMs;
+                bucket.callCount += 1;
+                bucket.totalDurationMs += durationMs;
+                bucket.maxDurationMs = Math.max(bucket.maxDurationMs, durationMs);
+            }
+            if (typeof event.data?.message === 'string') {
+                bucket.lastError = event.data.message;
+                lastFailure = {
+                    toolName,
+                    stepId: typeof event.data?.stepId === 'string' ? event.data.stepId : undefined,
+                    message: event.data.message,
+                };
+            }
+            toolBuckets.set(toolName, bucket);
+        }
+        if (!lastFailure && event.type === 'error' && typeof event.data?.message === 'string') {
+            lastFailure = { message: event.data.message };
         }
     }
     if (toolExecutionDurationMs > 0) {
@@ -459,6 +521,19 @@ function summarizeExecutionTiming(args: {
         });
     }
 
+    const tools = [...toolBuckets.entries()]
+        .map(([toolName, bucket]) => ({
+            toolName,
+            callCount: bucket.callCount,
+            totalDurationMs: Number(bucket.totalDurationMs.toFixed(3)),
+            averageDurationMs: Number(
+                (bucket.callCount > 0 ? bucket.totalDurationMs / bucket.callCount : 0).toFixed(3),
+            ),
+            maxDurationMs: Number(bucket.maxDurationMs.toFixed(3)),
+            lastError: bucket.lastError,
+        }))
+        .sort((left, right) => right.totalDurationMs - left.totalDurationMs);
+
     return {
         advisorTimingStatus,
         totalDurationMs,
@@ -467,6 +542,8 @@ function summarizeExecutionTiming(args: {
         advisorTimeShare,
         advisors,
         stages,
+        tools,
+        lastFailure,
     };
 }
 
@@ -507,7 +584,49 @@ function printExecutionTimingSummary(args: {
     for (const stage of args.executionTiming.stages) {
         output.write(`- ${isKorean ? '단계' : 'Stage'} ${stage.stageId}: durationMs=${stage.durationMs}\n`);
     }
+    for (const tool of args.executionTiming.tools) {
+        output.write(
+            `- ${isKorean ? '도구' : 'Tool'} ${tool.toolName}: callCount=${tool.callCount}, totalDurationMs=${tool.totalDurationMs}, averageDurationMs=${tool.averageDurationMs}, maxDurationMs=${tool.maxDurationMs}${
+                tool.lastError ? `, ${isKorean ? 'lastError' : 'lastError'}=${tool.lastError}` : ''
+            }\n`,
+        );
+    }
+    if (args.executionTiming.lastFailure) {
+        output.write(
+            `${isKorean ? '마지막 실패' : 'Last failure'}: ${
+                args.executionTiming.lastFailure.toolName ?? (isKorean ? '알 수 없음' : 'unknown')
+            }${args.executionTiming.lastFailure.stepId ? ` (${args.executionTiming.lastFailure.stepId})` : ''} - ${
+                args.executionTiming.lastFailure.message
+            }\n`,
+        );
+    }
     output.write(`${isKorean ? '=================' : '======================='}\n\n`);
+}
+
+function summarizeRunCompletionStatus(args: {
+    language: PromptLabLanguage;
+    status: ProductDesignRunResult['status'];
+    trace: TraceEvent[];
+}): string {
+    const isKorean = args.language === 'ko';
+    const lastToolFailure = [...args.trace]
+        .reverse()
+        .find(event => event.type === 'tool_error' && typeof event.data?.message === 'string');
+    if (lastToolFailure) {
+        const toolName =
+            typeof lastToolFailure.data?.toolName === 'string'
+                ? lastToolFailure.data.toolName
+                : isKorean
+                ? '알 수 없는 도구'
+                : 'unknown tool';
+        return `${isKorean ? 'agent execution completed' : 'agent execution completed'} | ${
+            isKorean ? '상태' : 'status'
+        }=${args.status} | ${toolName}: ${lastToolFailure.data?.message}`;
+    }
+
+    return `${isKorean ? 'agent execution completed' : 'agent execution completed'} | ${
+        isKorean ? '상태' : 'status'
+    }=${args.status}`;
 }
 
 function printAutoPolicyDecision(args: {
@@ -623,6 +742,7 @@ function createLiveStatusPrinter() {
         finish(text?: string) {
             if (text) {
                 activity = text;
+                recentLog = '';
                 render();
             }
             if (active) {
@@ -1608,7 +1728,13 @@ async function main() {
                 },
             },
         });
-        status.finish('agent execution completed');
+        status.finish(
+            summarizeRunCompletionStatus({
+                language,
+                status: result.status,
+                trace: result.trace,
+            }),
+        );
         const agentRunCompletedAt = new Date().toISOString();
 
         const resolvedDesignEvent = latestDesignEvent ?? synthesizeFlowDesignEventFromResult(result);

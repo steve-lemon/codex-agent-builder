@@ -122,6 +122,7 @@ describe('PromptLabProduct', () => {
                     { stageId: 'self-review', durationMs: 200 },
                     { stageId: 'prompt-finalize', durationMs: 134 },
                 ],
+                tools: [],
             },
         });
 
@@ -546,6 +547,7 @@ describe('PromptLabProduct', () => {
                     { stageId: 'planner', durationMs: 800 },
                     { stageId: 'tool-execution', durationMs: 50 },
                 ],
+                tools: [],
             },
             gateway: {
                 generateStructured: vi.fn(async () => {

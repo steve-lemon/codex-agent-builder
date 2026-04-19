@@ -22,8 +22,10 @@ import { TraceStore } from '../observability/types';
 import type { FlowDesignConnection } from '../flow/design-monitor';
 import { UnifiedRunEventBus, type UnifiedRunEventConnection } from '../observability/unified-timeline';
 import { addDiagnosticListener, removeDiagnosticListener, type DiagnosticListener } from '../diagnostics/logger';
-import { analyzeFlowRequest } from '../flow/design/core';
+import { normalizeFlowRequest } from '../flow/design/core';
+import { buildDesignBrief } from '../flow/design/architecture';
 import { summarizeDesignBriefForPlanner } from '../flow/design/architecture';
+import type { ToolDefinition } from '../tools';
 
 /** Constructor dependencies required by the runtime coordinator. */
 export interface AgentRuntimeOptions {
@@ -90,9 +92,11 @@ export class AgentRuntime {
         const skillName = skillOverride ?? (await this.selector.select(userInput));
         const skillInstructions = this.loadSkillInstructions(skillName);
         const allowedToolDefinitions = this.router.toolsForSkill(skillName);
-        const allowedTools = allowedToolDefinitions.map(tool => tool.name);
-        const plannerInstructions = this.buildPlannerInstructions(skillName, allowedTools);
-        const toolManifests = allowedToolDefinitions.map(buildToolManifest);
+        const allowedTools = allowedToolDefinitions.map((tool: ToolDefinition) => tool.name);
+        const plannerToolDefinitions = this.buildPlannerToolSubset(skillName, allowedToolDefinitions);
+        const plannerAllowedTools = plannerToolDefinitions.map((tool: ToolDefinition) => tool.name);
+        const plannerInstructions = this.buildPlannerInstructions(skillName, plannerAllowedTools);
+        const toolManifests = plannerToolDefinitions.map(buildToolManifest);
         const unifiedConnection = this.options.unifiedEventConnectionFactory?.({
             runId,
             skillName,
@@ -115,12 +119,12 @@ export class AgentRuntime {
             unifiedBus?.asFlowDesignConnection(),
         ]);
 
-        this.tracer.log(runId, 'skill_selected', { skillName, allowedTools });
+        this.tracer.log(runId, 'skill_selected', { skillName, allowedTools, plannerAllowedTools });
         const strategyBrief =
             skillName === 'flow-designer' ||
             skillName === 'flow-preflight-validator' ||
             skillName === 'node-config-designer'
-                ? summarizeDesignBriefForPlanner((await analyzeFlowRequest(userInput)).designBrief!)
+                ? summarizeDesignBriefForPlanner(await buildDesignBrief(await normalizeFlowRequest(userInput)))
                 : undefined;
         if (strategyBrief) {
             this.tracer.log(runId, 'architecture_brief_created', {
@@ -137,9 +141,9 @@ export class AgentRuntime {
             skillInstructions,
             plannerInstructions,
             strategyBrief,
-            allowedTools,
+            allowedTools: plannerAllowedTools,
             toolManifests,
-            toolDefinitions: allowedToolDefinitions,
+            toolDefinitions: plannerToolDefinitions,
             onTraceEvent: (type, data) => {
                 this.tracer.log(runId, type, data);
             },
@@ -362,12 +366,50 @@ export class AgentRuntime {
         return readFileSync(filePath, 'utf-8');
     }
 
+    private buildPlannerToolSubset(skillName: SkillName, allowedToolDefinitions: ToolDefinition[]) {
+        const preferredToolsBySkill: Partial<Record<SkillName, string[]>> = {
+            'flow-designer': [
+                'listAvailableFlowBlocks',
+                'prevalidateFlowDesignRequest',
+                'assessFlowFeasibility',
+                'probeFlowBlock',
+                'designFlowDraft',
+                'validateFlowDraft',
+                'refineTaskGraph',
+                'designFlowNodeConfigurations',
+                'validateFlowNodeConfigurations',
+                'runFlowSample',
+                'reflectFlowResult',
+            ],
+            'flow-preflight-validator': [
+                'inferTaskGraph',
+                'analyzeTaskGraphCompatibility',
+                'proposeMissingBlocks',
+                'prevalidateFlowDesignRequest',
+                'assessFlowFeasibility',
+            ],
+            'node-config-designer': [
+                'designFlowDraft',
+                'designFlowNodeConfigurations',
+                'validateFlowNodeConfigurations',
+            ],
+        };
+        const preferredTools = preferredToolsBySkill[skillName];
+        if (!preferredTools) {
+            return allowedToolDefinitions;
+        }
+
+        const preferredSet = new Set(preferredTools);
+        const subset = allowedToolDefinitions.filter(tool => preferredSet.has(tool.name));
+        return subset.length > 0 ? subset : allowedToolDefinitions;
+    }
+
     private buildPlannerInstructions(skillName: SkillName, allowedTools: string[]): string {
         switch (skillName) {
             case 'flow-designer':
                 return [
                     'Use flow-design tools only.',
-                    'Start by analyzing intent and reuse any preflight result via step references.',
+                    'Start with feasibility/preflight and reuse any preflight result via step references.',
                     'Stop early when feasibility shows critical capability gaps.',
                     'Prefer the smallest concrete flow draft that matches the request operation model.',
                     'Only configure nodes after a draft flow exists, then validate or sample-run if needed.',
