@@ -186,7 +186,7 @@ npm run demo
 ## Run Prompt Lab
 
 ```bash
-npm run prompt-lab
+npm run lab
 ```
 
 `prompt-lab` starts an interactive CLI that:
@@ -204,6 +204,24 @@ npm run prompt-lab
 - accepts operator feedback
 - synthesizes a final Codex prompt for the next iteration
 
+Useful CLI shortcuts:
+
+```bash
+# rerun the most recent session config and requirement
+npm run lab -- --last
+
+# rerun the most recent session without interactive prompts
+npm run lab -- --last --auto
+
+# rerun the last session but override only the requirement
+npm run lab -- --last --auto --requirement "새 요구사항"
+
+# fully non-interactive execution
+npm run lab -- --auto --mode run --provider openai --skill flow-designer --main-model gpt-5-mini --lite-model gpt-4.1-mini --language ko --requirement "그래프 json을 md로 설명해줘"
+```
+
+`--auto` only skips repetitive operator input. It still evaluates prompt-lab auto policy rules and can stop early when the run enters a configured stop condition.
+
 Typical prompt-lab artifacts:
 
 - `timeline.ndjson`: merged runtime timeline
@@ -218,6 +236,14 @@ Typical prompt-lab artifacts:
 - `advisor-evaluation.md`: readable advisor quality summary for the current lite model, generated in advisor-evaluation mode
 - `self-review.json`: structured self-review
 - `codex-prompt.md`: final synthesized Codex prompt
+- `prompt-lab-last-run.json`: cached last-run config/requirement used by `--last`
+
+Prompt-lab resources live in `data/products/prompt-lab/`:
+
+- `PROMPT_LAB_MANIFEST.yml`: CLI copy, defaults, self-review prompt, and Codex prompt synthesis prompt
+- `PROMPT_LAB_AUTO_POLICY.yml`: auto-run stop/warn policy used by `--auto`
+
+The current prompt-lab status, known gaps, and next-step notes are tracked in [docs/PROMPT_LAB_CONTEXT.md](./docs/PROMPT_LAB_CONTEXT.md).
 
 All npm scripts are wrapped through [`scripts/with-project-node.sh`](./scripts/with-project-node.sh), which sources `nvm` and uses the version from [`.nvmrc`](./.nvmrc).
 The project targets Node.js `22.15.1` or newer and is intended to remain compatible with later major versions.

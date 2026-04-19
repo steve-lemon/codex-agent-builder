@@ -7,6 +7,7 @@ import yaml from 'js-yaml';
 import { ensureProjectEnvLoaded } from '../env/project-env';
 import { getPromptLabLanguageCopy, getPromptLabManifest, getPromptLabModelOptions } from './manifest';
 import { PromptLabProduct, PromptLabRunError } from './product';
+import { evaluatePromptLabAutoPolicy, getPromptLabAutoPolicy } from './auto-policy';
 import type {
     PromptLabRunArtifacts,
     PromptLabMode,
@@ -88,6 +89,86 @@ function normalizeSkill(value: string, fallback: ProductFlowSkill): ProductFlowS
         return normalized;
     }
     return fallback;
+}
+
+function parseCliArgs(argv: string[]): {
+    useLastRun: boolean;
+    auto: boolean;
+    language?: PromptLabLanguage;
+    mode?: PromptLabMode;
+    provider?: PromptLabProvider;
+    skillName?: ProductFlowSkill;
+    mainModel?: string;
+    liteModel?: string;
+    requirement?: string;
+} {
+    const parsed: {
+        useLastRun: boolean;
+        auto: boolean;
+        language?: PromptLabLanguage;
+        mode?: PromptLabMode;
+        provider?: PromptLabProvider;
+        skillName?: ProductFlowSkill;
+        mainModel?: string;
+        liteModel?: string;
+        requirement?: string;
+    } = {
+        useLastRun: false,
+        auto: false,
+    };
+
+    for (let index = 0; index < argv.length; index += 1) {
+        const arg = argv[index];
+        const next = argv[index + 1];
+        if (!arg) {
+            continue;
+        }
+        if (arg === '--last') {
+            parsed.useLastRun = true;
+            continue;
+        }
+        if (arg === '--auto') {
+            parsed.auto = true;
+            continue;
+        }
+        if (arg === '--language' && (next === 'ko' || next === 'en')) {
+            parsed.language = next;
+            index += 1;
+            continue;
+        }
+        if (arg === '--mode' && (next === 'run' || next === 'advisor-eval')) {
+            parsed.mode = next;
+            index += 1;
+            continue;
+        }
+        if (arg === '--provider' && (next === 'openai' || next === 'gemini' || next === 'fake')) {
+            parsed.provider = next;
+            index += 1;
+            continue;
+        }
+        if (arg === '--skill' && next) {
+            parsed.skillName = normalizeSkill(next, 'flow-designer');
+            index += 1;
+            continue;
+        }
+        if (arg === '--main-model' && next) {
+            parsed.mainModel = next;
+            index += 1;
+            continue;
+        }
+        if (arg === '--lite-model' && next) {
+            parsed.liteModel = next;
+            index += 1;
+            continue;
+        }
+        if (arg === '--requirement' && next) {
+            parsed.requirement = next;
+            index += 1;
+            continue;
+        }
+    }
+
+    return parsed;
 }
 
 function printSessionHeader(
@@ -409,6 +490,40 @@ function printExecutionTimingSummary(args: {
         output.write(`- ${isKorean ? '단계' : 'Stage'} ${stage.stageId}: durationMs=${stage.durationMs}\n`);
     }
     output.write(`${isKorean ? '=================' : '======================='}\n\n`);
+}
+
+function printAutoPolicyDecision(args: {
+    language: PromptLabLanguage;
+    stopMatches: string[];
+    warnMatches: string[];
+    stopped: boolean;
+}): void {
+    const isKorean = args.language === 'ko';
+    output.write(`${isKorean ? '=== 자동 실행 정책 ===' : '=== Auto Execution Policy ==='}\n`);
+    if (args.warnMatches.length > 0) {
+        output.write(`${isKorean ? '경고' : 'Warnings'}:\n`);
+        for (const item of args.warnMatches) {
+            output.write(`- ${item}\n`);
+        }
+    }
+    if (args.stopMatches.length > 0) {
+        output.write(`${isKorean ? '중단 조건' : 'Stop conditions'}:\n`);
+        for (const item of args.stopMatches) {
+            output.write(`- ${item}\n`);
+        }
+    }
+    output.write(
+        `${
+            args.stopped
+                ? isKorean
+                    ? '자동 실행 정책에 따라 여기서 멈췄습니다.'
+                    : 'Auto execution paused here due to policy.'
+                : isKorean
+                  ? '자동 실행 정책상 경고만 기록하고 계속 진행합니다.'
+                  : 'Auto execution continues with warnings only.'
+        }\n`,
+    );
+    output.write(`${isKorean ? '======================' : '==========================='}\n\n`);
 }
 
 function printFailureClipboard(error: PromptLabRunError): void {
@@ -1187,45 +1302,49 @@ async function main() {
     ensureProjectEnvLoaded();
     const manifest = await getPromptLabManifest();
     const defaultLanguage = manifest.defaults.language as PromptLabLanguage;
-    const useLastRun = process.argv.slice(2).includes('--last');
+    const cliArgs = parseCliArgs(process.argv.slice(2));
+    const useLastRun = cliArgs.useLastRun;
     const rl = createInterface({ input, output });
 
     try {
         const cachedLastRun = useLastRun
             ? await readPromptLabLastRun({ outputRoot: manifest.defaults.outputRoot })
             : undefined;
-        const language = cachedLastRun?.config.language
-            ? cachedLastRun.config.language
-            : await selectWithArrows({
-                  prompt: `${(await getPromptLabLanguageCopy(defaultLanguage)).languagePrompt} (↑/↓ 후 Enter)`,
-                  options: [
-                      { value: 'ko', label: '한국어 (기본)' },
-                      { value: 'en', label: 'English' },
-                  ],
-                  defaultValue: defaultLanguage,
-              });
+        const language =
+            cliArgs.language ?? cachedLastRun?.config.language
+                ? (cliArgs.language ?? cachedLastRun?.config.language)!
+                : await selectWithArrows({
+                      prompt: `${(await getPromptLabLanguageCopy(defaultLanguage)).languagePrompt} (↑/↓ 후 Enter)`,
+                      options: [
+                          { value: 'ko', label: '한국어 (기본)' },
+                          { value: 'en', label: 'English' },
+                      ],
+                      defaultValue: defaultLanguage,
+                  });
         const copy = await getPromptLabLanguageCopy(language);
 
         output.write(`${copy.welcome}\n`);
-        const mode = cachedLastRun?.config.mode
-            ? cachedLastRun.config.mode
-            : await selectWithArrows({
-                  prompt: `${copy.modePrompt} (↑/↓ 후 Enter)`,
-                  options: [
-                      { value: 'run', label: language === 'ko' ? '일반 실행' : 'Run session' },
-                      {
-                          value: 'advisor-eval',
-                          label: language === 'ko' ? 'Advisor 평가 전용' : 'Advisor evaluation only',
-                      },
-                  ],
-                  defaultValue: manifest.defaults.mode as PromptLabMode,
-              });
+        const mode =
+            cliArgs.mode ?? cachedLastRun?.config.mode
+                ? (cliArgs.mode ?? cachedLastRun?.config.mode)!
+                : await selectWithArrows({
+                      prompt: `${copy.modePrompt} (↑/↓ 후 Enter)`,
+                      options: [
+                          { value: 'run', label: language === 'ko' ? '일반 실행' : 'Run session' },
+                          {
+                              value: 'advisor-eval',
+                              label: language === 'ko' ? 'Advisor 평가 전용' : 'Advisor evaluation only',
+                          },
+                      ],
+                      defaultValue: manifest.defaults.mode as PromptLabMode,
+                  });
         const defaultSkill = manifest.defaults.skillName;
         const defaultProvider = resolveDefaultProvider(manifest.defaults.providerOrder);
-        let provider = cachedLastRun?.config.provider ?? defaultProvider;
-        let skillName = mode === 'run' ? cachedLastRun?.config.skillName ?? defaultSkill : undefined;
-        let mainModel = cachedLastRun?.config.mainModel ?? defaultMainModel(provider);
-        let liteModel = cachedLastRun?.config.liteModel ?? defaultLiteModel(provider, mainModel);
+        let provider = cliArgs.provider ?? cachedLastRun?.config.provider ?? defaultProvider;
+        let skillName =
+            mode === 'run' ? cliArgs.skillName ?? cachedLastRun?.config.skillName ?? defaultSkill : undefined;
+        let mainModel = cliArgs.mainModel ?? cachedLastRun?.config.mainModel ?? defaultMainModel(provider);
+        let liteModel = cliArgs.liteModel ?? cachedLastRun?.config.liteModel ?? defaultLiteModel(provider, mainModel);
 
         printSelectedDefaults({
             language,
@@ -1236,23 +1355,35 @@ async function main() {
             liteModel,
         });
 
-        const useDefaultSettings = useLastRun
-            ? 'default'
-            : await selectWithArrows({
-                  prompt: `${copy.settingsPrompt} (↑/↓ 후 Enter)`,
-                  options: [
-                      {
-                          value: 'default',
-                          label:
-                              language === 'ko' ? '기본 설정으로 계속 (권장)' : 'Continue with defaults (Recommended)',
-                      },
-                      {
-                          value: 'customize',
-                          label: language === 'ko' ? '설정 변경' : 'Customize settings',
-                      },
-                  ],
-                  defaultValue: 'default',
-              });
+        const hasCliOverrides =
+            cliArgs.auto ||
+            cliArgs.language !== undefined ||
+            cliArgs.mode !== undefined ||
+            cliArgs.provider !== undefined ||
+            cliArgs.skillName !== undefined ||
+            cliArgs.mainModel !== undefined ||
+            cliArgs.liteModel !== undefined ||
+            cliArgs.requirement !== undefined;
+        const useDefaultSettings =
+            useLastRun || hasCliOverrides
+                ? 'default'
+                : await selectWithArrows({
+                      prompt: `${copy.settingsPrompt} (↑/↓ 후 Enter)`,
+                      options: [
+                          {
+                              value: 'default',
+                              label:
+                                  language === 'ko'
+                                      ? '기본 설정으로 계속 (권장)'
+                                      : 'Continue with defaults (Recommended)',
+                          },
+                          {
+                              value: 'customize',
+                              label: language === 'ko' ? '설정 변경' : 'Customize settings',
+                          },
+                      ],
+                      defaultValue: 'default',
+                  });
 
         if (useDefaultSettings === 'customize') {
             provider = await selectWithArrows({
@@ -1284,7 +1415,9 @@ async function main() {
         }
         const requirement =
             mode === 'run'
-                ? useLastRun && cachedLastRun?.config.mode === 'run' && cachedLastRun.requirement
+                ? cliArgs.requirement
+                    ? cliArgs.requirement
+                    : useLastRun && cachedLastRun?.config.mode === 'run' && cachedLastRun.requirement
                     ? cachedLastRun.requirement
                     : await selectRequirementWithHistory({
                           prompt: copy.requirementPrompt,
@@ -1436,9 +1569,32 @@ async function main() {
             executionTiming: reviewedExecutionTiming,
         });
 
+        if (cliArgs.auto) {
+            const autoPolicy = await getPromptLabAutoPolicy();
+            const autoDecision = evaluatePromptLabAutoPolicy({
+                policy: autoPolicy,
+                result,
+                synthesizedDesignSnapshot: !latestDesignEvent && !!resolvedDesignEvent,
+            });
+            if (autoDecision.warnMatches.length > 0 || autoDecision.stopMatches.length > 0) {
+                printAutoPolicyDecision({
+                    language,
+                    stopMatches: autoDecision.stopMatches,
+                    warnMatches: autoDecision.warnMatches,
+                    stopped: autoDecision.shouldStop,
+                });
+            }
+            if (autoDecision.shouldStop) {
+                output.write(`${copy.completionMessage} ${session.sessionDir}\n`);
+                return;
+            }
+        }
+
         output.write(`${copy.selfReviewMessage}\n`);
         output.write(`${selfReview.summary}\n`);
-        const feedback = await readMultilineFeedback(rl, copy.feedbackPrompt, copy.feedbackDoneHint);
+        const feedback = cliArgs.auto
+            ? ''
+            : await readMultilineFeedback(rl, copy.feedbackPrompt, copy.feedbackDoneHint);
 
         const finalizeStartedAt = new Date().toISOString();
         const artifacts = await product.finalizeSession({

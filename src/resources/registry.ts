@@ -8,6 +8,7 @@ import { type LlmRuntimeManifestRecord, LlmRuntimeManifestSchema } from '../llm/
 import { type ToolPackResourceRecord, ToolPackResourceSchema } from '../tools/core/resource-schemas';
 import { type FlowBlockPoolRecord, FlowBlockPoolSchema } from '../flow/resource-schemas';
 import { type PromptLabManifestRecord, PromptLabManifestSchema } from '../prompt-lab/manifest-schemas';
+import { type PromptLabAutoPolicyRecord, PromptLabAutoPolicySchema } from '../prompt-lab/auto-policy-schemas';
 import {
     type LiteAdvisorEvaluationResourceRecord,
     LiteAdvisorEvaluationResourceSchema,
@@ -18,7 +19,7 @@ import {
 export interface ResourceDefinition<T> {
     id: string;
     relativePath: string;
-    schema: ZodType<T>;
+    schema: ZodType<T, any, any>;
 }
 
 export interface ResourceSchemaMap {
@@ -26,6 +27,7 @@ export interface ResourceSchemaMap {
     'node-config-design.manifest': NodeConfigDesignManifestRecord;
     'llm.runtime.manifest': LlmRuntimeManifestRecord;
     'prompt-lab.manifest': PromptLabManifestRecord;
+    'prompt-lab.auto-policy': PromptLabAutoPolicyRecord;
     'flow.block-pool': FlowBlockPoolRecord;
     'flow-design.advisors': LiteAdvisorResourceRecord;
     'flow-design.advisor-evals': LiteAdvisorEvaluationResourceRecord;
@@ -59,6 +61,11 @@ export const RESOURCE_DEFINITIONS: {
         id: 'prompt-lab.manifest',
         relativePath: 'products/prompt-lab/PROMPT_LAB_MANIFEST.yml',
         schema: PromptLabManifestSchema,
+    },
+    'prompt-lab.auto-policy': {
+        id: 'prompt-lab.auto-policy',
+        relativePath: 'products/prompt-lab/PROMPT_LAB_AUTO_POLICY.yml',
+        schema: PromptLabAutoPolicySchema,
     },
     'flow.block-pool': {
         id: 'flow.block-pool',
