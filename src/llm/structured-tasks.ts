@@ -1,9 +1,60 @@
 // Shared structured-generation request builders used by gateway plan/reflect/finalize flows.
 import { PlanResponseSchema, parsePlanResponse, ReflectorOutputSchema } from '../agent/schemas';
 import { FinalResultResponseSchema } from '../agent/types';
+import type { ToolManifest } from '../tools';
 import type { FinalizerInput, PlannerInput, ReflectorInput, StructuredGenerationInput } from './types';
 import { defineStructuredSchema } from './structured-schema';
 import { getFinalizeSystemPrompt, getPlanSystemPrompt, getReflectSystemPrompt } from './structured-task-resources';
+
+function summarizeJsonSchemaType(schema: unknown): string {
+    if (!schema || typeof schema !== 'object') {
+        return 'unknown';
+    }
+    const record = schema as Record<string, unknown>;
+    const type = typeof record.type === 'string' ? record.type : undefined;
+    if (type === 'array') {
+        return `array<${summarizeJsonSchemaType(record.items)}>`;
+    }
+    return type ?? 'unknown';
+}
+
+function buildPlannerParameterHints(schema: unknown): Array<{ name: string; type: string; required: boolean }> {
+    if (!schema || typeof schema !== 'object') {
+        return [];
+    }
+
+    const record = schema as Record<string, unknown>;
+    const properties =
+        record.properties && typeof record.properties === 'object'
+            ? (record.properties as Record<string, unknown>)
+            : undefined;
+    const required = Array.isArray(record.required)
+        ? new Set(record.required.filter((value): value is string => typeof value === 'string'))
+        : new Set<string>();
+
+    if (!properties) {
+        return [];
+    }
+
+    return Object.entries(properties)
+        .slice(0, 8)
+        .map(([name, propertySchema]) => ({
+            name,
+            type: summarizeJsonSchemaType(propertySchema),
+            required: required.has(name),
+        }));
+}
+
+function compactToolManifestForPlanner(tool: ToolManifest) {
+    return {
+        name: tool.name,
+        description: tool.description,
+        riskLevel: tool.riskLevel,
+        requiresConfirmation: tool.requiresConfirmation,
+        parallelSafe: tool.parallelSafe,
+        parameterHints: buildPlannerParameterHints(tool.parametersJsonSchema),
+    };
+}
 
 /** Builds the common structured request used for planner execution. */
 export async function buildPlanStructuredRequest(input: PlannerInput): Promise<StructuredGenerationInput> {
@@ -19,10 +70,10 @@ export async function buildPlanStructuredRequest(input: PlannerInput): Promise<S
                 content: JSON.stringify({
                     userInput: input.userInput,
                     skillName: input.skillName,
-                    skillInstructions: input.skillInstructions,
+                    skillInstructions: input.plannerInstructions ?? input.skillInstructions,
                     strategyBrief: input.strategyBrief,
                     allowedTools: input.allowedTools,
-                    toolManifests: input.toolManifests,
+                    toolManifests: input.toolManifests.map(compactToolManifestForPlanner),
                 }),
             },
         ],

@@ -34,6 +34,8 @@ describe('runtime flow', () => {
         expect(result.finalResult).toBeDefined();
         expect(result.finalResult?.summary).toContain('customer-support-reviewer');
         expect(Array.isArray(result.finalResult?.nextActions)).toBe(true);
+        expect(result.trace.some(event => event.type === 'planner_llm_start')).toBe(true);
+        expect(result.trace.some(event => event.type === 'planner_validation_end')).toBe(true);
     });
 
     it('completes a flow-designer skill run with the bundled flow-design tools', async () => {

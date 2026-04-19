@@ -163,9 +163,7 @@ const PreflightSummarySchema = z.object({
 async function hydrateFlowDocument(flow: FlowDocument): Promise<FlowDocument> {
     const availableFlowBlocks = await getCatalogAvailableFlowBlocks();
     const availableBlockMap = new Map(availableFlowBlocks.map(block => [block.id, block]));
-    const unknownBlockIds = flow.nodes
-        .map(node => node.blockId)
-        .filter(blockId => !availableBlockMap.has(blockId));
+    const unknownBlockIds = flow.nodes.map(node => node.blockId).filter(blockId => !availableBlockMap.has(blockId));
 
     if (unknownBlockIds.length > 0) {
         throw new AgentError(
@@ -494,9 +492,14 @@ export async function createFlowDesignToolBundle(
         ),
         [FLOW_DESIGN_EXECUTE_IDS.assessFlowFeasibility]: defineFlowToolExecutor<{ userRequest: string }>(
             async ({ userRequest }, context) => {
+                const intent = await analyzeFlowIntent(userRequest as string, {
+                    taskTypeAdvisor: createFlowDesignTaskTypeAdvisor(context.llm),
+                });
                 return await assessFlowFeasibility(userRequest as string, {
                     aiDelegationAdvisor: createFlowAiDelegationAdvisor(context.llm),
                     taskGraphAdvisor: createFlowDesignTaskGraphAdvisor(context.llm),
+                    taskType: intent.taskType,
+                    operationModel: intent.designBrief?.mission.operationModel,
                 });
             },
         ),
@@ -520,11 +523,16 @@ export async function createFlowDesignToolBundle(
             improvementNotes?: string[];
             preflight?: FlowFeasibilityAssessment;
         }>(async ({ userRequest, sampleInput, desiredCount, wantsJson, improvementNotes = [], preflight }, context) => {
+            const intent = await analyzeFlowIntent(userRequest as string, {
+                taskTypeAdvisor: createFlowDesignTaskTypeAdvisor(context.llm),
+            });
             const feasibility =
                 (preflight as FlowFeasibilityAssessment | undefined) ??
                 (await assessFlowFeasibility(userRequest as string, {
                     aiDelegationAdvisor: createFlowAiDelegationAdvisor(context.llm),
                     taskGraphAdvisor: createFlowDesignTaskGraphAdvisor(context.llm),
+                    taskType: intent.taskType,
+                    operationModel: intent.designBrief?.mission.operationModel,
                 }));
             return await Promise.resolve(
                 provider.composeDraft({

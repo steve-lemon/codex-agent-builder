@@ -58,6 +58,101 @@ function buildRunSnapshot(
     };
 }
 
+function buildSelfReviewRunSnapshot(
+    session: PromptLabSessionRecord,
+    result: ProductDesignRunResult,
+    advisorEvaluation?: AdvisorEvaluationReport,
+    executionTiming?: PromptLabExecutionTimingSummary,
+) {
+    return {
+        sessionId: session.sessionId,
+        requirement: session.requirement,
+        language: session.config.language,
+        provider: session.config.provider,
+        mainModel: session.config.mainModel,
+        liteModel: session.config.liteModel,
+        skillName: result.skillName,
+        status: result.status,
+        summary: result.summary,
+        success: result.success,
+        requirementAssessment: {
+            executionSucceeded: result.requirementAssessment.executionSucceeded,
+            fulfillmentLevel: result.requirementAssessment.fulfillmentLevel,
+            summary: result.requirementAssessment.summary,
+            reasons: result.requirementAssessment.reasons.slice(0, 4),
+            caveats: result.requirementAssessment.caveats.slice(0, 4),
+        },
+        architectureBrief: result.architectureBrief
+            ? {
+                  mission: result.architectureBrief.mission,
+                  executionPosture: result.architectureBrief.executionPosture,
+                  designPrinciples: result.architectureBrief.designPrinciples.slice(0, 4),
+                  validationPlan: {
+                      confidenceCeiling: result.architectureBrief.validationPlan.confidenceCeiling,
+                      assertions: result.architectureBrief.validationPlan.assertions.slice(0, 4),
+                      sampleCases: result.architectureBrief.validationPlan.sampleCases.slice(0, 3).map(item => ({
+                          id: item.id,
+                          role: item.role,
+                          source: item.source,
+                          input: item.input,
+                          expectedResult: item.expectedResult,
+                          assertions: item.assertions.slice(0, 3),
+                      })),
+                  },
+              }
+            : undefined,
+        architectureReview: result.architectureReview
+            ? {
+                  strategyFit: result.architectureReview.strategyFit,
+                  evidenceAdequacy: result.architectureReview.evidenceAdequacy,
+                  syntheticReliance: result.architectureReview.syntheticReliance,
+                  keyFindings: result.architectureReview.keyFindings.slice(0, 4),
+                  recommendedAdjustments: result.architectureReview.recommendedAdjustments.slice(0, 4),
+              }
+            : undefined,
+        outputContract: result.outputContract,
+        syntheticValidationUsed: result.requirementAssessment.reasons.some(
+            reason => reason.code === 'synthetic-sample-validation',
+        ),
+        executionTiming: executionTiming
+            ? {
+                  totalDurationMs: executionTiming.totalDurationMs,
+                  advisorTimingStatus: executionTiming.advisorTimingStatus,
+                  stages: executionTiming.stages.slice(0, 8),
+              }
+            : undefined,
+        flowSummary: result.flowDesign
+            ? {
+                  feasible: result.flowDesign.feasible,
+                  missingCapabilities: result.flowDesign.missingCapabilities.slice(0, 6),
+                  improvements: result.flowDesign.improvements.slice(0, 4),
+              }
+            : undefined,
+        nodeConfigurationSummary: result.nodeConfiguration
+            ? {
+                  configuredNodeCount: result.nodeConfiguration.configuredNodeCount,
+                  appliedStrategies: result.nodeConfiguration.appliedStrategies.slice(0, 6),
+                  nodeStrategyAssignments: result.nodeConfiguration.nodeStrategyAssignments.slice(0, 6),
+              }
+            : undefined,
+        trace: result.trace.slice(-6).map(item => ({
+            ts: item.ts,
+            type: item.type,
+            stage: item.stage,
+            message: item.message,
+            data: item.data,
+        })),
+        advisorEvaluation: advisorEvaluation
+            ? {
+                  summary: advisorEvaluation.summary,
+                  suitableForLiteUsage: advisorEvaluation.suitableForLiteUsage,
+                  overallPassRate: advisorEvaluation.overallPassRate,
+                  overallFallbackRate: advisorEvaluation.overallFallbackRate,
+              }
+            : undefined,
+    };
+}
+
 function derivePromptGuardrails(requirement: string, userFeedback: string) {
     const combined = `${requirement}\n${userFeedback}`.toLowerCase();
     const includesAny = (...patterns: RegExp[]) => patterns.some(pattern => pattern.test(combined));
@@ -90,7 +185,12 @@ export async function buildPromptLabSelfReviewRequest(args: {
                 role: 'user',
                 content: JSON.stringify({
                     language: args.language,
-                    run: buildRunSnapshot(args.session, args.result, args.advisorEvaluation, args.executionTiming),
+                    run: buildSelfReviewRunSnapshot(
+                        args.session,
+                        args.result,
+                        args.advisorEvaluation,
+                        args.executionTiming,
+                    ),
                 }),
             },
         ],

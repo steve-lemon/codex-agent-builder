@@ -3,6 +3,7 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import yaml from 'js-yaml';
+import type { ProductDesignRunResult } from '../product/types';
 import { PromptLabProduct, PromptLabRunError, sanitizeCodexPromptText } from './product';
 
 describe('PromptLabProduct', () => {
@@ -468,5 +469,92 @@ describe('PromptLabProduct', () => {
                 overallAverageLiteDurationMs: expect.anything(),
             }),
         );
+    });
+
+    it('uses a deterministic self-review for failed runs', async () => {
+        const outputRoot = await mkdtemp(join(tmpdir(), 'prompt-lab-'));
+        const product = new PromptLabProduct();
+        const { session } = await product.runRequirement({
+            config: {
+                mode: 'run',
+                provider: 'fake',
+                mainModel: 'fake-main',
+                liteModel: 'fake-lite',
+                language: 'ko',
+                skillName: 'flow-designer',
+                outputRoot,
+            },
+            requirement: '키워드를 주면 블로그 제목 여러 개를 만들어줘.',
+        });
+
+        const failedResult = {
+            skillName: 'flow-designer',
+            runId: 'run-failed',
+            status: 'failed',
+            summary: 'Run failed during design.',
+            success: false,
+            requirementAssessment: {
+                executionSucceeded: false,
+                fulfillmentLevel: 'not-fulfilled',
+                summary: '실행이 성공적으로 끝나지 않아 아직 요구사항을 충족하지 못했습니다.',
+                caveats: [],
+                reasons: [
+                    {
+                        category: 'execution',
+                        code: 'execution-failed',
+                        message: '실행이 성공적으로 완료되지 않았습니다.',
+                    },
+                ],
+            },
+            nextActions: [],
+            flowDesign: {
+                feasible: false,
+                missingCapabilities: [],
+                improvements: [],
+                designPassCount: 0,
+                taskGraphRefinementCount: 0,
+            },
+            nodeConfiguration: {
+                improvements: [],
+                appliedStrategies: [],
+                nodeStrategyAssignments: [],
+                configuredNodeCount: 0,
+                probeInsightCount: 0,
+            },
+            trace: [],
+            outputContract: {
+                format: 'plain-text',
+                cardinality: 'single',
+                explicitFormat: false,
+                desiredCount: 1,
+                wantsMultiple: false,
+                wantsJson: false,
+            },
+        } as unknown as ProductDesignRunResult;
+
+        const review = await product.createSelfReview({
+            session,
+            result: failedResult,
+            executionTiming: {
+                advisorTimingStatus: 'not-observed',
+                totalDurationMs: 1000,
+                advisorCallCount: 0,
+                advisorTotalDurationMs: 0,
+                advisorTimeShare: null,
+                advisors: [],
+                stages: [
+                    { stageId: 'planner', durationMs: 800 },
+                    { stageId: 'tool-execution', durationMs: 50 },
+                ],
+            },
+            gateway: {
+                generateStructured: vi.fn(async () => {
+                    throw new Error('LLM self-review should not be called for failed runs');
+                }),
+            } as never,
+        });
+
+        expect(review.summary).toContain('실행은 실패');
+        expect(review.improvements[0]).toContain('planner 단계');
     });
 });

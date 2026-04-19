@@ -106,6 +106,7 @@ describe('Planner', () => {
     });
 
     it('passes grounded tool manifests to the gateway and returns a validated plan', async () => {
+        const traceEvents: string[] = [];
         const planMock: LlmGateway['plan'] = async input => {
             expect(input.allowedTools).toEqual(['getCustomerById', 'refundOrder']);
             expect(input.toolManifests).toEqual([
@@ -162,6 +163,9 @@ describe('Planner', () => {
             allowedTools: ['getCustomerById', 'refundOrder'],
             toolManifests: [buildToolManifest(customerTool), buildToolManifest(refundTool)],
             toolDefinitions: [customerTool, refundTool],
+            onTraceEvent: type => {
+                traceEvents.push(type);
+            },
         });
 
         expect(plan.steps[0]?.toolCalls?.[0]).toEqual({
@@ -175,6 +179,9 @@ describe('Planner', () => {
                     executionPosture: 'hybrid',
                 }),
             }),
+        );
+        expect(traceEvents).toEqual(
+            expect.arrayContaining(['planner_llm_start', 'planner_llm_end', 'planner_validation_start', 'planner_validation_end']),
         );
     });
 

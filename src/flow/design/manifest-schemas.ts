@@ -34,6 +34,8 @@ export const TaskGraphTemplateSchema = z.object({
     description: z.string(),
     examples: z.array(z.string()),
     signals: z.array(z.string()),
+    taskTypes: z.array(z.string()).optional(),
+    operationModels: z.array(z.string()).optional(),
     graph: z.object({
         nodes: z.array(TaskGraphNodeSchema),
         edges: z.array(TaskGraphEdgeSchema),

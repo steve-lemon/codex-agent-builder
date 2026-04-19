@@ -40,6 +40,17 @@ function detectSyntheticSampleSource(args: { userInput: string; finalFlow?: Flow
     return undefined;
 }
 
+function detectTaskGraphFallbackContext(result: RuntimeRunResult): 'advisor-fallback' | 'deterministic-or-unobserved' {
+    const taskGraphAdvisorFallbackObserved = result.trace.some(
+        event =>
+            event.type === 'diagnostic_warn' &&
+            event.data?.action === 'lite_advisor_fallback' &&
+            event.data?.advisorId === 'flow-design.task-graph',
+    );
+
+    return taskGraphAdvisorFallbackObserved ? 'advisor-fallback' : 'deterministic-or-unobserved';
+}
+
 function buildRequirementAssessmentSummary(args: {
     executionSucceeded: boolean;
     fulfillmentLevel: RequirementAssessment['fulfillmentLevel'];
@@ -87,6 +98,7 @@ function collectRequirementAssessment(args: {
     const usedTaskGraphFallback = args.result.trace.some(
         event => event.type === 'diagnostic_warn' && event.data?.action === 'task_graph_fallback',
     );
+    const taskGraphFallbackContext = usedTaskGraphFallback ? detectTaskGraphFallbackContext(args.result) : undefined;
     const usesMockModel =
         args.finalFlow?.nodes.some(
             node =>
@@ -111,6 +123,13 @@ function collectRequirementAssessment(args: {
     if (usedTaskGraphFallback) {
         const message = 'the design relied on a generic task-graph fallback';
         caveats.push('Task-graph classification fell back to a generic template.');
+        if (taskGraphFallbackContext === 'advisor-fallback') {
+            caveats.push('Task-graph fallback followed an observed task-graph advisor fallback.');
+        } else {
+            caveats.push(
+                'Task-graph fallback did not include an observed task-graph advisor fallback, so it likely came from a deterministic or unobserved path.',
+            );
+        }
         reasons.push({
             category: 'classification',
             code: 'generic-task-graph-fallback',

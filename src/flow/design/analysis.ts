@@ -77,12 +77,16 @@ export async function inferTaskGraph(
     options: {
         taskGraphAdvisor?: FlowDesignTaskGraphAdvisor;
         taskGraphTemplates?: FlowDesignTaskGraphTemplate[];
+        taskType?: string;
+        operationModel?: string[];
     } = {},
 ): Promise<DirectedGraph> {
     const templates = options.taskGraphTemplates ?? (await getFlowDesignTaskGraphCatalog());
     const recommendation = await (options.taskGraphAdvisor ?? defaultFlowDesignTaskGraphAdvisor).recommend({
         userRequest,
         templates,
+        taskType: options.taskType,
+        operationModel: options.operationModel,
     });
 
     return recommendation.graph;
@@ -264,12 +268,16 @@ export async function assessFlowFeasibility(
     options: {
         aiDelegationAdvisor?: FlowAiDelegationAdvisor;
         taskGraphAdvisor?: FlowDesignTaskGraphAdvisor;
+        taskType?: string;
+        operationModel?: string[];
     } = {},
 ): Promise<FlowFeasibilityAssessment> {
     const templates = await getFlowDesignTaskGraphCatalog();
     const deterministicRecommendation = await defaultFlowDesignTaskGraphAdvisor.recommend({
         userRequest,
         templates,
+        taskType: options.taskType,
+        operationModel: options.operationModel,
     });
 
     if (deterministicRecommendation.confidence >= DETERMINISTIC_FAST_PATH_CONFIDENCE) {
@@ -293,6 +301,8 @@ export async function assessFlowFeasibility(
         await inferTaskGraph(userRequest, {
             taskGraphAdvisor: options.taskGraphAdvisor ?? defaultFlowDesignTaskGraphAdvisor,
             taskGraphTemplates: templates,
+            taskType: options.taskType,
+            operationModel: options.operationModel,
         }),
         options,
     );

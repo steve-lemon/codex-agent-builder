@@ -91,6 +91,7 @@ export class AgentRuntime {
         const skillInstructions = this.loadSkillInstructions(skillName);
         const allowedToolDefinitions = this.router.toolsForSkill(skillName);
         const allowedTools = allowedToolDefinitions.map(tool => tool.name);
+        const plannerInstructions = this.buildPlannerInstructions(skillName, allowedTools);
         const toolManifests = allowedToolDefinitions.map(buildToolManifest);
         const unifiedConnection = this.options.unifiedEventConnectionFactory?.({
             runId,
@@ -134,10 +135,14 @@ export class AgentRuntime {
             userInput,
             skillName,
             skillInstructions,
+            plannerInstructions,
             strategyBrief,
             allowedTools,
             toolManifests,
             toolDefinitions: allowedToolDefinitions,
+            onTraceEvent: (type, data) => {
+                this.tracer.log(runId, type, data);
+            },
         });
 
         const currentTime = now();
@@ -355,6 +360,34 @@ export class AgentRuntime {
     private loadSkillInstructions(skillName: SkillName): string {
         const filePath = join(process.cwd(), 'data', 'skills', skillName, 'SKILL.md');
         return readFileSync(filePath, 'utf-8');
+    }
+
+    private buildPlannerInstructions(skillName: SkillName, allowedTools: string[]): string {
+        switch (skillName) {
+            case 'flow-designer':
+                return [
+                    'Use flow-design tools only.',
+                    'Start by analyzing intent and reuse any preflight result via step references.',
+                    'Stop early when feasibility shows critical capability gaps.',
+                    'Prefer the smallest concrete flow draft that matches the request operation model.',
+                    'Only configure nodes after a draft flow exists, then validate or sample-run if needed.',
+                    `Available tools: ${allowedTools.join(', ')}`,
+                ].join(' ');
+            case 'flow-preflight-validator':
+                return [
+                    'Use preflight tools only.',
+                    'Focus on feasibility, required capabilities, and recommended next actions.',
+                    `Available tools: ${allowedTools.join(', ')}`,
+                ].join(' ');
+            case 'node-config-designer':
+                return [
+                    'Use node-config tools only on an existing flow draft.',
+                    'Configure node behavior, validate the updated flow, and keep references to prior draft steps.',
+                    `Available tools: ${allowedTools.join(', ')}`,
+                ].join(' ');
+            default:
+                return this.loadSkillInstructions(skillName);
+        }
     }
 
     private combineFlowDesignConnections(

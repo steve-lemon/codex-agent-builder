@@ -87,6 +87,16 @@ describe('FlowDesignProduct', () => {
         );
     });
 
+    it('avoids a generic task-graph fallback for count-oriented requests', async () => {
+        const product = new FlowDesignProduct();
+        const result = await product.design('엽력의 자소를 분리한 카운트 보여줘');
+
+        expect(result.requirementAssessment.reasons.some(reason => reason.code === 'generic-task-graph-fallback')).toBe(
+            false,
+        );
+        expect(result.requirementAssessment.caveats.some(note => note.includes('Task-graph fallback'))).toBe(false);
+    });
+
     it('streams monitoring hooks through a per-call runtime', async () => {
         const product = new FlowDesignProduct();
         const designEvents: string[] = [];

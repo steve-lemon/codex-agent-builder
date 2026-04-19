@@ -22,6 +22,21 @@ describe('flow-design task graph advisors', () => {
         expect(recommendation.source).toBe('deterministic');
     });
 
+    it('prefers a counting workflow over generic generation for count-oriented requests', async () => {
+        const templates = await getFlowDesignTaskGraphCatalog();
+        const advisor = new DeterministicFlowDesignTaskGraphAdvisor();
+
+        const recommendation = await advisor.recommend({
+            userRequest: '입력의 자소를 분리한 카운트 보여줘',
+            templates,
+            taskType: 'text-counting',
+            operationModel: ['count', 'transform'],
+        });
+
+        expect(recommendation.templateId).toBe('text-counting');
+        expect(recommendation.source).toBe('deterministic');
+    });
+
     it('uses a model-backed task-graph advisor when one is supplied', async () => {
         const gateway = {
             generateStructured: async () => ({

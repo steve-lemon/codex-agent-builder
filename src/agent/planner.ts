@@ -246,15 +246,18 @@ export class Planner {
         userInput: string;
         skillName: string;
         skillInstructions: string;
+        plannerInstructions?: string;
         strategyBrief?: PlannerStrategyBrief;
         allowedTools: string[];
         toolManifests: ToolManifest[];
         toolDefinitions: ToolDefinition[];
+        onTraceEvent?: (type: string, data?: Record<string, unknown>) => void;
     }): Promise<Plan> {
         const plannerInput = {
             userInput: input.userInput,
             skillName: input.skillName,
             skillInstructions: input.skillInstructions,
+            plannerInstructions: input.plannerInstructions,
             strategyBrief: input.strategyBrief,
             allowedTools: input.allowedTools,
             toolManifests: input.toolManifests,
@@ -262,22 +265,32 @@ export class Planner {
         };
         let plan: Plan;
         try {
+            input.onTraceEvent?.('planner_llm_start', {});
             plan = await this.llm.plan(plannerInput);
+            input.onTraceEvent?.('planner_llm_end', { success: true });
         } catch (error) {
-            const fallbackPlan = await this.buildDeterministicFallbackPlan(plannerInput, error);
+            input.onTraceEvent?.('planner_llm_end', { success: false });
+            const fallbackPlan = await this.buildDeterministicFallbackPlan(plannerInput, error, input.onTraceEvent);
             if (!fallbackPlan) {
                 throw error;
             }
             plan = fallbackPlan;
         }
         try {
-            return this.validatePlan(plan, input.toolDefinitions);
+            input.onTraceEvent?.('planner_validation_start', {});
+            const validatedPlan = this.validatePlan(plan, input.toolDefinitions);
+            input.onTraceEvent?.('planner_validation_end', { success: true });
+            return validatedPlan;
         } catch (error) {
-            const fallbackPlan = await this.buildDeterministicFallbackPlan(plannerInput, error);
+            input.onTraceEvent?.('planner_validation_end', { success: false });
+            const fallbackPlan = await this.buildDeterministicFallbackPlan(plannerInput, error, input.onTraceEvent);
             if (!fallbackPlan) {
                 throw error;
             }
-            return this.validatePlan(fallbackPlan, input.toolDefinitions);
+            input.onTraceEvent?.('planner_validation_start', { source: 'fallback' });
+            const validatedPlan = this.validatePlan(fallbackPlan, input.toolDefinitions);
+            input.onTraceEvent?.('planner_validation_end', { success: true, source: 'fallback' });
+            return validatedPlan;
         }
     }
 
@@ -286,12 +299,14 @@ export class Planner {
             userInput: string;
             skillName: string;
             skillInstructions: string;
+            plannerInstructions?: string;
             strategyBrief?: PlannerStrategyBrief;
             allowedTools: string[];
             toolManifests: ToolManifest[];
             toolDefinitions: ToolDefinition[];
         },
         error: unknown,
+        onTraceEvent?: (type: string, data?: Record<string, unknown>) => void,
     ): Promise<Plan | undefined> {
         const rootCause = AgentError.rootCause(error);
         const code = error instanceof AgentError ? error.code : undefined;
@@ -304,6 +319,10 @@ export class Planner {
         if (!shouldFallback) {
             return undefined;
         }
+
+        onTraceEvent?.('planner_fallback_start', {
+            code: code ?? 'unknown',
+        });
 
         const ensureToolAvailable = (toolName: string): string => {
             if (!input.allowedTools.includes(toolName)) {
@@ -320,21 +339,29 @@ export class Planner {
 
         try {
             if (input.skillName === 'flow-designer') {
-                return await buildFlowDesignerPlan(input, ensureToolAvailable);
+                const plan = await buildFlowDesignerPlan(input, ensureToolAvailable);
+                onTraceEvent?.('planner_fallback_end', { used: true, skillName: input.skillName });
+                return plan;
             }
             if (input.skillName === 'flow-preflight-validator') {
-                return await buildFlowPreflightValidatorPlan(input, ensureToolAvailable);
+                const plan = await buildFlowPreflightValidatorPlan(input, ensureToolAvailable);
+                onTraceEvent?.('planner_fallback_end', { used: true, skillName: input.skillName });
+                return plan;
             }
             if (input.skillName === 'node-config-designer') {
-                return await buildNodeConfigDesignerPlan();
+                const plan = await buildNodeConfigDesignerPlan();
+                onTraceEvent?.('planner_fallback_end', { used: true, skillName: input.skillName });
+                return plan;
             }
         } catch (fallbackError) {
             if (fallbackError instanceof AgentError && fallbackError.code === 'PLANNER_FALLBACK_TOOL_UNAVAILABLE') {
+                onTraceEvent?.('planner_fallback_end', { used: false, skillName: input.skillName });
                 return undefined;
             }
             throw fallbackError;
         }
 
+        onTraceEvent?.('planner_fallback_end', { used: false, skillName: input.skillName });
         return undefined;
     }
 

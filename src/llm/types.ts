@@ -11,6 +11,7 @@ export interface PlannerInput {
     userInput: string;
     skillName: string;
     skillInstructions: string;
+    plannerInstructions?: string;
     strategyBrief?: PlannerStrategyBrief;
     allowedTools: string[];
     toolManifests: ToolManifest[];

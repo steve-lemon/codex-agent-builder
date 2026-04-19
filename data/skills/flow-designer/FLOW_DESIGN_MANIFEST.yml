@@ -41,6 +41,29 @@ taskTypes:
       - 소개
     hints:
       fallbackWhenPlainText: true
+  - id: text-counting
+    label: Text Counting
+    description: Count characters, tokens, linguistic units, or extracted elements from text with exact or near-exact outputs.
+    examples:
+      - 입력의 자소를 분리한 카운트 보여줘
+      - count vowels and consonants in the input
+      - 텍스트 안의 항목 개수를 세어줘
+    signals:
+      - count
+      - counting
+      - frequency
+      - 카운트
+      - 개수
+      - 빈도
+      - 자소
+      - 초성
+      - 중성
+      - 종성
+      - 자음
+      - 모음
+      - 분리
+    hints:
+      fallbackWhenPlainText: true
   - id: graph-explanation
     label: Graph Explanation
     description: Analyze a provided graph-shaped JSON structure and explain its purpose or flow in natural language or markdown.
@@ -128,6 +151,10 @@ taskGraphTemplates:
       - headline
       - 타이틀
       - 제목
+    taskTypes:
+      - blog-title-generation
+    operationModels:
+      - generate
     graph:
       nodes:
         - id: capture-request
@@ -169,6 +196,71 @@ taskGraphTemplates:
         - source: generate-titles
           target: review-output
           label: generated titles
+  - id: text-counting
+    label: Text Counting Workflow
+    description: Capture text input, count the requested elements, and review the counted result.
+    examples:
+      - 입력의 자소를 분리한 카운트 보여줘
+      - count vowels and consonants in the input
+      - 텍스트 안의 항목 개수를 세어줘
+    signals:
+      - count
+      - counting
+      - frequency
+      - 카운트
+      - 개수
+      - 빈도
+      - 자소
+      - 자음
+      - 모음
+      - 분리
+    taskTypes:
+      - text-counting
+    operationModels:
+      - count
+      - transform
+      - extract
+    graph:
+      nodes:
+        - id: capture-request
+          label: Capture Request
+          data:
+            operation: capture-text
+            expectedInputs:
+              - user request
+            expectedOutputs:
+              - source text
+            requiredCapabilities:
+              - text-input
+        - id: count-elements
+          label: Count Elements
+          data:
+            operation: count-text-elements
+            expectedInputs:
+              - source text
+              - counting rule
+            expectedOutputs:
+              - counted result
+            requiredCapabilities:
+              - ai-generation
+              - text-output
+        - id: review-output
+          label: Review Output
+          data:
+            operation: log-output
+            expectedInputs:
+              - counted result
+            expectedOutputs:
+              - execution log
+            requiredCapabilities:
+              - view-log
+      edges:
+        - source: capture-request
+          target: count-elements
+          label: source text
+        - source: count-elements
+          target: review-output
+          label: counted result
   - id: generic-generation
     label: Generic Generation Workflow
     description: Capture a request, generate a response, and review the output.
@@ -181,6 +273,11 @@ taskGraphTemplates:
       - summary
       - 문구
       - 소개
+    taskTypes:
+      - text-generation
+    operationModels:
+      - generate
+      - transform
     graph:
       nodes:
         - id: capture-request
@@ -236,6 +333,11 @@ taskGraphTemplates:
       - 그래프
       - 설명
       - 마크다운
+    taskTypes:
+      - graph-explanation
+    operationModels:
+      - explain
+      - transform
     graph:
       nodes:
         - id: capture-graph-json
@@ -290,6 +392,7 @@ defaults:
     keywordDriven: 생산성 향상
     byTaskType:
       blog-title-generation: 원격 근무
+      text-counting: 한글
       graph-explanation: |-
         {
           "nodes": [
@@ -307,6 +410,7 @@ defaults:
       unknown: 샘플 입력
   systemPrompts:
     blog-title-generation: You generate clear and catchy blog titles based on one keyword.
+    text-counting: You count the requested text elements exactly and make the counting rule explicit.
     graph-explanation: You explain graph-shaped JSON structures clearly in Korean markdown.
     json-generation: You return concise structured output that can be safely parsed as JSON.
     text-generation: You transform text requests into concise useful outputs.

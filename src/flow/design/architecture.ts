@@ -369,6 +369,18 @@ export function buildArchitectureReview(args: {
         findings.push('Current fulfillment remains uncertain under the architecture confidence ceiling.');
     }
 
+    if (
+        args.result.requirementAssessment.reasons.some(reason => reason.code === 'generic-task-graph-fallback') &&
+        args.brief.mission.operationModel.some(operation => operation !== 'generate' && operation !== 'transform')
+    ) {
+        findings.push(
+            'The tactical flow stayed on a generic task-graph fallback despite a more specific strategic operation model.',
+        );
+        adjustments.push(
+            'Align task-graph selection more closely with the architecture brief before trusting generic fallback flow shapes.',
+        );
+    }
+
     for (const rule of reviewRules) {
         const match = matchesKnowledge({
             resourceEntryMatch: rule.match,

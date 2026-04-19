@@ -8,6 +8,7 @@ import { ensureProjectEnvLoaded } from '../env/project-env';
 import { getPromptLabLanguageCopy, getPromptLabManifest, getPromptLabModelOptions } from './manifest';
 import { PromptLabProduct, PromptLabRunError } from './product';
 import { evaluatePromptLabAutoPolicy, getPromptLabAutoPolicy } from './auto-policy';
+import { resetDiagnosticLogger, setDiagnosticLogger, type DiagnosticLogger } from '../diagnostics/logger';
 import type {
     PromptLabRunArtifacts,
     PromptLabMode,
@@ -407,6 +408,21 @@ function summarizeExecutionTiming(args: {
         });
     }
 
+    const findDurationBetween = (startType: string, endType: string, stageId: string) => {
+        const start = trace.find(event => event.type === startType);
+        const end = trace.find(event => event.type === endType);
+        if (start && end && end.ts >= start.ts) {
+            stages.push({
+                stageId,
+                durationMs: Math.max(0, end.ts - start.ts),
+            });
+        }
+    };
+
+    findDurationBetween('planner_llm_start', 'planner_llm_end', 'planner-llm');
+    findDurationBetween('planner_validation_start', 'planner_validation_end', 'planner-validation');
+    findDurationBetween('planner_fallback_start', 'planner_fallback_end', 'planner-fallback');
+
     const toolStarts = new Map<string, number>();
     let toolExecutionDurationMs = 0;
     for (const event of trace) {
@@ -521,8 +537,8 @@ function printAutoPolicyDecision(args: {
                     ? '자동 실행 정책에 따라 여기서 멈췄습니다.'
                     : 'Auto execution paused here due to policy.'
                 : isKorean
-                  ? '자동 실행 정책상 경고만 기록하고 계속 진행합니다.'
-                  : 'Auto execution continues with warnings only.'
+                ? '자동 실행 정책상 경고만 기록하고 계속 진행합니다.'
+                : 'Auto execution continues with warnings only.'
         }\n`,
     );
     output.write(`${isKorean ? '======================' : '==========================='}\n\n`);
@@ -600,6 +616,10 @@ function createLiveStatusPrinter() {
             lastRenderedLength = 0;
             active = false;
         },
+        printExternalLine(line: string) {
+            this.clear();
+            output.write(`${line}\n`);
+        },
         finish(text?: string) {
             if (text) {
                 activity = text;
@@ -610,6 +630,20 @@ function createLiveStatusPrinter() {
             }
             lastRenderedLength = 0;
             active = false;
+        },
+    };
+}
+
+function createPromptLabDiagnosticLogger(status: ReturnType<typeof createLiveStatusPrinter>): DiagnosticLogger {
+    return {
+        log(level, event) {
+            const prefix = `[${event.scope}] ${event.action}: ${event.message}`;
+            const payload = event.data ? ` ${JSON.stringify(event.data)}` : '';
+            const line = `${prefix}${payload}`;
+            status.printExternalLine(line);
+            if (level === 'debug' || level === 'info') {
+                return;
+            }
         },
     };
 }
@@ -797,9 +831,7 @@ function renderFlowSnapshotMarkdown(event: FlowDesignEvent | undefined): string 
         '# Designed Flow',
         '',
         `- Event: ${event.type}`,
-        ...(isSynthesizedDesignEvent(event)
-            ? ['- Snapshot: reconstructed from final node configuration', '']
-            : []),
+        ...(isSynthesizedDesignEvent(event) ? ['- Snapshot: reconstructed from final node configuration', ''] : []),
         `- Nodes: ${nodes.length}`,
         `- Edges: ${edges.length}`,
         '',
@@ -1083,6 +1115,14 @@ function localizeAssessmentInline(text: string, isKorean: boolean): string {
             'task graph 분류가 일반 템플릿 fallback으로 처리되었습니다.',
         ],
         [
+            'Task-graph fallback followed an observed task-graph advisor fallback.',
+            'task graph fallback 이전에 task-graph advisor fallback이 실제로 관측되었습니다.',
+        ],
+        [
+            'Task-graph fallback did not include an observed task-graph advisor fallback, so it likely came from a deterministic or unobserved path.',
+            'task graph fallback에는 관측된 task-graph advisor fallback이 없어, deterministic 경로나 미관측 경로에서 발생했을 가능성이 큽니다.',
+        ],
+        [
             'The final flow still uses a mock AI model configuration.',
             '최종 flow가 아직 mock AI 모델 설정을 사용하고 있습니다.',
         ],
@@ -1124,6 +1164,14 @@ function localizeAssessmentInline(text: string, isKorean: boolean): string {
         [
             'Re-run validation against a real representative input before upgrading fulfillment confidence.',
             '충족 confidence를 올리기 전에 실제 대표 입력으로 다시 검증해야 합니다.',
+        ],
+        [
+            'The tactical flow stayed on a generic task-graph fallback despite a more specific strategic operation model.',
+            '전략적으로는 더 구체적인 operation model이 있었지만, 실제 전술 흐름은 여전히 generic task-graph fallback에 머물렀습니다.',
+        ],
+        [
+            'Align task-graph selection more closely with the architecture brief before trusting generic fallback flow shapes.',
+            'generic fallback flow shape를 신뢰하기 전에 task-graph 선택이 architecture brief와 더 가깝게 맞도록 조정해야 합니다.',
         ],
         ['the run did not complete successfully', '실행이 성공적으로 완료되지 않았습니다.'],
         [
@@ -1484,6 +1532,7 @@ async function main() {
         output.write(`${copy.startMessage}\n`);
         const product = new PromptLabProduct();
         const status = createLiveStatusPrinter();
+        setDiagnosticLogger(createPromptLabDiagnosticLogger(status));
         let latestDesignEvent: FlowDesignEvent | undefined;
         let latestPaths: PromptLabArtifactPaths | undefined;
         const diagnosticEntries: PromptLabDiagnosticEntry[] = [];
@@ -1695,6 +1744,7 @@ async function main() {
         }
         process.exitCode = 1;
     } finally {
+        resetDiagnosticLogger();
         rl.close();
     }
 }

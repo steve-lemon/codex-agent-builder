@@ -29,6 +29,7 @@ import type {
     PromptLabCodexPrompt,
     PromptLabExecutionTimingSummary,
     PromptLabEventHooks,
+    PromptLabLanguage,
     PromptLabRunArtifacts,
     PromptLabSelfReview,
     PromptLabSessionConfig,
@@ -95,6 +96,67 @@ function createGateway(config: PromptLabSessionConfig): LlmGateway {
     }
 
     return new FakeLlmGateway();
+}
+
+function buildDeterministicSelfReview(args: {
+    result: ProductDesignRunResult;
+    executionTiming?: PromptLabExecutionTimingSummary;
+    language: PromptLabLanguage;
+}): PromptLabSelfReview {
+    const isKorean = args.language === 'ko';
+    const topReason = args.result.requirementAssessment.reasons[0];
+    const plannerStage = args.executionTiming?.stages.find(stage => stage.stageId === 'planner');
+    const toolStage = args.executionTiming?.stages.find(stage => stage.stageId === 'tool-execution');
+
+    const summary = isKorean
+        ? `실행은 ${args.result.status === 'failed' ? '실패' : '완료'}했고, 전체 요구사항은 아직 충족되지 않았습니다. ${
+              topReason ? `주요 사유는 ${topReason.code}입니다.` : ''
+          }`.trim()
+        : `The run ${
+              args.result.status === 'failed' ? 'failed' : 'completed'
+          }, but requirement fulfillment is still incomplete.${
+              topReason ? ` The primary reason was ${topReason.code}.` : ''
+          }`;
+
+    const strengths = [
+        isKorean
+            ? '요구 충족도 평가와 전략 검토 결과가 이미 정리되어 있어 실패 원인을 추적할 수 있습니다.'
+            : 'Requirement assessment and strategy review already capture the main failure signals.',
+    ];
+    const weaknesses = [
+        isKorean
+            ? '실행이 끝까지 완료되지 않아 실제 산출물 품질을 충분히 검증하지 못했습니다.'
+            : 'The run did not finish cleanly, so output quality could not be verified end-to-end.',
+    ];
+    const improvements = [
+        plannerStage
+            ? isKorean
+                ? `planner 단계가 ${plannerStage.durationMs}ms로 가장 길어 planner payload 또는 planning mode를 더 줄일 필요가 있습니다.`
+                : `The planner stage took ${plannerStage.durationMs}ms, so planner payload or planning mode should be reduced further.`
+            : isKorean
+            ? 'planner 단계와 tool 단계의 병목을 다시 측정해 원인을 좁혀야 합니다.'
+            : 'Measure planner and tool bottlenecks again to narrow the next optimization target.',
+        toolStage
+            ? isKorean
+                ? `tool 실행은 ${toolStage.durationMs}ms 수준이어서 주 병목은 아닐 가능성이 큽니다.`
+                : `Tool execution was about ${toolStage.durationMs}ms, so it is probably not the primary bottleneck.`
+            : isKorean
+            ? 'tool 실행 시간은 보조 지표로만 보고, 우선 planner/self-review 비용을 줄이는 편이 좋습니다.'
+            : 'Treat tool timing as secondary and focus on planner/self-review cost first.',
+    ];
+    const recommendedPromptFocus = [
+        isKorean
+            ? '요구사항의 핵심 operation model과 기대 출력 형식을 더 직접적으로 고정하세요.'
+            : 'Make the core operation model and expected output format more explicit in the prompt.',
+    ];
+
+    return {
+        summary,
+        strengths,
+        weaknesses,
+        improvements,
+        recommendedPromptFocus,
+    };
 }
 
 async function runFlowSkill(
@@ -217,13 +279,12 @@ function buildArchitectureAdjustedAssessment(args: {
         next.fulfillmentLevel === 'fulfilled'
     ) {
         next.fulfillmentLevel = 'uncertain';
-        if (
-            !next.reasons.some(reason => reason.code === 'architecture-confidence-limited')
-        ) {
+        if (!next.reasons.some(reason => reason.code === 'architecture-confidence-limited')) {
             next.reasons.push({
                 category: 'evidence',
                 code: 'architecture-confidence-limited',
-                message: 'architecture strategy limited confidence because validation evidence remains synthetic or inferred',
+                message:
+                    'architecture strategy limited confidence because validation evidence remains synthetic or inferred',
             });
         }
         if (
@@ -535,6 +596,10 @@ function localizeAssessmentSummary(language: 'ko' | 'en', summary: string): stri
             '현재 전략을 신뢰하기 전에 전술 실행 경로부터 안정화해야 합니다.',
         'Re-run validation against a real representative input before upgrading fulfillment confidence.':
             '충족 confidence를 올리기 전에 실제 대표 입력으로 다시 검증해야 합니다.',
+        'The tactical flow stayed on a generic task-graph fallback despite a more specific strategic operation model.':
+            '전략적으로는 더 구체적인 operation model이 있었지만, 실제 전술 흐름은 여전히 generic task-graph fallback에 머물렀습니다.',
+        'Align task-graph selection more closely with the architecture brief before trusting generic fallback flow shapes.':
+            'generic fallback flow shape를 신뢰하기 전에 task-graph 선택이 architecture brief와 더 가깝게 맞도록 조정해야 합니다.',
         'Architecture review judged the available validation evidence thin.':
             '아키텍처 리뷰가 현재 검증 근거를 충분하지 않다고 판단했습니다.',
     };
@@ -550,6 +615,10 @@ function localizeAssessmentCaveat(language: 'ko' | 'en', caveat: string): string
     const mapping: Record<string, string> = {
         'Task-graph classification fell back to a generic template.':
             'Task graph 분류가 generic 템플릿으로 fallback 되었습니다.',
+        'Task-graph fallback followed an observed task-graph advisor fallback.':
+            'task graph fallback 이전에 task-graph advisor fallback이 실제로 관측되었습니다.',
+        'Task-graph fallback did not include an observed task-graph advisor fallback, so it likely came from a deterministic or unobserved path.':
+            'task graph fallback에는 관측된 task-graph advisor fallback이 없어, deterministic 경로나 미관측 경로에서 발생했을 가능성이 큽니다.',
         'The final flow still uses a mock AI model configuration.':
             '최종 플로우가 아직 mock AI 모델 설정을 사용하고 있습니다.',
         'The final flow did not preserve the requested JSON output contract.':
@@ -722,9 +791,7 @@ function renderSummaryMarkdown(args: {
             ? [
                   '',
                   `- ${sections.assessmentNotes}:`,
-                  ...visibleCaveats.map(
-                      item => `  - ${localizeAssessmentCaveat(args.session.config.language, item)}`,
-                  ),
+                  ...visibleCaveats.map(item => `  - ${localizeAssessmentCaveat(args.session.config.language, item)}`),
                   '',
               ]
             : ['']),
@@ -824,8 +891,7 @@ function renderSummaryMarkdown(args: {
                           `- ${advisor.advisorId}: callCount=${advisor.callCount}, totalDurationMs=${advisor.totalDurationMs}, averageDurationMs=${advisor.averageDurationMs}, maxDurationMs=${advisor.maxDurationMs}`,
                   ),
                   ...args.executionTiming.stages.map(
-                      stage =>
-                          `- ${isKorean ? '단계' : 'Stage'} ${stage.stageId}: durationMs=${stage.durationMs}`,
+                      stage => `- ${isKorean ? '단계' : 'Stage'} ${stage.stageId}: durationMs=${stage.durationMs}`,
                   ),
                   '',
               ]
@@ -835,20 +901,36 @@ function renderSummaryMarkdown(args: {
                   `## ${sections.architecture}`,
                   '',
                   `- ${isKorean ? 'Mission' : 'Mission'}: ${args.architectureBrief.mission.summary}`,
-                  `- ${isKorean ? 'Execution Posture' : 'Execution Posture'}: ${args.architectureBrief.executionPosture.strategy}`,
-                  `- ${isKorean ? 'Confidence Ceiling' : 'Confidence Ceiling'}: ${args.architectureBrief.validationPlan.confidenceCeiling}`,
-                  `- ${isKorean ? '샘플 입력 출처' : 'Sample Input Source'}: ${args.architectureBrief.inputContract.source}`,
+                  `- ${isKorean ? 'Execution Posture' : 'Execution Posture'}: ${
+                      args.architectureBrief.executionPosture.strategy
+                  }`,
+                  `- ${isKorean ? 'Confidence Ceiling' : 'Confidence Ceiling'}: ${
+                      args.architectureBrief.validationPlan.confidenceCeiling
+                  }`,
+                  `- ${isKorean ? '샘플 입력 출처' : 'Sample Input Source'}: ${
+                      args.architectureBrief.inputContract.source
+                  }`,
                   ...(args.architectureReview
                       ? [
                             `- ${isKorean ? '전략 적합성' : 'Strategy Fit'}: ${args.architectureReview.strategyFit}`,
-                            `- ${isKorean ? '증거 충분성' : 'Evidence Adequacy'}: ${args.architectureReview.evidenceAdequacy}`,
-                            `- ${isKorean ? 'Synthetic 의존도' : 'Synthetic Reliance'}: ${args.architectureReview.syntheticReliance}`,
+                            `- ${isKorean ? '증거 충분성' : 'Evidence Adequacy'}: ${
+                                args.architectureReview.evidenceAdequacy
+                            }`,
+                            `- ${isKorean ? 'Synthetic 의존도' : 'Synthetic Reliance'}: ${
+                                args.architectureReview.syntheticReliance
+                            }`,
                             ...(args.architectureReview.keyFindings.length > 0
                                 ? [
                                       `- ${isKorean ? '핵심 finding' : 'Key Findings'}:`,
                                       ...args.architectureReview.keyFindings
                                           .slice(0, 2)
-                                          .map(item => `  - ${localizeAssessmentSummary(args.session.config.language, item)}`),
+                                          .map(
+                                              item =>
+                                                  `  - ${localizeAssessmentSummary(
+                                                      args.session.config.language,
+                                                      item,
+                                                  )}`,
+                                          ),
                                   ]
                                 : []),
                         ]
@@ -1012,8 +1094,7 @@ export class PromptLabProduct {
             });
 
             const analyzedIntent = await analyzeFlowRequest(args.requirement);
-            const architectureBrief =
-                analyzedIntent.designBrief ?? (await buildDesignBrief(analyzedIntent));
+            const architectureBrief = analyzedIntent.designBrief ?? (await buildDesignBrief(analyzedIntent));
             const architectureKnowledge = await loadArchitectureKnowledgeResource();
             const architectureReview = buildArchitectureReview({
                 brief: architectureBrief,
@@ -1077,6 +1158,15 @@ export class PromptLabProduct {
         executionTiming?: PromptLabExecutionTimingSummary;
         gateway: LlmGateway;
     }): Promise<PromptLabSelfReview> {
+        if (args.result.status === 'failed') {
+            const selfReview = buildDeterministicSelfReview({
+                result: args.result,
+                executionTiming: args.executionTiming,
+                language: args.session.config.language,
+            });
+            await writeJson(buildArtifactPaths(args.session.sessionDir).selfReviewPath, selfReview);
+            return selfReview;
+        }
         const selfReview = await args.gateway.generateStructured(
             await buildPromptLabSelfReviewRequest({
                 session: args.session,

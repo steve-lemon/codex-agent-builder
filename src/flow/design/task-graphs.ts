@@ -25,6 +25,8 @@ export interface FlowDesignTaskGraphAdvisor {
     recommend(args: {
         userRequest: string;
         templates: FlowDesignTaskGraphTemplate[];
+        taskType?: string;
+        operationModel?: string[];
     }): Promise<FlowDesignTaskGraphRecommendation>;
 }
 
@@ -45,7 +47,16 @@ function normalize(text: string): string {
     return text.toLowerCase();
 }
 
-function scoreTemplate(args: { userRequest: string; template: FlowDesignTaskGraphTemplate }): number {
+function normalizeOperationModel(operationModel?: string[]): string[] {
+    return (operationModel ?? []).map(item => normalize(item));
+}
+
+function scoreTemplate(args: {
+    userRequest: string;
+    template: FlowDesignTaskGraphTemplate;
+    taskType?: string;
+    operationModel?: string[];
+}): number {
     const lowered = normalize(args.userRequest);
     let score = 0;
 
@@ -62,16 +73,48 @@ function scoreTemplate(args: { userRequest: string; template: FlowDesignTaskGrap
         score += Math.min(sharedTokens.length, 3);
     }
 
+    if (args.taskType && args.template.taskTypes?.includes(args.taskType)) {
+        score += 6;
+    }
+
+    const operationModel = normalizeOperationModel(args.operationModel);
+    if (operationModel.length > 0) {
+        const overlapCount = operationModel.filter(operation =>
+            (args.template.operationModels ?? []).some(item => normalize(item) === operation),
+        ).length;
+        score += overlapCount * 3;
+
+        // Keep the generic fallback available, but make it meaningfully less eager
+        // when the request already points to a more specific operation model.
+        if (
+            args.template.id === 'generic-generation' &&
+            operationModel.some(operation => operation !== 'generate' && operation !== 'transform')
+        ) {
+            score -= 4;
+        }
+    }
+
+    if (args.template.id === 'generic-generation' && args.taskType && args.taskType !== 'text-generation') {
+        score -= 3;
+    }
+
     return score;
 }
 
-function rankTemplates(userRequest: string, templates: FlowDesignTaskGraphTemplate[]) {
-    return templates
+function rankTemplates(args: {
+    userRequest: string;
+    templates: FlowDesignTaskGraphTemplate[];
+    taskType?: string;
+    operationModel?: string[];
+}) {
+    return args.templates
         .map(template => ({
             template,
             score: scoreTemplate({
-                userRequest,
+                userRequest: args.userRequest,
                 template,
+                taskType: args.taskType,
+                operationModel: args.operationModel,
             }),
         }))
         .sort((left, right) => right.score - left.score);
@@ -82,8 +125,10 @@ export class DeterministicFlowDesignTaskGraphAdvisor implements FlowDesignTaskGr
     async recommend(args: {
         userRequest: string;
         templates: FlowDesignTaskGraphTemplate[];
+        taskType?: string;
+        operationModel?: string[];
     }): Promise<FlowDesignTaskGraphRecommendation> {
-        const ranked = rankTemplates(args.userRequest, args.templates);
+        const ranked = rankTemplates(args);
 
         const best = ranked[0];
         if (!best || best.score <= 0) {
@@ -146,10 +191,12 @@ export class LlmBackedFlowDesignTaskGraphAdvisor implements FlowDesignTaskGraphA
     async recommend(args: {
         userRequest: string;
         templates: FlowDesignTaskGraphTemplate[];
+        taskType?: string;
+        operationModel?: string[];
     }): Promise<FlowDesignTaskGraphRecommendation> {
         const advisor = await getLiteAdvisorDefinition('flow-design.advisors', 'flow-design.task-graph');
         const includeRationale = advisor.includeRationale === true;
-        const ranked = rankTemplates(args.userRequest, args.templates);
+        const ranked = rankTemplates(args);
         const candidateLimit = advisor.candidateLimit ?? 3;
         const shortlisted = ranked.slice(0, Math.max(1, Math.min(candidateLimit, ranked.length)));
         return await runLiteAdvisor({
@@ -164,6 +211,8 @@ export class LlmBackedFlowDesignTaskGraphAdvisor implements FlowDesignTaskGraphA
             ),
             input: {
                 userRequest: args.userRequest,
+                taskType: args.taskType,
+                operationModel: args.operationModel ?? [],
                 templates: shortlisted.map(({ template, score }) => ({
                     id: template.id,
                     label: template.label,
