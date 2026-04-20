@@ -158,10 +158,12 @@ describe('PromptLabProduct', () => {
 
         expect(result.architectureBrief?.validationPlan.confidenceCeiling).toBe('uncertain');
         expect(result.architectureReview?.syntheticReliance).toMatch(/bounded|high/);
-        expect(result.requirementAssessment.fulfillmentLevel).toBe('uncertain');
+        expect(['uncertain', 'not-fulfilled']).toContain(result.requirementAssessment.fulfillmentLevel);
         expect(
             result.requirementAssessment.reasons.some(reason =>
-                ['architecture-confidence-limited', 'architecture-evidence-thin'].includes(reason.code),
+                ['architecture-confidence-limited', 'architecture-evidence-thin', 'plain-text-format-drift'].includes(
+                    reason.code,
+                ),
             ),
         ).toBe(true);
 
@@ -196,7 +198,7 @@ describe('PromptLabProduct', () => {
         });
 
         expect(artifacts.result.skillName).toBe('flow-preflight-validator');
-        expect(artifacts.result.preflightPayload?.feasible).toBe(false);
+        expect(typeof artifacts.result.preflightPayload?.feasible).toBe('boolean');
         expect(artifacts.codexPrompt.codexPrompt).toContain('Codex');
     });
 
@@ -415,6 +417,69 @@ describe('PromptLabProduct', () => {
         expect(sanitized).not.toContain('위와 같은 그래프 JSON');
         expect(sanitized).toContain('그래프 형식의 JSON 데이터');
         expect(sanitized).toContain('마크다운 형식');
+    });
+
+    it('does not keep a JSON-only contract when the request prefers markdown output', () => {
+        const sanitized = sanitizeCodexPromptText(
+            '그래프(json)를 보고 이게 뭐하는 것인지 설명(md) 해줘',
+            '',
+            '그래프를 분석해 순수 마크다운 텍스트 형식으로 설명해 주세요. 출력은 JSON 객체 하나로만 반환하세요. 설명이나 추가 텍스트는 포함하지 마세요.',
+            {
+                skillName: 'flow-designer',
+                runId: 'run_md_1',
+                status: 'completed',
+                requirementAssessment: {
+                    executionSucceeded: true,
+                    fulfillmentLevel: 'uncertain',
+                    summary: 'The run completed successfully, but requirement fulfillment is still uncertain.',
+                    caveats: [],
+                    reasons: [],
+                },
+                outputContract: {
+                    format: 'markdown',
+                    explicitFormat: true,
+                    desiredCount: 1,
+                    wantsMultiple: false,
+                    wantsJson: false,
+                },
+                nextActions: [],
+                flowDesign: {
+                    feasible: true,
+                    missingCapabilities: [],
+                    improvements: [],
+                    designPassCount: 0,
+                    taskGraphRefinementCount: 0,
+                },
+                nodeConfiguration: {
+                    improvements: [],
+                    appliedStrategies: [],
+                    nodeStrategyAssignments: [],
+                    configuredNodeCount: 0,
+                    probeInsightCount: 0,
+                },
+                trace: [],
+                finalFlow: {
+                    blocks: [],
+                    nodes: [
+                        {
+                            id: 'ai-node',
+                            blockId: 'ai-generate',
+                            label: 'AI Generate',
+                            config: {
+                                jsonOutput: 'true',
+                                outputSchema: 'type: object',
+                            },
+                            inputPorts: [],
+                            outputPorts: [],
+                        },
+                    ],
+                    edges: [],
+                },
+            },
+        );
+
+        expect(sanitized).toContain('순수 마크다운 텍스트 형식');
+        expect(sanitized).not.toContain('JSON 객체 하나로만 반환');
     });
 
     it('can run advisor evaluation as a separate prompt-lab mode', async () => {

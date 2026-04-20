@@ -20,9 +20,11 @@ async function selectModel(input: NodeConfigurationDesignInput): Promise<string>
     const taskType = await inferTaskTypeWithInput(input);
     const brief = await ensureDesignBrief(input);
     const strategyNotes = collectStrategyNotesFor(input, 'ai-generation').join(' ').toLowerCase();
+    const effectiveWantsJson =
+        brief.outputContract.format === 'json' || (brief.outputContract.format === 'unspecified' && input.wantsJson);
     return await getNodeConfigModelProfile({
         taskType,
-        wantsJson: input.wantsJson || brief.outputContract.format === 'json',
+        wantsJson: effectiveWantsJson,
         strategyNotes: `${strategyNotes} ${brief.executionPosture.strategy}`.trim(),
     });
 }
@@ -34,12 +36,14 @@ async function buildAiDefaults(input: NodeConfigurationDesignInput): Promise<{
 }> {
     const taskType = await inferTaskTypeWithInput(input);
     const brief = await ensureDesignBrief(input);
+    const effectiveWantsJson =
+        brief.outputContract.format === 'json' || (brief.outputContract.format === 'unspecified' && input.wantsJson);
     const outputContract = {
         format: brief.outputContract.format,
         explicitFormat: brief.outputContract.format !== 'unspecified',
         desiredCount: input.desiredCount,
         wantsMultiple: input.desiredCount > 1,
-        wantsJson: brief.outputContract.format === 'json',
+        wantsJson: effectiveWantsJson,
     } as const;
     const systemPrompt = await getNodeConfigSystemPromptDefault(taskType);
     const countInstruction =
@@ -52,7 +56,7 @@ async function buildAiDefaults(input: NodeConfigurationDesignInput): Promise<{
             .join(' ')} Validation targets: ${brief.validationPlan.assertions.slice(0, 2).join(' | ')}`,
         outputSchema: await getNodeConfigOutputSchemaDefault({
             taskType,
-            wantsJson: input.wantsJson,
+            wantsJson: effectiveWantsJson,
             userRequest: input.userRequest,
             desiredCount: input.desiredCount,
             brief,
@@ -77,13 +81,17 @@ export class AiGenerateNodeStrategy implements NodeBlockConfigStrategy {
         context: NodeBlockConfigStrategyContext,
     ): Promise<NodeBlockConfigStrategyResult> {
         const aiDefaults = await buildAiDefaults(context.input);
+        const brief = await ensureDesignBrief(context.input);
+        const effectiveWantsJson =
+            brief.outputContract.format === 'json' ||
+            (brief.outputContract.format === 'unspecified' && context.input.wantsJson);
         const config = {
             ...(node.config ?? {}),
             model: await selectModel(context.input),
             systemPrompt: aiDefaults.systemPrompt,
             promptTemplate: aiDefaults.promptTemplate,
             outputSchema: aiDefaults.outputSchema,
-            jsonOutput: String(context.input.wantsJson),
+            jsonOutput: String(effectiveWantsJson),
         };
 
         return {
@@ -96,7 +104,7 @@ export class AiGenerateNodeStrategy implements NodeBlockConfigStrategy {
                 rationale: [
                     'Choose an AI model profile that matches the requested output style.',
                     'Populate fallback system/prompt settings so the AI node remains understandable in the editor and can execute with config defaults.',
-                    ...(context.input.wantsJson
+                    ...(effectiveWantsJson
                         ? [
                               'Populate an output schema when JSON output is expected so structured validation can happen later.',
                           ]

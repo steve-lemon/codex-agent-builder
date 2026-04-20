@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const ArchitectureOperationModelSchema = z.enum([
     'classify',
     'count',
+    'diagnose',
     'extract',
     'edit',
     'transform',
@@ -17,6 +18,15 @@ export const DesignBriefInputFormatSchema = z.enum(['text', 'json', 'image', 'mi
 export const DesignBriefSourceSchema = z.enum(['user-provided', 'inferred', 'synthetic']);
 export const DesignBriefOutputFormatSchema = z.enum(['json', 'plain-text', 'markdown', 'unspecified']);
 export const DesignBriefExecutionStrategySchema = z.enum(['deterministic-first', 'ai-first', 'hybrid', 'blocked']);
+export const DesignBriefSubjectSchema = z.enum([
+    'graph-structured-data',
+    'log-data',
+    'document-text',
+    'draft-text',
+    'keyword-seed',
+    'general-text',
+]);
+export const DesignBriefInputShapeSchema = z.enum(['graph-json', 'json', 'log-text', 'text', 'mixed', 'unknown']);
 export const ValidationSampleRoleSchema = z.enum(['representative', 'edge', 'format']);
 export const ConfidenceCeilingSchema = z.enum(['fulfilled', 'uncertain', 'partial']);
 export const ArchitectureReviewFitSchema = z.enum(['good', 'mixed', 'poor']);
@@ -51,6 +61,15 @@ export const DesignBriefSchema = z.object({
         cardinality: z.enum(['single', 'multiple']),
         schemaExpectation: z.string().optional(),
     }),
+    semanticFacets: z
+        .object({
+            subject: DesignBriefSubjectSchema,
+            inputShape: DesignBriefInputShapeSchema,
+            preferredTemplateTraits: z.array(z.string()),
+            disallowedTemplateTraits: z.array(z.string()),
+            requiredOutputTraits: z.array(z.string()),
+        })
+        .optional(),
     executionPosture: z.object({
         strategy: DesignBriefExecutionStrategySchema,
         rationale: z.array(z.string()),

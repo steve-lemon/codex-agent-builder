@@ -23,6 +23,11 @@ function detectConcreteGraphJson(userRequest: string): boolean {
     );
 }
 
+function detectLogLikeInput(userRequest: string): boolean {
+    const lowered = userRequest.toLowerCase();
+    return /(error log|stack trace|stacktrace|traceback|exception|에러 로그|로그|스택 트레이스)/.test(lowered);
+}
+
 function inferOperationModel(userRequest: string, taskType: string): DesignBriefRecord['mission']['operationModel'] {
     const lowered = `${userRequest} ${taskType}`.toLowerCase();
     const operations: DesignBriefRecord['mission']['operationModel'] = [];
@@ -32,6 +37,9 @@ function inferOperationModel(userRequest: string, taskType: string): DesignBrief
     }
     if (/count|카운트|개수|수를 세/.test(lowered)) {
         operations.push('count');
+    }
+    if (/diagnose|diagnostic|error log|stack trace|root cause|원인|진단|문제점|해결 방안/.test(lowered)) {
+        operations.push('diagnose');
     }
     if (/extract|keywords?|analyze|analysis|핵심어|핵심 키워드|키워드 분석|추출|분석/.test(lowered)) {
         operations.push('extract');
@@ -107,6 +115,9 @@ function buildMissionSummary(
     if (operationModel.includes('count')) {
         return `Count the requested elements for task type ${taskType}.`;
     }
+    if (operationModel.includes('diagnose')) {
+        return `Diagnose the likely issue and causes for task type ${taskType}.`;
+    }
     if (operationModel.includes('extract')) {
         return `Extract the requested representative items for task type ${taskType}.`;
     }
@@ -117,6 +128,80 @@ function buildMissionSummary(
         return `Generate the requested output for task type ${taskType}.`;
     }
     return `Satisfy the user request for task type ${taskType}.`;
+}
+
+function inferSemanticFacets(args: {
+    userRequest: string;
+    taskType: string;
+    operationModel: DesignBriefRecord['mission']['operationModel'];
+    concreteGraphJson: boolean;
+    outputFormat: DesignBriefRecord['outputContract']['format'];
+}): NonNullable<DesignBriefRecord['semanticFacets']> {
+    const lowered = args.userRequest.toLowerCase();
+    const subject: NonNullable<DesignBriefRecord['semanticFacets']>['subject'] = args.concreteGraphJson
+        ? 'graph-structured-data'
+        : detectLogLikeInput(args.userRequest)
+        ? 'log-data'
+        : /draft|email draft|초안|답장 내용|이메일 내용/.test(lowered)
+        ? 'draft-text'
+        : /키워드.*타이틀|title.*keyword|keyword/.test(lowered) && args.taskType === 'blog-title-generation'
+        ? 'keyword-seed'
+        : /(article|blog|document|본문|문서|내용)/.test(lowered)
+        ? 'document-text'
+        : 'general-text';
+
+    const inputShape: NonNullable<DesignBriefRecord['semanticFacets']>['inputShape'] = args.concreteGraphJson
+        ? 'graph-json'
+        : detectLogLikeInput(args.userRequest)
+        ? 'log-text'
+        : lowered.includes('json')
+        ? 'json'
+        : inferInputFormat(args.userRequest) === 'mixed'
+        ? 'mixed'
+        : inferInputFormat(args.userRequest) === 'text'
+        ? 'text'
+        : 'unknown';
+
+    const preferredTemplateTraits = unique([
+        ...(args.operationModel.includes('summarize') ? ['summary-workflow'] : []),
+        ...(args.operationModel.includes('extract') && args.taskType === 'keyword-analysis'
+            ? ['extraction-workflow', 'list-output']
+            : []),
+        ...(args.operationModel.includes('diagnose') ? ['analysis-workflow', 'diagnostic-analysis'] : []),
+        ...(args.operationModel.includes('edit') ? ['editing-workflow'] : []),
+        ...(args.operationModel.includes('count') ? ['counting-workflow'] : []),
+        ...(subject === 'graph-structured-data' ? ['graph-structured-input'] : []),
+        ...(args.taskType === 'blog-title-generation' ? ['title-generation', 'list-output'] : []),
+        ...(args.outputFormat === 'json' ? ['json-output'] : []),
+    ]);
+
+    const disallowedTemplateTraits = unique([
+        ...(subject !== 'graph-structured-data' ? ['graph-structured-input'] : []),
+        ...(args.taskType !== 'email-reply' ? ['email-integration'] : []),
+        ...(!args.operationModel.includes('summarize') ? ['summary-workflow'] : []),
+        ...(!args.operationModel.includes('diagnose') ? ['diagnostic-analysis'] : []),
+        ...(!args.operationModel.includes('extract') || args.taskType !== 'keyword-analysis'
+            ? ['extraction-workflow']
+            : []),
+        ...(!args.operationModel.includes('generate') || args.taskType !== 'blog-title-generation'
+            ? ['title-generation']
+            : []),
+    ]);
+
+    const requiredOutputTraits = unique([
+        ...(args.operationModel.includes('diagnose') ? ['sectioned-report-output'] : []),
+        ...(args.taskType === 'keyword-analysis' ? ['list-output'] : []),
+        ...(args.outputFormat === 'markdown' ? ['markdown-output'] : []),
+        ...(args.outputFormat === 'json' ? ['json-output'] : []),
+    ]);
+
+    return {
+        subject,
+        inputShape,
+        preferredTemplateTraits,
+        disallowedTemplateTraits,
+        requiredOutputTraits,
+    };
 }
 
 function makeRepresentativeSample(intent: FlowDesignIntent): DesignBriefRecord['validationPlan']['sampleCases'] {
@@ -206,6 +291,13 @@ export async function buildDesignBrief(
     const operationModel = inferOperationModel(input.userRequest, input.taskType);
     const outputFormat = mapOutputFormat(input.outputContract);
     const concreteGraphJson = detectConcreteGraphJson(input.userRequest);
+    const semanticFacets = inferSemanticFacets({
+        userRequest: input.userRequest,
+        taskType: input.taskType,
+        operationModel,
+        concreteGraphJson,
+        outputFormat,
+    });
     const inputSource: DesignBriefRecord['inputContract']['source'] =
         sampleInputSource && sampleInputSource !== 'default'
             ? 'synthetic'
@@ -356,6 +448,7 @@ export async function buildDesignBrief(
             schemaExpectation:
                 outputFormat === 'json' ? 'machine-readable object or array matching the request contract' : undefined,
         },
+        semanticFacets,
         executionPosture: {
             strategy: executionStrategy,
             rationale: unique([
@@ -456,6 +549,10 @@ export function buildArchitectureReview(args: {
 export interface PlannerStrategyBrief {
     mission: string;
     operationModel: string[];
+    subject?: NonNullable<DesignBriefRecord['semanticFacets']>['subject'];
+    inputShape?: NonNullable<DesignBriefRecord['semanticFacets']>['inputShape'];
+    preferredTemplateTraits?: string[];
+    disallowedTemplateTraits?: string[];
     executionPosture: DesignBriefRecord['executionPosture']['strategy'];
     outputFormat: DesignBriefRecord['outputContract']['format'];
     confidenceCeiling: DesignBriefRecord['validationPlan']['confidenceCeiling'];
@@ -468,6 +565,10 @@ export function summarizeDesignBriefForPlanner(brief: DesignBriefRecord): Planne
     return {
         mission: brief.mission.summary,
         operationModel: [...brief.mission.operationModel],
+        subject: brief.semanticFacets?.subject,
+        inputShape: brief.semanticFacets?.inputShape,
+        preferredTemplateTraits: brief.semanticFacets?.preferredTemplateTraits.slice(0, 4) ?? [],
+        disallowedTemplateTraits: brief.semanticFacets?.disallowedTemplateTraits.slice(0, 4) ?? [],
         executionPosture: brief.executionPosture.strategy,
         outputFormat: brief.outputContract.format,
         confidenceCeiling: brief.validationPlan.confidenceCeiling,

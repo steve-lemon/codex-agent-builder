@@ -97,6 +97,32 @@ describe('flow-design task graph advisors', () => {
         expect(recommendation.source).toBe('deterministic');
     });
 
+    it('prefers a text analysis workflow over graph explanation for error log diagnosis requests', async () => {
+        const templates = await getFlowDesignTaskGraphCatalog();
+        const advisor = new DeterministicFlowDesignTaskGraphAdvisor();
+
+        const recommendation = await advisor.recommend({
+            userRequest: '에러 로그를 보고 문제점 파악해',
+            templates,
+            taskType: 'text-analysis',
+            operationModel: ['diagnose', 'extract', 'transform'],
+            semanticFacets: {
+                subject: 'log-data',
+                inputShape: 'log-text',
+                preferredTemplateTraits: ['analysis-workflow', 'diagnostic-analysis'],
+                disallowedTemplateTraits: ['graph-structured-input', 'title-generation'],
+            },
+        });
+
+        expect(recommendation.templateId).toBe('text-analysis');
+        expect(recommendation.graph.nodes.map(node => node.id)).toEqual([
+            'capture-request',
+            'analyze-content',
+            'review-output',
+        ]);
+        expect(recommendation.source).toBe('deterministic');
+    });
+
     it('uses a model-backed task-graph advisor when one is supplied', async () => {
         const gateway = {
             generateStructured: async () => ({
@@ -200,5 +226,21 @@ describe('flow-design task graph advisors', () => {
 
         expect(deriveRequiredCapabilitiesFromTaskGraph(graph)).toEqual(['text-input', 'ai-generation', 'text-output', 'view-log']);
         expect(graph.nodes.map(node => node.id)).toEqual(['capture-request', 'extract-keywords', 'review-output']);
+    });
+
+    it('does not treat error log diagnosis as graph explanation when graph structure is disallowed', async () => {
+        const graph = await inferTaskGraph('에러 로그를 보고 문제점 파악해', {
+            taskType: 'text-analysis',
+            operationModel: ['diagnose', 'extract', 'transform'],
+            semanticFacets: {
+                subject: 'log-data',
+                inputShape: 'log-text',
+                preferredTemplateTraits: ['analysis-workflow', 'diagnostic-analysis'],
+                disallowedTemplateTraits: ['graph-structured-input', 'title-generation'],
+            },
+        });
+
+        expect(deriveRequiredCapabilitiesFromTaskGraph(graph)).toEqual(['text-input', 'ai-generation', 'text-output', 'view-log']);
+        expect(graph.nodes.map(node => node.id)).toEqual(['capture-request', 'analyze-content', 'review-output']);
     });
 });

@@ -11,8 +11,15 @@ import {
 } from '../design/analysis';
 import { createFlowAiDelegationAdvisor } from '../design/ai-delegation';
 import { createFlowDesignTaskGraphAdvisor } from '../design/task-graphs';
+import { normalizeFlowRequest } from '../design/core';
+import { buildDesignBrief } from '../design/architecture';
 import { buildToolPackFromResource, loadToolPackResource } from '../../tools/core/resources';
-import { type ToolContext, type ToolDefinition, type ToolPack, type ToolRepositoryBundle } from '../../tools/core/types';
+import {
+    type ToolContext,
+    type ToolDefinition,
+    type ToolPack,
+    type ToolRepositoryBundle,
+} from '../../tools/core/types';
 
 function defineTaskGraphToolExecutor<TArgs extends Record<string, unknown>>(
     handler: (args: TArgs, context: ToolContext) => Promise<unknown> | unknown,
@@ -105,11 +112,18 @@ function getTaskGraphToolDefinitions(): Record<
 function getTaskGraphToolExecutors() {
     return {
         [TASK_GRAPH_EXECUTE_IDS.inferTaskGraph]: defineTaskGraphToolExecutor<{ userRequest: string }>(
-            async ({ userRequest }, context) => ({
-                taskGraph: await inferTaskGraph(userRequest, {
-                    taskGraphAdvisor: createFlowDesignTaskGraphAdvisor(context.llm),
-                }),
-            }),
+            async ({ userRequest }, context) => {
+                const normalizedRequest = await normalizeFlowRequest(userRequest);
+                const designBrief = await buildDesignBrief(normalizedRequest);
+                return {
+                    taskGraph: await inferTaskGraph(userRequest, {
+                        taskGraphAdvisor: createFlowDesignTaskGraphAdvisor(context.llm),
+                        taskType: normalizedRequest.taskType,
+                        operationModel: designBrief.mission.operationModel,
+                        semanticFacets: designBrief.semanticFacets,
+                    }),
+                };
+            },
         ),
         [TASK_GRAPH_EXECUTE_IDS.analyzeTaskGraphCompatibility]: defineTaskGraphToolExecutor<{
             taskGraph: {
@@ -165,10 +179,17 @@ function getTaskGraphToolExecutors() {
                       aiDelegationAdvisor: createFlowAiDelegationAdvisor(context.llm),
                       taskGraphAdvisor: createFlowDesignTaskGraphAdvisor(context.llm),
                   })
-                : await assessFlowFeasibility(userRequest, {
-                      aiDelegationAdvisor: createFlowAiDelegationAdvisor(context.llm),
-                      taskGraphAdvisor: createFlowDesignTaskGraphAdvisor(context.llm),
-                  }),
+                : await (async () => {
+                      const normalizedRequest = await normalizeFlowRequest(userRequest);
+                      const designBrief = await buildDesignBrief(normalizedRequest);
+                      return await assessFlowFeasibility(userRequest, {
+                          aiDelegationAdvisor: createFlowAiDelegationAdvisor(context.llm),
+                          taskGraphAdvisor: createFlowDesignTaskGraphAdvisor(context.llm),
+                          taskType: normalizedRequest.taskType,
+                          operationModel: designBrief.mission.operationModel,
+                          semanticFacets: designBrief.semanticFacets,
+                      });
+                  })(),
         ),
     };
 }

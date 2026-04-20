@@ -27,6 +27,12 @@ export interface FlowDesignTaskGraphAdvisor {
         templates: FlowDesignTaskGraphTemplate[];
         taskType?: string;
         operationModel?: string[];
+        semanticFacets?: {
+            preferredTemplateTraits?: string[];
+            disallowedTemplateTraits?: string[];
+            subject?: string;
+            inputShape?: string;
+        };
     }): Promise<FlowDesignTaskGraphRecommendation>;
 }
 
@@ -64,6 +70,12 @@ function scoreTemplate(args: {
     template: FlowDesignTaskGraphTemplate;
     taskType?: string;
     operationModel?: string[];
+    semanticFacets?: {
+        preferredTemplateTraits?: string[];
+        disallowedTemplateTraits?: string[];
+        subject?: string;
+        inputShape?: string;
+    };
 }): number {
     const lowered = normalize(args.userRequest);
     let score = 0;
@@ -82,7 +94,7 @@ function scoreTemplate(args: {
     }
 
     if (args.taskType && args.template.taskTypes?.includes(args.taskType)) {
-        score += 6;
+        score += 3;
     }
 
     const operationModel = normalizeOperationModel(args.operationModel);
@@ -110,6 +122,16 @@ function scoreTemplate(args: {
         score -= 8;
     }
 
+    const templateTraits = (args.template.traits ?? []).map(normalize);
+    const preferredTraits = (args.semanticFacets?.preferredTemplateTraits ?? []).map(normalize);
+    const disallowedTraits = (args.semanticFacets?.disallowedTemplateTraits ?? []).map(normalize);
+
+    const preferredOverlap = preferredTraits.filter(trait => templateTraits.includes(trait)).length;
+    score += preferredOverlap * 4;
+
+    const disallowedOverlap = disallowedTraits.filter(trait => templateTraits.includes(trait)).length;
+    score -= disallowedOverlap * 6;
+
     return score;
 }
 
@@ -118,6 +140,12 @@ function rankTemplates(args: {
     templates: FlowDesignTaskGraphTemplate[];
     taskType?: string;
     operationModel?: string[];
+    semanticFacets?: {
+        preferredTemplateTraits?: string[];
+        disallowedTemplateTraits?: string[];
+        subject?: string;
+        inputShape?: string;
+    };
 }) {
     return args.templates
         .map(template => ({
@@ -127,6 +155,7 @@ function rankTemplates(args: {
                 template,
                 taskType: args.taskType,
                 operationModel: args.operationModel,
+                semanticFacets: args.semanticFacets,
             }),
         }))
         .sort((left, right) => right.score - left.score);
@@ -139,6 +168,12 @@ export class DeterministicFlowDesignTaskGraphAdvisor implements FlowDesignTaskGr
         templates: FlowDesignTaskGraphTemplate[];
         taskType?: string;
         operationModel?: string[];
+        semanticFacets?: {
+            preferredTemplateTraits?: string[];
+            disallowedTemplateTraits?: string[];
+            subject?: string;
+            inputShape?: string;
+        };
     }): Promise<FlowDesignTaskGraphRecommendation> {
         const ranked = rankTemplates(args);
 
@@ -205,6 +240,12 @@ export class LlmBackedFlowDesignTaskGraphAdvisor implements FlowDesignTaskGraphA
         templates: FlowDesignTaskGraphTemplate[];
         taskType?: string;
         operationModel?: string[];
+        semanticFacets?: {
+            preferredTemplateTraits?: string[];
+            disallowedTemplateTraits?: string[];
+            subject?: string;
+            inputShape?: string;
+        };
     }): Promise<FlowDesignTaskGraphRecommendation> {
         const advisor = await getLiteAdvisorDefinition('flow-design.advisors', 'flow-design.task-graph');
         const includeRationale = advisor.includeRationale === true;
@@ -225,6 +266,7 @@ export class LlmBackedFlowDesignTaskGraphAdvisor implements FlowDesignTaskGraphA
                 userRequest: args.userRequest,
                 taskType: args.taskType,
                 operationModel: args.operationModel ?? [],
+                semanticFacets: args.semanticFacets,
                 templates: shortlisted.map(({ template, score }) => ({
                     id: template.id,
                     label: template.label,

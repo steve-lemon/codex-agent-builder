@@ -97,8 +97,9 @@ function describeOutputContractState(
 
     if ((outputContract.format === 'plain-text' || outputContract.format === 'markdown') && jsonOutputEnabled) {
         return {
-            summarySuffix: ' The configured flow drifted toward JSON output even though the request preferred plain text.',
-            nextAction: 'Restore the plain-text output mode requested by the user.',
+            summarySuffix:
+                ' The configured flow drifted toward JSON output even though the request preferred text output.',
+            nextAction: 'Restore the requested text output mode instead of JSON.',
         };
     }
 
@@ -256,7 +257,9 @@ export async function formatFlowDesignerFinalResult(stepResults: StepResult[]): 
         return {
             summary: `Handled with skill flow-designer. The flow executed successfully after ${designPassCount} design pass(es), ${taskGraphRefinementCount} task-graph refinement step(s), and ${configuredNodeCount} configured node(s)${
                 probeInsightCount > 0 ? ` informed by ${probeInsightCount} probe insight(s)` : ''
-            }. The current reflection judged the result satisfactory for the request based on the available sample validation.${outputContractState.summarySuffix ?? ''}`,
+            }. The current reflection judged the result satisfactory for the request based on the available sample validation.${
+                outputContractState.summarySuffix ?? ''
+            }`,
             success: true,
             nextActions:
                 designPassCount > 1
@@ -289,9 +292,14 @@ export async function formatFlowDesignerFinalResult(stepResults: StepResult[]): 
     }
 
     return {
-        summary: `Handled with skill flow-designer. No reflection result was produced.${outputContractState.summarySuffix ?? ''}`,
+        summary: `Handled with skill flow-designer. No reflection result was produced.${
+            outputContractState.summarySuffix ?? ''
+        }`,
         success: true,
-        nextActions: [...(outputContractState.nextAction ? [outputContractState.nextAction] : []), fakeFinalCopy.generic.reviewTraceLogs],
+        nextActions: [
+            ...(outputContractState.nextAction ? [outputContractState.nextAction] : []),
+            fakeFinalCopy.generic.reviewTraceLogs,
+        ],
         payload: buildFlowDesignerPayload({
             feasible: true,
             designPassCount,

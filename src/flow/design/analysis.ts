@@ -79,6 +79,12 @@ export async function inferTaskGraph(
         taskGraphTemplates?: FlowDesignTaskGraphTemplate[];
         taskType?: string;
         operationModel?: string[];
+        semanticFacets?: {
+            preferredTemplateTraits?: string[];
+            disallowedTemplateTraits?: string[];
+            subject?: string;
+            inputShape?: string;
+        };
     } = {},
 ): Promise<DirectedGraph> {
     const templates = options.taskGraphTemplates ?? (await getFlowDesignTaskGraphCatalog());
@@ -87,6 +93,7 @@ export async function inferTaskGraph(
         templates,
         taskType: options.taskType,
         operationModel: options.operationModel,
+        semanticFacets: options.semanticFacets,
     });
 
     return recommendation.graph;
@@ -270,6 +277,12 @@ export async function assessFlowFeasibility(
         taskGraphAdvisor?: FlowDesignTaskGraphAdvisor;
         taskType?: string;
         operationModel?: string[];
+        semanticFacets?: {
+            preferredTemplateTraits?: string[];
+            disallowedTemplateTraits?: string[];
+            subject?: string;
+            inputShape?: string;
+        };
     } = {},
 ): Promise<FlowFeasibilityAssessment> {
     const templates = await getFlowDesignTaskGraphCatalog();
@@ -278,6 +291,7 @@ export async function assessFlowFeasibility(
         templates,
         taskType: options.taskType,
         operationModel: options.operationModel,
+        semanticFacets: options.semanticFacets,
     });
 
     if (deterministicRecommendation.confidence >= DETERMINISTIC_FAST_PATH_CONFIDENCE) {
@@ -303,6 +317,7 @@ export async function assessFlowFeasibility(
             taskGraphTemplates: templates,
             taskType: options.taskType,
             operationModel: options.operationModel,
+            semanticFacets: options.semanticFacets,
         }),
         options,
     );

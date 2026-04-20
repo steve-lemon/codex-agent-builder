@@ -452,11 +452,12 @@ function findPrimaryAiNode(result: ProductDesignRunResult) {
 
 function inferJsonOutputContract(result: ProductDesignRunResult, requirement: string, userFeedback: string) {
     const aiNode = findPrimaryAiNode(result);
-    const wantsJsonFromText = result.outputContract.format === 'json';
+    const requestedFormat = result.outputContract.format;
+    const wantsJsonFromText = requestedFormat === 'json';
     const jsonOutputEnabled = aiNode?.config?.jsonOutput?.trim().toLowerCase() === 'true';
     const outputSchema = aiNode?.config?.outputSchema?.trim() ?? '';
 
-    if (!wantsJsonFromText && !jsonOutputEnabled && !outputSchema) {
+    if (!wantsJsonFromText) {
         return undefined;
     }
 
@@ -537,6 +538,20 @@ export function sanitizeCodexPromptText(
         );
     }
 
+    if (result?.outputContract.format === 'markdown') {
+        normalized = normalized
+            .replace(/출력은 JSON 객체 하나로만 반환하세요\.?\s*설명이나 추가 텍스트는 포함하지 마세요\.?/gi, '')
+            .replace(
+                /출력은 JSON 객체 하나로만 반환하고, 형식은\s*\{[^}]+\}\s*이어야 합니다\.?\s*설명이나 추가 텍스트는 포함하지 마세요\.?/gi,
+                '',
+            )
+            .replace(
+                /출력은 반드시 순수 마크다운 텍스트 형식이어야 하며?/gi,
+                '출력은 반드시 순수 마크다운 텍스트 형식이어야 하며',
+            )
+            .trim();
+    }
+
     return normalized;
 }
 
@@ -567,7 +582,7 @@ function localizeAssessmentSummary(language: 'ko' | 'en', summary: string): stri
         'The run completed successfully, but requirement fulfillment is still uncertain because structured JSON output still lacks an explicit output schema.':
             '실행은 성공적으로 완료되었지만, 구조화된 JSON 출력에 필요한 명시적 스키마가 아직 없어 요구사항 충족 여부는 아직 불확실합니다.',
         'The run completed successfully, but requirement fulfillment is still uncertain because the flow output format drifted away from the requested plain-text preference.':
-            '실행은 성공적으로 완료되었지만, 최종 flow의 출력 형식이 요청된 평문 선호에서 벗어나 요구사항 충족 여부는 아직 불확실합니다.',
+            '실행은 성공적으로 완료되었지만, 최종 flow의 출력 형식이 요청된 텍스트 형식 선호에서 벗어나 요구사항 충족 여부는 아직 불확실합니다.',
         'The run completed successfully, but requirement fulfillment is still uncertain because validation relied on a synthetic sample input (synthetic-graph-json).':
             '실행은 성공적으로 완료되었지만, synthetic graph JSON 샘플 기반으로만 검증되었기 때문에 요구사항 충족 여부는 아직 불확실합니다.',
         'The run completed successfully, but requirement fulfillment is still uncertain because the architecture strategy limited confidence to the available evidence.':
@@ -586,7 +601,7 @@ function localizeAssessmentSummary(language: 'ko' | 'en', summary: string): stri
         'structured JSON output still lacks an explicit output schema':
             '구조화된 JSON 출력에 필요한 명시적 스키마가 아직 없습니다.',
         'the flow output format drifted away from the requested plain-text preference':
-            '출력 형식이 요청된 평문 선호에서 벗어났습니다.',
+            '출력 형식이 요청된 텍스트 형식 선호에서 벗어났습니다.',
         'validation relied on a synthetic sample input (synthetic-graph-json)':
             'synthetic graph JSON 샘플 기반으로만 검증되었습니다.',
         'architecture strategy limited confidence because validation evidence remains synthetic or inferred':

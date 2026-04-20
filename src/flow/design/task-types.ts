@@ -58,6 +58,9 @@ function inferOperationHints(userRequest: string): string[] {
     if (/count|counting|frequency|카운트|개수|빈도|수를 세/.test(lowered)) {
         operations.push('count');
     }
+    if (/diagnose|diagnostic|error log|stack trace|root cause|로그|에러 로그|원인|진단|문제점|해결 방안/.test(lowered)) {
+        operations.push('diagnose');
+    }
     if (/extract|extraction|analyze|analysis|핵심어|핵심 키워드|키워드 분석|추출|분석/.test(lowered)) {
         operations.push('extract');
     }
@@ -106,6 +109,18 @@ function adjustScoreForOperationHints(args: {
         }
     }
 
+    if (hints.includes('diagnose')) {
+        if (args.taskType.id === 'text-analysis') {
+            score += 7;
+        }
+        if (args.taskType.id === 'graph-explanation') {
+            score -= 4;
+        }
+        if (args.taskType.id === 'blog-title-generation') {
+            score -= 4;
+        }
+    }
+
     if (hints.includes('extract')) {
         if (args.taskType.id === 'keyword-analysis') {
             score += 6;
@@ -121,6 +136,9 @@ function adjustScoreForOperationHints(args: {
     if (hints.includes('title')) {
         if (args.taskType.id === 'blog-title-generation') {
             score += 5;
+        }
+        if (args.taskType.id === 'text-analysis') {
+            score -= 4;
         }
         if (args.taskType.id === 'text-summarization' || args.taskType.id === 'text-editing') {
             score -= 2;

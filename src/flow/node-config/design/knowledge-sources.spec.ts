@@ -33,6 +33,7 @@ describe('node-config knowledge sources', () => {
                     genericCountMap: 'type: object',
                     stringList: 'type: object',
                     keywordList: 'type: object',
+                    analysisReport: 'type: object',
                     summaryLines: 'type: object',
                     correctedText: 'type: object',
                     consonantVowelCounts: 'type: object',

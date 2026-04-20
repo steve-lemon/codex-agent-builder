@@ -272,4 +272,141 @@ describe('ai node strategy', () => {
 
         expect(result.suggestion?.config.outputSchema).toContain('keywords');
     });
+
+    it('selects an analysis-report schema for diagnostic analysis requests when JSON output is requested', async () => {
+        const strategy = new AiGenerateNodeStrategy();
+
+        const result = await strategy.apply(
+            {
+                id: 'ai-node',
+                blockId: 'ai-generate',
+                label: 'AI Node',
+                config: {},
+                inputPorts: [],
+                outputPorts: [],
+            },
+            {
+                flow: { blocks: [], nodes: [], edges: [] },
+                input: {
+                    userRequest: '에러 로그를 보고 문제점을 JSON으로 정리해줘',
+                    flow: { blocks: [], nodes: [], edges: [] },
+                    desiredCount: 1,
+                    wantsJson: true,
+                    designBrief: {
+                        mission: {
+                            summary: 'Diagnose the likely issue and causes for the provided log.',
+                            goal: '에러 로그 진단',
+                            operationModel: ['diagnose', 'extract', 'transform'],
+                        },
+                        inputContract: {
+                            format: 'text',
+                            source: 'user-provided',
+                            concreteInputPresent: true,
+                            missingRequiredInput: false,
+                            notes: [],
+                        },
+                        outputContract: {
+                            format: 'json',
+                            structured: true,
+                            cardinality: 'single',
+                        },
+                        semanticFacets: {
+                            subject: 'log-data',
+                            inputShape: 'log-text',
+                            preferredTemplateTraits: ['analysis-workflow', 'diagnostic-analysis'],
+                            disallowedTemplateTraits: ['graph-structured-input'],
+                            requiredOutputTraits: ['sectioned-report-output', 'json-output'],
+                        },
+                        executionPosture: {
+                            strategy: 'ai-first',
+                            rationale: ['Diagnostic quality depends on interpreting the log context.'],
+                        },
+                        successCriteria: ['Return a concise issue summary and likely causes.'],
+                        validationPlan: {
+                            sampleCases: [],
+                            assertions: ['Make the issue and next steps easy to review.'],
+                            confidenceCeiling: 'fulfilled',
+                        },
+                        designPrinciples: ['Prefer concrete root-cause wording over vague explanation.'],
+                        riskFlags: [],
+                        strategicAssumptions: [],
+                        knowledgeReferences: [],
+                    },
+                },
+                probeInsightsApplied: [],
+            },
+        );
+
+        expect(result.suggestion?.config.outputSchema).toContain('issueSummary');
+        expect(result.suggestion?.config.outputSchema).toContain('likelyCauses');
+    });
+
+    it('does not force JSON mode when the architecture brief explicitly prefers markdown', async () => {
+        const strategy = new AiGenerateNodeStrategy();
+
+        const result = await strategy.apply(
+            {
+                id: 'ai-node',
+                blockId: 'ai-generate',
+                label: 'AI Node',
+                config: {},
+                inputPorts: [],
+                outputPorts: [],
+            },
+            {
+                flow: { blocks: [], nodes: [], edges: [] },
+                input: {
+                    userRequest: '그래프(json)를 보고 이게 뭐하는 것인지 설명(md) 해줘',
+                    flow: { blocks: [], nodes: [], edges: [] },
+                    desiredCount: 1,
+                    wantsJson: true,
+                    designBrief: {
+                        mission: {
+                            summary: 'Explain the provided graph JSON.',
+                            goal: '그래프 설명',
+                            operationModel: ['explain', 'transform'],
+                        },
+                        inputContract: {
+                            format: 'json',
+                            source: 'synthetic',
+                            concreteInputPresent: false,
+                            missingRequiredInput: true,
+                            notes: [],
+                        },
+                        outputContract: {
+                            format: 'markdown',
+                            structured: false,
+                            cardinality: 'single',
+                        },
+                        semanticFacets: {
+                            subject: 'graph-structured-data',
+                            inputShape: 'graph-json',
+                            preferredTemplateTraits: ['graph-structured-input', 'explanation-workflow'],
+                            disallowedTemplateTraits: ['json-output'],
+                            requiredOutputTraits: ['markdown-output'],
+                        },
+                        executionPosture: {
+                            strategy: 'ai-first',
+                            rationale: ['Explanation quality depends on structure interpretation.'],
+                        },
+                        successCriteria: ['Describe purpose and structure.'],
+                        validationPlan: {
+                            sampleCases: [],
+                            assertions: ['Cover main nodes and edges.'],
+                            confidenceCeiling: 'uncertain',
+                        },
+                        designPrinciples: ['Keep the explanation grounded in structure.'],
+                        riskFlags: [],
+                        strategicAssumptions: [],
+                        knowledgeReferences: [],
+                    },
+                },
+                probeInsightsApplied: [],
+            },
+        );
+
+        expect(result.suggestion?.config.jsonOutput).toBe('false');
+        expect(result.suggestion?.config.outputSchema).toBe('');
+        expect(result.suggestion?.config.promptTemplate).toContain('Return markdown only.');
+    });
 });

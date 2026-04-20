@@ -284,7 +284,11 @@ export async function designFlowDraft(args: {
     ]);
 
     const feasibility = shouldRecomputeFeasibility(args.preflight)
-        ? await assessFlowFeasibility(args.userRequest)
+        ? await assessFlowFeasibility(args.userRequest, {
+              taskType: normalizedRequest.taskType,
+              operationModel: designBrief.mission.operationModel,
+              semanticFacets: designBrief.semanticFacets,
+          })
         : (args.preflight as FlowFeasibilityAssessment);
     if (!feasibility.feasible) {
         throw new AgentError(

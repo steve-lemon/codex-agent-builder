@@ -165,11 +165,11 @@ function collectRequirementAssessment(args: {
         (args.outputContract.format === 'plain-text' || args.outputContract.format === 'markdown') &&
         actualJsonOutput
     ) {
-        caveats.push('The final flow switched to JSON output even though the request preferred plain text.');
+        caveats.push('The final flow switched to JSON output even though the request preferred text output.');
         reasons.push({
             category: 'output-contract',
             code: 'plain-text-format-drift',
-            message: 'the flow output format drifted away from the requested plain-text preference',
+            message: 'the flow output format drifted away from the requested text-format preference',
         });
     }
     if (missingCapabilities.length > 0) {

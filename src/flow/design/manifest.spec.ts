@@ -12,6 +12,7 @@ describe('flow-design manifest', () => {
                 expect.objectContaining({ id: 'text-editing' }),
                 expect.objectContaining({ id: 'text-summarization' }),
                 expect.objectContaining({ id: 'keyword-analysis' }),
+                expect.objectContaining({ id: 'text-analysis' }),
             ]),
         );
         expect(manifest.taskGraphTemplates).toEqual(
@@ -20,6 +21,7 @@ describe('flow-design manifest', () => {
                 expect.objectContaining({ id: 'text-editing' }),
                 expect.objectContaining({ id: 'text-summarization' }),
                 expect.objectContaining({ id: 'keyword-analysis' }),
+                expect.objectContaining({ id: 'text-analysis' }),
             ]),
         );
         expect(manifest.classifierPrompts).toEqual(

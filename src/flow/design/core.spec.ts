@@ -89,6 +89,23 @@ describe('flow-design core', () => {
         );
     });
 
+    it('analyzes error log diagnosis requests as text analysis instead of graph explanation', async () => {
+        const intent = await analyzeFlowRequest('에러 로그를 보고 문제점 파악해');
+
+        expect(intent.taskType).toBe('text-analysis');
+        expect(intent.designBrief).toEqual(
+            expect.objectContaining({
+                mission: expect.objectContaining({
+                    operationModel: expect.arrayContaining(['diagnose']),
+                }),
+                semanticFacets: expect.objectContaining({
+                    subject: 'log-data',
+                    inputShape: 'log-text',
+                }),
+            }),
+        );
+    });
+
     it('creates and validates a deterministic draft flow from preflight-backed inputs', async () => {
         const availableFlowBlocks = await getCatalogAvailableFlowBlocks();
         const draft = await designFlowDraft({

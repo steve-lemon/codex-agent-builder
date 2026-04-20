@@ -134,6 +134,19 @@ export async function getNodeConfigOutputSchemaDefault(args: {
         return defaults.outputSchemaTemplates.summaryLines;
     }
 
+    if (operationModel.includes('diagnose') || args.taskType === 'text-analysis') {
+        logDebug({
+            scope: 'node-config',
+            action: 'output_schema_selected',
+            message: 'Selected analysis-report schema.',
+            data: {
+                taskType: args.taskType,
+                reason: 'text-analysis',
+            },
+        });
+        return defaults.outputSchemaTemplates.analysisReport;
+    }
+
     if (operationModel.includes('extract') || args.taskType === 'keyword-analysis') {
         logDebug({
             scope: 'node-config',

@@ -105,6 +105,32 @@ taskTypes:
       - 분석
     hints:
       fallbackWhenPlainText: true
+  - id: text-analysis
+    label: Text Analysis
+    description: Analyze user-provided logs, reports, or source text to identify issues, causes, or notable findings.
+    examples:
+      - 에러 로그를 보고 문제점 파악해
+      - 로그를 보고 원인 분석해줘
+      - analyze this error log and identify the root cause
+    signals:
+      - analyze
+      - analysis
+      - diagnose
+      - diagnostic
+      - error log
+      - stack trace
+      - root cause
+      - issue
+      - problem
+      - 로그
+      - 에러 로그
+      - 스택 트레이스
+      - 원인
+      - 진단
+      - 문제점
+      - 해결 방안
+    hints:
+      fallbackWhenPlainText: true
   - id: text-counting
     label: Text Counting
     description: Count characters, tokens, linguistic units, or extracted elements from text with exact or near-exact outputs.
@@ -165,6 +191,9 @@ taskGraphTemplates:
       - reply
       - read
       - send
+    traits:
+      - external-system
+      - email-integration
     graph:
       nodes:
         - id: email-read
@@ -236,6 +265,9 @@ taskGraphTemplates:
       - edit
       - transform
       - validate
+    traits:
+      - editing-workflow
+      - text-input
     graph:
       nodes:
         - id: capture-request
@@ -295,6 +327,10 @@ taskGraphTemplates:
       - blog-title-generation
     operationModels:
       - generate
+    traits:
+      - title-generation
+      - text-input
+      - list-output
     graph:
       nodes:
         - id: capture-request
@@ -360,6 +396,9 @@ taskGraphTemplates:
       - count
       - transform
       - extract
+    traits:
+      - counting-workflow
+      - text-input
     graph:
       nodes:
         - id: capture-request
@@ -424,6 +463,9 @@ taskGraphTemplates:
       - summarize
       - transform
       - extract
+    traits:
+      - summary-workflow
+      - text-input
     graph:
       nodes:
         - id: capture-request
@@ -487,6 +529,10 @@ taskGraphTemplates:
       - extract
       - classify
       - transform
+    traits:
+      - extraction-workflow
+      - list-output
+      - text-input
     graph:
       nodes:
         - id: capture-request
@@ -530,6 +576,79 @@ taskGraphTemplates:
         - source: extract-keywords
           target: review-output
           label: keyword list
+  - id: text-analysis
+    label: Text Analysis Workflow
+    description: Capture source text or logs, analyze the problem or findings, and review the diagnostic output.
+    examples:
+      - 에러 로그를 보고 문제점 파악해
+      - 로그를 보고 원인 분석해줘
+      - analyze this error log and identify the root cause
+    signals:
+      - analyze
+      - diagnosis
+      - diagnostic
+      - error log
+      - root cause
+      - 로그
+      - 에러 로그
+      - 원인
+      - 진단
+      - 문제점
+    taskTypes:
+      - text-analysis
+    operationModels:
+      - diagnose
+      - explain
+      - extract
+      - transform
+    traits:
+      - analysis-workflow
+      - diagnostic-analysis
+      - sectioned-report-output
+      - text-input
+    graph:
+      nodes:
+        - id: capture-request
+          label: Capture Request
+          data:
+            operation: capture-text
+            expectedInputs:
+              - source text or log
+              - diagnostic goal
+            expectedOutputs:
+              - source text or log
+              - diagnostic goal
+            requiredCapabilities:
+              - text-input
+        - id: analyze-content
+          label: Analyze Content
+          data:
+            operation: analyze-text
+            expectedInputs:
+              - source text or log
+              - diagnostic goal
+            expectedOutputs:
+              - analysis report
+            requiredCapabilities:
+              - ai-generation
+              - text-output
+        - id: review-output
+          label: Review Output
+          data:
+            operation: log-output
+            expectedInputs:
+              - analysis report
+            expectedOutputs:
+              - execution log
+            requiredCapabilities:
+              - view-log
+      edges:
+        - source: capture-request
+          target: analyze-content
+          label: source text
+        - source: analyze-content
+          target: review-output
+          label: analysis report
   - id: generic-generation
     label: Generic Generation Workflow
     description: Capture a request, generate a response, and review the output.
@@ -547,6 +666,9 @@ taskGraphTemplates:
     operationModels:
       - generate
       - transform
+    traits:
+      - generic-workflow
+      - text-input
     graph:
       nodes:
         - id: capture-request
@@ -607,6 +729,10 @@ taskGraphTemplates:
     operationModels:
       - explain
       - transform
+    traits:
+      - graph-structured-input
+      - explanation-workflow
+      - json-input
     graph:
       nodes:
         - id: capture-graph-json
@@ -663,6 +789,8 @@ defaults:
       blog-title-generation: 원격 근무
       keyword-analysis: |-
         블로그 본문 예시입니다. 원격 협업 습관, 비동기 커뮤니케이션, 문서 중심 의사결정을 다룹니다. 마지막에는 팀 생산성을 높이는 실천 팁을 정리합니다.
+      text-analysis: |-
+        ERROR 2026-04-20 15:02:11 Database connection failed after retry 3. Timeout while connecting to db-primary. Subsequent requests returned 500 and stack trace references connection pool exhaustion.
       text-summarization: |-
         블로그 본문 예시입니다. 생산성을 높이는 습관과 협업 원칙을 설명합니다. 마지막에는 실천 팁을 정리합니다.
       text-counting: 한글
@@ -684,6 +812,7 @@ defaults:
   systemPrompts:
     blog-title-generation: You generate clear and catchy blog titles based on one keyword.
     keyword-analysis: You extract representative keywords from the provided text and keep them distinct, relevant, and easy to review.
+    text-analysis: You analyze the provided text or logs, identify the core issue, explain likely causes, and suggest practical next steps.
     text-summarization: You summarize the provided text faithfully and keep the requested line or sentence count stable.
     text-counting: You count the requested text elements exactly and make the counting rule explicit.
     graph-explanation: You explain graph-shaped JSON structures clearly in Korean markdown.

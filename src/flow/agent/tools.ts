@@ -515,6 +515,7 @@ export async function createFlowDesignToolBundle(
                     taskGraphAdvisor: createFlowDesignTaskGraphAdvisor(context.llm),
                     taskType: normalizedRequest.taskType,
                     operationModel: designBrief.mission.operationModel,
+                    semanticFacets: designBrief.semanticFacets,
                 });
             },
         ),
@@ -550,6 +551,7 @@ export async function createFlowDesignToolBundle(
                     taskGraphAdvisor: createFlowDesignTaskGraphAdvisor(context.llm),
                     taskType: normalizedRequest.taskType,
                     operationModel: designBrief.mission.operationModel,
+                    semanticFacets: designBrief.semanticFacets,
                 }));
             return await Promise.resolve(
                 provider.composeDraft({

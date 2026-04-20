@@ -133,4 +133,18 @@ describe('flow-design task type advisors', () => {
         expect(recommendation.taskType).toBe('keyword-analysis');
         expect(recommendation.source).toBe('deterministic');
     });
+
+    it('classifies error log diagnosis requests as text analysis instead of graph explanation', async () => {
+        const taskTypes = await getFlowDesignTaskTypeCatalog();
+        const advisor = new DeterministicFlowDesignTaskTypeAdvisor();
+
+        const recommendation = await advisor.recommend({
+            userRequest: '에러 로그를 보고 문제점 파악해',
+            wantsJson: false,
+            taskTypes,
+        });
+
+        expect(recommendation.taskType).toBe('text-analysis');
+        expect(recommendation.source).toBe('deterministic');
+    });
 });

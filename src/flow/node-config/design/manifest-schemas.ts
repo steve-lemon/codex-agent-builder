@@ -9,6 +9,7 @@ export const NodeConfigDefaultsSchema = z.object({
         genericCountMap: z.string(),
         stringList: z.string(),
         keywordList: z.string(),
+        analysisReport: z.string(),
         summaryLines: z.string(),
         correctedText: z.string(),
         consonantVowelCounts: z.string(),
