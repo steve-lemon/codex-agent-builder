@@ -284,7 +284,9 @@ export async function inferFlowOutputContractWithAdvisor(args: {
     const cacheKey = args.userRequest.trim();
     const cachedRecommendation =
         outputContractRecommendationCache.get(cacheKey) ??
-        Promise.resolve((args.advisor ?? defaultFlowOutputContractAdvisor).recommend({ userRequest: args.userRequest }));
+        Promise.resolve(
+            (args.advisor ?? defaultFlowOutputContractAdvisor).recommend({ userRequest: args.userRequest }),
+        );
     outputContractRecommendationCache.set(cacheKey, cachedRecommendation);
     const recommendation = await cachedRecommendation;
     return {
