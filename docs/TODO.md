@@ -78,22 +78,45 @@ Suggested section template:
 - Review this file regularly so it stays current and trustworthy.
 - If a topic becomes large enough to need planning detail, create a dedicated doc and link it from the relevant task here.
 
-## Initial Template
-
-Use this structure when adding real content later:
-
-```md
-# TODO
+## Working Backlog
 
 ## Runtime
 
-- [ ] Example task
+- [ ] Add runtime-level tracing, cancellation, persistence, and structured execution results
+- [ ] Move AI execution from mock hook to a provider abstraction usable by real integrations
 
 ## Resources
 
-- [ ] Example task
+- [ ] Distinguish parse errors from schema-validation failures with a structured resource load error
+- [ ] Add manifest version and migration metadata to resource definitions
+- [ ] Add safer cache invalidation support for non-file text sources
+
+## Flow Core
+
+- [ ] Add richer packet metadata such as provenance, schema versioning, and diagnostics
+- [ ] Add document versioning and migration contracts before long-term persistence
+- [ ] Support external runtime and block registration without editing the core
+
+## Flow Design
+
+- [ ] Replace deterministic task-graph inference heuristics with a more block-aware decomposition model
+- [ ] Emit structured task-graph diffs and cache repeated preflight results
+- [ ] Persist pass-by-pass design details so UIs can visualize design evolution
+
+## Node Config
+
+- [ ] Allow multiple strategies to cooperate on one node
+- [ ] Add ordering and priority metadata for strategies
+- [ ] Preserve note provenance so UIs can explain where guidance came from
+
+## Monitoring
+
+- [ ] Add diff-based design-monitor payloads for large graphs
+- [ ] Persist unified timeline streams
+- [ ] Attach run-step correlation IDs through the unified timeline
 
 ## Docs
 
-- [ ] Example task
-```
+- [x] Add usage guidelines for this TODO document
+- [ ] Keep topic sections aligned with active architectural areas
+- [ ] Link larger planning items to dedicated design docs when needed
