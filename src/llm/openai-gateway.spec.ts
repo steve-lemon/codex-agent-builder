@@ -2,6 +2,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AgentError } from '../errors/agent-error';
 import { OpenAiGateway } from './openai-gateway';
+import { defineStructuredSchema } from './structured-schema';
+import { z } from 'zod';
 
 describe('OpenAiGateway', () => {
     it('routes structured parsing through the HTTP proxy with serialized schema metadata', async () => {
@@ -133,7 +135,7 @@ describe('OpenAiGateway', () => {
                 userInput: 'done?',
                 stepResults: [],
             }),
-        ).rejects.toThrowError(/Structured response parsing failed for reflector_output/);
+        ).rejects.toThrowError(/OpenAI structured response parsing failed for reflector_output/);
     });
 
     it('raises AgentError when the OpenAI SDK loader fails during local execution', async () => {
@@ -150,5 +152,75 @@ describe('OpenAiGateway', () => {
                 stepResults: [],
             }),
         ).rejects.toThrowError(AgentError);
+    });
+
+    it('uses the lite model when structured generation is marked as lite purpose', async () => {
+        const parser = {
+            parse: vi.fn(async ({ model }) => {
+                expect(model).toBe('gpt-4.1-nano');
+                return {
+                    ok: true,
+                };
+            }),
+        };
+        const gateway = new OpenAiGateway({
+            model: 'gpt-4.1',
+            liteModel: 'gpt-4.1-nano',
+            parser,
+        });
+
+        const result = await gateway.generateStructured({
+            purpose: 'lite',
+            input: [
+                { role: 'system', content: 'test' },
+                { role: 'user', content: '{}' },
+            ],
+            schema: defineStructuredSchema(
+                'openai_lite_test',
+                z.object({
+                    ok: z.boolean(),
+                }),
+            ),
+        });
+
+        expect(result).toEqual({ ok: true });
+    });
+
+    it('surfaces a clearer error when the selected OpenAI model does not exist', async () => {
+        const parser = {
+            parse: vi.fn(async () => {
+                throw new AgentError('The model `gpt-5.2-mini` does not exist', {
+                    code: 'model_not_found',
+                });
+            }),
+        };
+        const gateway = new OpenAiGateway({
+            model: 'gpt-5.2-mini',
+            parser,
+        });
+
+        await expect(
+            gateway.plan({
+                userInput: '오타를 정정해줘',
+                skillName: 'flow-designer',
+                skillInstructions: 'Test',
+                strategyBrief: {
+                    mission: 'Correct typos.',
+                    operationModel: ['transform'],
+                    executionPosture: 'hybrid',
+                    outputFormat: 'plain-text',
+                    confidenceCeiling: 'fulfilled',
+                    riskFlags: [],
+                    designPrinciples: [],
+                    sampleSource: 'user-provided',
+                },
+                allowedTools: [],
+                toolManifests: [],
+                toolDefinitions: [],
+            }),
+        ).rejects.toMatchObject({
+            code: 'OPENAI_MODEL_NOT_AVAILABLE',
+            message: expect.stringContaining('OpenAI model is not available for plan: gpt-5.2-mini'),
+        });
     });
 });

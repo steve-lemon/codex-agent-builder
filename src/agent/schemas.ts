@@ -1,6 +1,6 @@
 // Agent runtime flow and data contracts.
 import { z } from 'zod';
-import type { ToolDefinition } from '../tools/types';
+import type { ToolDefinition } from '../tools';
 import { AgentError } from '../errors/agent-error';
 
 /** Supported execution modes for a planner-produced step. */
@@ -27,11 +27,17 @@ export const PlanSchema = z.object({
 });
 
 /** Response schema for planner outputs with generic tool calls. */
+export const ToolCallResponseSchema = z.object({
+    toolName: z.string().min(1),
+    argsJson: z.string().default('{}'),
+});
+
+/** Response schema for planner outputs with generic tool calls. */
 export const PlanStepResponseSchema = z.object({
     id: z.string().min(1),
     mode: StepModeSchema,
     description: z.string().min(1),
-    toolCalls: z.array(ToolCallSchema).nullable(),
+    toolCalls: z.array(ToolCallResponseSchema).nullable(),
     reasoning: z.string().nullable(),
 });
 
@@ -83,10 +89,96 @@ export function parsePlanResponse(input: unknown): Plan {
     return PlanSchema.parse({
         steps: parsed.steps.map(step => ({
             ...step,
-            toolCalls: step.toolCalls ?? undefined,
+            toolCalls:
+                step.toolCalls?.map(toolCall => ({
+                    toolName: toolCall.toolName,
+                    args: safeParsePlannerArgs(toolCall.argsJson),
+                })) ?? undefined,
             reasoning: step.reasoning ?? undefined,
         })),
     });
+}
+
+function safeParsePlannerArgs(argsJson: string): Record<string, unknown> {
+    const normalizedArgsJson = normalizePlannerArgsJson(argsJson);
+
+    try {
+        const parsed = JSON.parse(normalizedArgsJson);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            return parsed as Record<string, unknown>;
+        }
+        throw new Error('Planner args must decode to an object');
+    } catch (error) {
+        throw new AgentError(
+            `Planner returned invalid tool args JSON (preview: ${JSON.stringify(argsJson.slice(0, 120))})`,
+            {
+                cause: AgentError.rootCause(error),
+                code: 'PLAN_ARGS_JSON_INVALID',
+            },
+        );
+    }
+}
+
+function normalizePlannerArgsJson(argsJson: string): string {
+    const trimmed = argsJson.trim();
+    if (!trimmed) {
+        return '{}';
+    }
+
+    const withoutCodeFence = trimmed
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+
+    const extractedJson = extractFirstJsonObject(withoutCodeFence);
+    return extractedJson ?? withoutCodeFence;
+}
+
+function extractFirstJsonObject(input: string): string | undefined {
+    const startIndex = input.indexOf('{');
+    if (startIndex < 0) {
+        return undefined;
+    }
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let index = startIndex; index < input.length; index += 1) {
+        const char = input[index];
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+
+        if (char === '\\') {
+            escaped = true;
+            continue;
+        }
+
+        if (char === '"') {
+            inString = !inString;
+            continue;
+        }
+
+        if (inString) {
+            continue;
+        }
+
+        if (char === '{') {
+            depth += 1;
+            continue;
+        }
+
+        if (char === '}') {
+            depth -= 1;
+            if (depth === 0) {
+                return input.slice(startIndex, index + 1);
+            }
+        }
+    }
+
+    return undefined;
 }
 
 export type Plan = z.infer<typeof PlanSchema>;

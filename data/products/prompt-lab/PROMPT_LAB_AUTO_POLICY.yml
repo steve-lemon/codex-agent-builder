@@ -1,0 +1,18 @@
+version: 1
+auto:
+  stop:
+    runStatuses:
+      - waiting_for_approval
+      - failed
+    fulfillmentLevels:
+      - not-fulfilled
+    reasonCodes: []
+    synthesizedDesignSnapshot: false
+  warn:
+    runStatuses: []
+    fulfillmentLevels:
+      - uncertain
+      - partial
+    reasonCodes:
+      - synthetic-sample-validation
+    synthesizedDesignSnapshot: true

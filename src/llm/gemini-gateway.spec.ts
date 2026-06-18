@@ -2,6 +2,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AgentError } from '../errors/agent-error';
 import { GeminiGateway } from './gemini-gateway';
+import { defineStructuredSchema } from './structured-schema';
+import { z } from 'zod';
 
 describe('GeminiGateway', () => {
     it('requests structured JSON output using responseJsonSchema', async () => {
@@ -88,5 +90,93 @@ describe('GeminiGateway', () => {
                 stepResults: [],
             }),
         ).rejects.toThrowError(AgentError);
+    });
+
+    it('uses the lite model when structured generation is marked as lite purpose', async () => {
+        const generateContent = vi.fn(async () => ({
+            text: JSON.stringify({
+                ok: true,
+            }),
+        }));
+        const loadSdk = vi.fn(
+            async () =>
+                class FakeGoogleGenAI {
+                    models = {
+                        generateContent,
+                    };
+                },
+        );
+        const gateway = new GeminiGateway({
+            apiKey: 'test-key',
+            model: 'gemini-2.5-pro',
+            liteModel: 'gemini-2.5-flash-lite',
+            loadSdk,
+        });
+
+        const result = await gateway.generateStructured({
+            purpose: 'lite',
+            input: [
+                { role: 'system', content: 'test' },
+                { role: 'user', content: JSON.stringify({}) },
+            ],
+            schema: defineStructuredSchema(
+                'gemini_lite_test',
+                z.object({
+                    ok: z.boolean(),
+                }),
+            ),
+        });
+
+        expect(generateContent).toHaveBeenCalledWith(
+            expect.objectContaining({
+                model: 'gemini-2.5-flash-lite',
+            }),
+        );
+        expect(result).toEqual({ ok: true });
+    });
+
+    it('surfaces a clearer error when the selected Gemini model does not exist', async () => {
+        const loadSdk = vi.fn(
+            async () =>
+                class FakeGoogleGenAI {
+                    models = {
+                        generateContent: vi.fn(async () => {
+                            throw new AgentError('Unknown model: gemini-9.9-test', {
+                                code: 'MODEL_NOT_FOUND',
+                            });
+                        }),
+                    };
+                },
+        );
+
+        const gateway = new GeminiGateway({
+            apiKey: 'test-key',
+            model: 'gemini-9.9-test',
+            loadSdk,
+        });
+
+        await expect(
+            gateway.plan({
+                userInput: '오타를 정정해줘',
+                skillName: 'flow-designer',
+                skillInstructions: 'Test',
+                strategyBrief: {
+                    mission: 'Correct typos.',
+                    operationModel: ['transform'],
+                    executionPosture: 'hybrid',
+                    outputFormat: 'plain-text',
+                    confidenceCeiling: 'fulfilled',
+                    riskFlags: [],
+                    designPrinciples: [],
+                    sampleSource: 'user-provided',
+                },
+                allowedTools: [],
+                toolManifests: [],
+                toolDefinitions: [],
+            }),
+        ).rejects.toMatchObject({
+            code: 'GEMINI_MODEL_NOT_AVAILABLE',
+            message: expect.stringContaining('Gemini model is not available for plan: gemini-9.9-test'),
+        });
     });
 });

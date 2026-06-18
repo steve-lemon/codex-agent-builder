@@ -1,16 +1,22 @@
 // Gemini-backed LLM gateway implementation.
 import { z } from 'zod';
-import { createOpenAiPlanResponseSchema, parsePlanResponse, ReflectorOutputSchema } from '../agent/schemas';
-import { FinalResultSchema } from '../agent/types';
-import type { FinalizerInput, LlmGateway, PlannerInput, ReflectorInput } from './types';
+import type { FinalizerInput, LlmGateway, PlannerInput, ReflectorInput, StructuredGenerationInput } from './types';
 import { AgentError } from '../errors/agent-error';
 import { serializeZodSchema } from '../schema/json-schema';
 import { loadGeminiSdk, type GeminiClientLike, type GeminiSdkLoader } from './gemini-loader';
+import {
+    buildFinalizeStructuredRequest,
+    buildPlanStructuredRequest,
+    buildReflectStructuredRequest,
+    parsePlanStructuredOutput,
+} from './structured-tasks';
+import { classifyStructuredGatewayError } from './structured-error-classifier';
 
 /** Configuration used to initialize the Gemini-backed gateway. */
 export interface GeminiGatewayOptions {
     apiKey?: string;
     model?: string;
+    liteModel?: string;
     loadSdk?: GeminiSdkLoader;
 }
 
@@ -19,52 +25,47 @@ export class GeminiGateway implements LlmGateway {
     private client?: GeminiClientLike;
     private readonly apiKey?: string;
     private readonly model: string;
+    private readonly liteModel: string;
     private readonly loadSdk: GeminiSdkLoader;
 
     constructor(options: GeminiGatewayOptions = {}) {
         this.apiKey = options.apiKey ?? process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY;
         this.model = options.model ?? process.env.GEMINI_MODEL ?? 'gemini-2.0-flash';
+        this.liteModel = options.liteModel ?? process.env.GEMINI_LITE_MODEL ?? this.model;
         this.loadSdk = options.loadSdk ?? loadGeminiSdk;
     }
 
     async plan(input: PlannerInput) {
-        const planResponseSchema = createOpenAiPlanResponseSchema(input.toolDefinitions);
-        const parsed = await this.generateStructuredContent(
-            'Return a concise executable plan for an agent runtime. Use only provided tools and generate tool args that satisfy each tool parameter schema.',
-            {
-                userInput: input.userInput,
-                skillName: input.skillName,
-                skillInstructions: input.skillInstructions,
-                allowedTools: input.allowedTools,
-                toolManifests: input.toolManifests,
-            },
-            planResponseSchema,
-            'plan',
-        );
+        const parsed = await this.generateStructured(await buildPlanStructuredRequest(input));
 
-        return parsePlanResponse(parsed);
+        return parsePlanStructuredOutput(parsed);
     }
 
     async reflect(input: ReflectorInput) {
-        return this.generateStructuredContent(
-            'Decide whether run is complete.',
-            input,
-            ReflectorOutputSchema,
-            'reflector_output',
-        );
+        return this.generateStructured(await buildReflectStructuredRequest(input));
     }
 
     async finalize(input: FinalizerInput) {
+        return this.generateStructured(await buildFinalizeStructuredRequest(input));
+    }
+
+    async generateStructured<TSchema extends z.ZodTypeAny>(
+        request: StructuredGenerationInput<TSchema>,
+    ): Promise<z.output<TSchema>> {
         return this.generateStructuredContent(
-            'Return final concise agent result.',
-            input,
-            FinalResultSchema,
-            'final_result',
+            request.purpose === 'lite' ? this.liteModel : this.model,
+            request.input.find(message => message.role === 'system')?.content ?? '',
+            request.input.find(message => message.role === 'user')?.content
+                ? JSON.parse(request.input.find(message => message.role === 'user')!.content)
+                : {},
+            request.schema.schema,
+            request.schema.name,
         );
     }
 
     /** Uses Gemini JSON schema structured output and validates the response payload locally. */
     private async generateStructuredContent<TSchema extends z.ZodTypeAny>(
+        model: string,
         systemInstruction: string,
         payload: unknown,
         schema: TSchema,
@@ -73,7 +74,7 @@ export class GeminiGateway implements LlmGateway {
         try {
             const client = await this.getClient();
             const response = await client.models.generateContent({
-                model: this.model,
+                model,
                 contents: JSON.stringify(payload),
                 config: {
                     systemInstruction,
@@ -92,9 +93,11 @@ export class GeminiGateway implements LlmGateway {
             const parsedJson = JSON.parse(response.text);
             return schema.parse(parsedJson) as z.output<TSchema>;
         } catch (error) {
-            throw new AgentError(`Gemini structured response parsing failed for ${schemaName}`, {
-                cause: AgentError.rootCause(error),
-                code: 'GEMINI_STRUCTURED_PARSE_FAILED',
+            throw classifyStructuredGatewayError({
+                provider: 'gemini',
+                model,
+                schemaName,
+                error,
             });
         }
     }

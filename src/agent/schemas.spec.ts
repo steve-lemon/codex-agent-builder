@@ -11,7 +11,7 @@ import {
 } from './schemas';
 import { loadOpenAiZodHelpers } from '../llm/openai-loader';
 import { defineStructuredSchema, deserializeStructuredSchema } from '../llm/structured-schema';
-import { defineTool } from '../tools/types';
+import { defineTool } from '../tools';
 import { validateOpenAiTextFormat } from '../llm/openai-schema-validator';
 
 describe('agent schemas', () => {
@@ -204,8 +204,8 @@ describe('agent schemas', () => {
                     mode: 'parallel-tools',
                     description: 'Load context',
                     toolCalls: [
-                        { toolName: 'getCustomerById', args: { customerId: 'c_1' } },
-                        { toolName: 'getOrdersByCustomer', args: { customerId: 'c_1' } },
+                        { toolName: 'getCustomerById', argsJson: '{"customerId":"c_1"}' },
+                        { toolName: 'getOrdersByCustomer', argsJson: '{"customerId":"c_1"}' },
                     ],
                     reasoning: null,
                 },
@@ -291,6 +291,80 @@ describe('agent schemas', () => {
             expect.objectContaining({
                 id: 's1',
                 mode: 'single-tool',
+            }),
+        );
+    });
+
+    it('rejects planner responses whose tool argsJson is not valid object JSON', () => {
+        expect(() =>
+            parsePlanResponse({
+                steps: [
+                    {
+                        id: 's1',
+                        mode: 'single-tool',
+                        description: 'broken args',
+                        toolCalls: [{ toolName: 'webSearch', argsJson: '"hello"' }],
+                        reasoning: null,
+                    },
+                ],
+            }),
+        ).toThrow(/Planner returned invalid tool args JSON/);
+    });
+
+    it('accepts planner argsJson when JSON is followed by extra explanatory text', () => {
+        expect(
+            parsePlanResponse({
+                steps: [
+                    {
+                        id: 's1',
+                        mode: 'single-tool',
+                        description: 'args with trailing explanation',
+                        toolCalls: [
+                            {
+                                toolName: 'webSearch',
+                                argsJson: '{"query":"hello"} This tool should search the web.',
+                            },
+                        ],
+                        reasoning: null,
+                    },
+                ],
+            }),
+        ).toEqual(
+            expect.objectContaining({
+                steps: [
+                    expect.objectContaining({
+                        toolCalls: [{ toolName: 'webSearch', args: { query: 'hello' } }],
+                    }),
+                ],
+            }),
+        );
+    });
+
+    it('accepts planner argsJson wrapped in a fenced json block', () => {
+        expect(
+            parsePlanResponse({
+                steps: [
+                    {
+                        id: 's1',
+                        mode: 'single-tool',
+                        description: 'args in code fence',
+                        toolCalls: [
+                            {
+                                toolName: 'webSearch',
+                                argsJson: '```json\n{"query":"hello"}\n```',
+                            },
+                        ],
+                        reasoning: null,
+                    },
+                ],
+            }),
+        ).toEqual(
+            expect.objectContaining({
+                steps: [
+                    expect.objectContaining({
+                        toolCalls: [{ toolName: 'webSearch', args: { query: 'hello' } }],
+                    }),
+                ],
             }),
         );
     });

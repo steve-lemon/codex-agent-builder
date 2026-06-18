@@ -1,6 +1,6 @@
 // Agent runtime flow and data contracts.
-import type { ToolDefinition } from '../tools/types';
-import type { ToolRegistry } from '../tools/registry';
+import type { ToolDefinition } from '../tools';
+import type { ToolRegistry } from '../tools';
 import type { SkillName } from './skill-selector';
 
 /** Exposes only the subset of tools allowed for the selected skill. */

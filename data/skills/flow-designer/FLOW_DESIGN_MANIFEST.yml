@@ -1,0 +1,870 @@
+taskTypes:
+  - id: blog-title-generation
+    label: Blog Title Generation
+    description: Generate publishable blog titles, headlines, or naming-style variants from a topic or keyword.
+    examples:
+      - 키워드를 줄테니 블로그 타이틀 여러개 만들기
+      - blog title ideas from a keyword
+      - headline suggestions for a productivity article
+    signals:
+      - blog
+      - title
+      - headline
+      - 타이틀
+      - 제목
+    hints:
+      fallbackWhenPlainText: false
+  - id: json-generation
+    label: Structured JSON Generation
+    description: Generate machine-readable structured output such as JSON objects or item arrays.
+    examples:
+      - 상품 소개 문구를 JSON 형태로 여러개 만들어줘
+      - return a structured list of items as json
+    signals:
+      - json
+      - structured
+      - object
+      - 구조화
+      - 객체
+    hints:
+      preferredWhenJson: true
+  - id: text-generation
+    label: General Text Generation
+    description: Generate plain text responses when no specialized structured or title-oriented task type is a better fit.
+    examples:
+      - summarize this topic in plain text
+      - 짧은 소개 문구 만들어줘
+    signals:
+      - text
+      - plain text
+      - 문구
+      - 소개
+    hints:
+      fallbackWhenPlainText: true
+  - id: text-editing
+    label: Text Editing
+    description: Revise, proofread, correct, or rewrite user-provided text without requiring external system integration.
+    examples:
+      - 이메일 내용의 오타를 정정해주기
+      - 문장을 자연스럽게 교정해줘
+      - proofread this email draft
+    signals:
+      - edit
+      - revise
+      - proofread
+      - correct
+      - rewrite
+      - typo
+      - draft
+      - 교정
+      - 정정
+      - 수정
+      - 오타
+      - 다듬
+      - 이메일 내용
+      - 이메일 초안
+    hints:
+      fallbackWhenPlainText: true
+  - id: text-summarization
+    label: Text Summarization
+    description: Summarize user-provided text into a requested number of lines or concise sentences.
+    examples:
+      - 블로그 내용을 줄테니 이걸 3줄로 요약해줘
+      - summarize this article in three sentences
+      - 본문을 짧게 요약해줘
+    signals:
+      - summarize
+      - summary
+      - 요약
+      - 정리
+      - 핵심
+      - 3줄
+      - 세 줄
+      - three sentences
+      - three lines
+    hints:
+      fallbackWhenPlainText: true
+  - id: keyword-analysis
+    label: Keyword Analysis
+    description: Extract representative keywords or key phrases from user-provided text and present them clearly.
+    examples:
+      - 블로그 내용을 줄테니 키워드 분석 해줘
+      - 이 문서에서 핵심 키워드를 추출해줘
+      - extract the main keywords from this article
+    signals:
+      - key phrase
+      - key phrases
+      - extract
+      - extraction
+      - analyze
+      - analysis
+      - 핵심어
+      - 핵심 키워드
+      - 키워드 분석
+      - 추출
+      - 분석
+    hints:
+      fallbackWhenPlainText: true
+  - id: text-analysis
+    label: Text Analysis
+    description: Analyze user-provided logs, reports, or source text to identify issues, causes, or notable findings.
+    examples:
+      - 에러 로그를 보고 문제점 파악해
+      - 로그를 보고 원인 분석해줘
+      - analyze this error log and identify the root cause
+    signals:
+      - analyze
+      - analysis
+      - diagnose
+      - diagnostic
+      - error log
+      - stack trace
+      - root cause
+      - issue
+      - problem
+      - 로그
+      - 에러 로그
+      - 스택 트레이스
+      - 원인
+      - 진단
+      - 문제점
+      - 해결 방안
+    hints:
+      fallbackWhenPlainText: true
+  - id: text-counting
+    label: Text Counting
+    description: Count characters, tokens, linguistic units, or extracted elements from text with exact or near-exact outputs.
+    examples:
+      - 입력의 자소를 분리한 카운트 보여줘
+      - count vowels and consonants in the input
+      - 텍스트 안의 항목 개수를 세어줘
+    signals:
+      - count
+      - counting
+      - frequency
+      - 카운트
+      - 개수
+      - 빈도
+      - 자소
+      - 초성
+      - 중성
+      - 종성
+      - 자음
+      - 모음
+      - 분리
+    hints:
+      fallbackWhenPlainText: true
+  - id: graph-explanation
+    label: Graph Explanation
+    description: Analyze a provided graph-shaped JSON structure and explain its purpose or flow in natural language or markdown.
+    examples:
+      - 그래프(json)를 보고 이게 뭐하는 것인지 설명(md) 해줘
+      - explain what this graph json does in markdown
+    signals:
+      - graph
+      - json
+      - explain
+      - markdown
+      - md
+      - 그래프
+      - 설명
+      - 마크다운
+    hints:
+      fallbackWhenPlainText: true
+taskGraphTemplates:
+  - id: email-reply
+    label: Email Reply Workflow
+    description: Read an inbound email, draft a reply, and send it back.
+    examples:
+      - 이메일을 확인해서 답장 해줘
+      - read the latest email and reply
+    signals:
+      - email
+      - mail
+      - reply
+      - 답장
+      - 회신
+      - 이메일
+    taskTypes:
+      - email-reply
+    operationModels:
+      - reply
+      - read
+      - send
+    traits:
+      - external-system
+      - email-integration
+    graph:
+      nodes:
+        - id: email-read
+          label: Read Email
+          data:
+            operation: read-email
+            expectedInputs:
+              - mailbox connection
+              - message selector
+            expectedOutputs:
+              - email thread text
+              - message metadata
+            requiredCapabilities:
+              - email-read
+        - id: draft-reply
+          label: Draft Reply
+          data:
+            operation: draft-reply
+            expectedInputs:
+              - email thread text
+              - response policy
+            expectedOutputs:
+              - reply body text
+            requiredCapabilities:
+              - ai-generation
+              - text-output
+        - id: send-reply
+          label: Send Reply
+          data:
+            operation: send-email-reply
+            expectedInputs:
+              - reply body text
+              - recipient metadata
+            expectedOutputs:
+              - delivery confirmation
+            requiredCapabilities:
+              - email-reply
+      edges:
+        - source: email-read
+          target: draft-reply
+          label: thread text
+        - source: draft-reply
+          target: send-reply
+          label: reply draft
+  - id: text-editing
+    label: Text Editing Workflow
+    description: Capture user-provided text, revise it according to editing guidance, and review the corrected result.
+    examples:
+      - 이메일 내용의 오타를 정정해주기
+      - 문장을 자연스럽게 교정해줘
+      - proofread this email draft
+    signals:
+      - edit
+      - revise
+      - proofread
+      - correct
+      - rewrite
+      - typo
+      - 교정
+      - 정정
+      - 수정
+      - 오타
+      - 다듬
+      - 이메일 내용
+      - 이메일 초안
+    taskTypes:
+      - text-editing
+    operationModels:
+      - edit
+      - transform
+      - validate
+    traits:
+      - editing-workflow
+      - text-input
+    graph:
+      nodes:
+        - id: capture-request
+          label: Capture Request
+          data:
+            operation: capture-text
+            expectedInputs:
+              - user-provided source text
+              - editing instruction
+            expectedOutputs:
+              - source text
+              - editing goal
+            requiredCapabilities:
+              - text-input
+        - id: revise-text
+          label: Revise Text
+          data:
+            operation: revise-text
+            expectedInputs:
+              - source text
+              - editing goal
+            expectedOutputs:
+              - corrected text
+            requiredCapabilities:
+              - ai-generation
+              - text-output
+        - id: review-output
+          label: Review Output
+          data:
+            operation: log-output
+            expectedInputs:
+              - corrected text
+            expectedOutputs:
+              - execution log
+            requiredCapabilities:
+              - view-log
+      edges:
+        - source: capture-request
+          target: revise-text
+          label: source text
+        - source: revise-text
+          target: review-output
+          label: corrected text
+  - id: blog-title-generation
+    label: Blog Title Generation Workflow
+    description: Capture a topic, generate title candidates, and review the output.
+    examples:
+      - 키워드를 줄테니 블로그 타이틀 여러개 만들기
+      - generate blog title ideas from a keyword
+    signals:
+      - blog
+      - title
+      - headline
+      - 타이틀
+      - 제목
+    taskTypes:
+      - blog-title-generation
+    operationModels:
+      - generate
+    traits:
+      - title-generation
+      - text-input
+      - list-output
+    graph:
+      nodes:
+        - id: capture-request
+          label: Capture Request
+          data:
+            operation: capture-text
+            expectedInputs:
+              - user request
+            expectedOutputs:
+              - prompt text
+            requiredCapabilities:
+              - text-input
+        - id: generate-titles
+          label: Generate Titles
+          data:
+            operation: generate-text
+            expectedInputs:
+              - prompt text
+              - system instruction
+            expectedOutputs:
+              - title suggestions
+            requiredCapabilities:
+              - ai-generation
+              - text-output
+        - id: review-output
+          label: Review Output
+          data:
+            operation: log-output
+            expectedInputs:
+              - title suggestions
+            expectedOutputs:
+              - execution log
+            requiredCapabilities:
+              - view-log
+      edges:
+        - source: capture-request
+          target: generate-titles
+          label: prompt text
+        - source: generate-titles
+          target: review-output
+          label: generated titles
+  - id: text-counting
+    label: Text Counting Workflow
+    description: Capture text input, count the requested elements, and review the counted result.
+    examples:
+      - 입력의 자소를 분리한 카운트 보여줘
+      - count vowels and consonants in the input
+      - 텍스트 안의 항목 개수를 세어줘
+    signals:
+      - count
+      - counting
+      - frequency
+      - 카운트
+      - 개수
+      - 빈도
+      - 자소
+      - 자음
+      - 모음
+      - 분리
+    taskTypes:
+      - text-counting
+    operationModels:
+      - count
+      - transform
+      - extract
+    traits:
+      - counting-workflow
+      - text-input
+    graph:
+      nodes:
+        - id: capture-request
+          label: Capture Request
+          data:
+            operation: capture-text
+            expectedInputs:
+              - user request
+            expectedOutputs:
+              - source text
+            requiredCapabilities:
+              - text-input
+        - id: count-elements
+          label: Count Elements
+          data:
+            operation: count-text-elements
+            expectedInputs:
+              - source text
+              - counting rule
+            expectedOutputs:
+              - counted result
+            requiredCapabilities:
+              - ai-generation
+              - text-output
+        - id: review-output
+          label: Review Output
+          data:
+            operation: log-output
+            expectedInputs:
+              - counted result
+            expectedOutputs:
+              - execution log
+            requiredCapabilities:
+              - view-log
+      edges:
+        - source: capture-request
+          target: count-elements
+          label: source text
+        - source: count-elements
+          target: review-output
+          label: counted result
+  - id: text-summarization
+    label: Text Summarization Workflow
+    description: Capture source text, summarize it to the requested length, and review the summary output.
+    examples:
+      - 블로그 내용을 줄테니 이걸 3줄로 요약해줘
+      - summarize this article in three sentences
+      - 본문을 짧게 요약해줘
+    signals:
+      - summarize
+      - summary
+      - 요약
+      - 정리
+      - 핵심
+      - 3줄
+      - 세 줄
+      - three sentences
+      - three lines
+    taskTypes:
+      - text-summarization
+    operationModels:
+      - summarize
+      - transform
+      - extract
+    traits:
+      - summary-workflow
+      - text-input
+    graph:
+      nodes:
+        - id: capture-request
+          label: Capture Request
+          data:
+            operation: capture-text
+            expectedInputs:
+              - source text
+              - summary length target
+            expectedOutputs:
+              - source text
+              - summary target
+            requiredCapabilities:
+              - text-input
+        - id: summarize-content
+          label: Summarize Content
+          data:
+            operation: summarize-text
+            expectedInputs:
+              - source text
+              - summary target
+            expectedOutputs:
+              - summary text
+            requiredCapabilities:
+              - ai-generation
+              - text-output
+        - id: review-output
+          label: Review Output
+          data:
+            operation: log-output
+            expectedInputs:
+              - summary text
+            expectedOutputs:
+              - execution log
+            requiredCapabilities:
+              - view-log
+      edges:
+        - source: capture-request
+          target: summarize-content
+          label: source text
+        - source: summarize-content
+          target: review-output
+          label: summary text
+  - id: keyword-analysis
+    label: Keyword Analysis Workflow
+    description: Capture source text, extract representative keywords, and review the extracted keyword list.
+    examples:
+      - 블로그 내용을 줄테니 키워드 분석 해줘
+      - 이 문서에서 핵심 키워드를 추출해줘
+      - extract the main keywords from this article
+    signals:
+      - extract
+      - analysis
+      - 핵심 키워드
+      - 핵심어
+      - 추출
+      - 분석
+    taskTypes:
+      - keyword-analysis
+    operationModels:
+      - extract
+      - classify
+      - transform
+    traits:
+      - extraction-workflow
+      - list-output
+      - text-input
+    graph:
+      nodes:
+        - id: capture-request
+          label: Capture Request
+          data:
+            operation: capture-text
+            expectedInputs:
+              - source text
+              - keyword extraction goal
+            expectedOutputs:
+              - source text
+              - keyword extraction goal
+            requiredCapabilities:
+              - text-input
+        - id: extract-keywords
+          label: Extract Keywords
+          data:
+            operation: extract-keywords
+            expectedInputs:
+              - source text
+              - keyword extraction goal
+            expectedOutputs:
+              - keyword list
+            requiredCapabilities:
+              - ai-generation
+              - text-output
+        - id: review-output
+          label: Review Output
+          data:
+            operation: log-output
+            expectedInputs:
+              - keyword list
+            expectedOutputs:
+              - execution log
+            requiredCapabilities:
+              - view-log
+      edges:
+        - source: capture-request
+          target: extract-keywords
+          label: source text
+        - source: extract-keywords
+          target: review-output
+          label: keyword list
+  - id: text-analysis
+    label: Text Analysis Workflow
+    description: Capture source text or logs, analyze the problem or findings, and review the diagnostic output.
+    examples:
+      - 에러 로그를 보고 문제점 파악해
+      - 로그를 보고 원인 분석해줘
+      - analyze this error log and identify the root cause
+    signals:
+      - analyze
+      - diagnosis
+      - diagnostic
+      - error log
+      - root cause
+      - 로그
+      - 에러 로그
+      - 원인
+      - 진단
+      - 문제점
+    taskTypes:
+      - text-analysis
+    operationModels:
+      - diagnose
+      - explain
+      - extract
+      - transform
+    traits:
+      - analysis-workflow
+      - diagnostic-analysis
+      - sectioned-report-output
+      - text-input
+    graph:
+      nodes:
+        - id: capture-request
+          label: Capture Request
+          data:
+            operation: capture-text
+            expectedInputs:
+              - source text or log
+              - diagnostic goal
+            expectedOutputs:
+              - source text or log
+              - diagnostic goal
+            requiredCapabilities:
+              - text-input
+        - id: analyze-content
+          label: Analyze Content
+          data:
+            operation: analyze-text
+            expectedInputs:
+              - source text or log
+              - diagnostic goal
+            expectedOutputs:
+              - analysis report
+            requiredCapabilities:
+              - ai-generation
+              - text-output
+        - id: review-output
+          label: Review Output
+          data:
+            operation: log-output
+            expectedInputs:
+              - analysis report
+            expectedOutputs:
+              - execution log
+            requiredCapabilities:
+              - view-log
+      edges:
+        - source: capture-request
+          target: analyze-content
+          label: source text
+        - source: analyze-content
+          target: review-output
+          label: analysis report
+  - id: generic-generation
+    label: Generic Generation Workflow
+    description: Capture a request, generate a response, and review the output.
+    examples:
+      - 짧은 소개 문구 만들어줘
+      - generate a plain response
+    signals:
+      - generate
+      - response
+      - summary
+      - 문구
+      - 소개
+    taskTypes:
+      - text-generation
+    operationModels:
+      - generate
+      - transform
+    traits:
+      - generic-workflow
+      - text-input
+    graph:
+      nodes:
+        - id: capture-request
+          label: Capture Request
+          data:
+            operation: capture-text
+            expectedInputs:
+              - user request
+            expectedOutputs:
+              - prompt text
+            requiredCapabilities:
+              - text-input
+        - id: generate-output
+          label: Generate Output
+          data:
+            operation: generate-text
+            expectedInputs:
+              - prompt text
+            expectedOutputs:
+              - response text
+            requiredCapabilities:
+              - ai-generation
+              - text-output
+        - id: review-output
+          label: Review Output
+          data:
+            operation: log-output
+            expectedInputs:
+              - response text
+            expectedOutputs:
+              - execution log
+            requiredCapabilities:
+              - view-log
+      edges:
+        - source: capture-request
+          target: generate-output
+          label: prompt text
+        - source: generate-output
+          target: review-output
+          label: generated response
+  - id: graph-explanation
+    label: Graph Explanation Workflow
+    description: Capture graph JSON, generate a markdown explanation, and review the output.
+    examples:
+      - 그래프(json)를 보고 이게 뭐하는 것인지 설명(md) 해줘
+      - explain what this graph json does in markdown
+    signals:
+      - graph
+      - json
+      - explain
+      - markdown
+      - md
+      - 그래프
+      - 설명
+      - 마크다운
+    taskTypes:
+      - graph-explanation
+    operationModels:
+      - explain
+      - transform
+    traits:
+      - graph-structured-input
+      - explanation-workflow
+      - json-input
+    graph:
+      nodes:
+        - id: capture-graph-json
+          label: Capture Graph JSON
+          data:
+            operation: capture-json
+            expectedInputs:
+              - graph json payload
+            expectedOutputs:
+              - graph json
+            requiredCapabilities:
+              - json-input
+        - id: explain-graph
+          label: Explain Graph
+          data:
+            operation: explain-graph
+            expectedInputs:
+              - graph json
+              - explanation preference
+            expectedOutputs:
+              - markdown explanation
+            requiredCapabilities:
+              - ai-generation
+              - text-output
+        - id: review-output
+          label: Review Output
+          data:
+            operation: log-output
+            expectedInputs:
+              - markdown explanation
+            expectedOutputs:
+              - execution log
+            requiredCapabilities:
+              - view-log
+      edges:
+        - source: capture-graph-json
+          target: explain-graph
+          label: graph json
+        - source: explain-graph
+          target: review-output
+          label: explanation
+classifierPrompts:
+  taskTypeSystemPrompt: >-
+    Choose the best flow-design task type for the request. Use only one of the provided taskType ids and explain the
+    choice briefly.
+  taskGraphSystemPrompt: >-
+    Choose the best flow-design task graph template for the request. Use only one of the provided template ids and
+    explain the choice briefly.
+defaults:
+  sampleInputs:
+    default: 샘플 입력
+    keywordDriven: 생산성 향상
+    byTaskType:
+      blog-title-generation: 원격 근무
+      keyword-analysis: |-
+        블로그 본문 예시입니다. 원격 협업 습관, 비동기 커뮤니케이션, 문서 중심 의사결정을 다룹니다. 마지막에는 팀 생산성을 높이는 실천 팁을 정리합니다.
+      text-analysis: |-
+        ERROR 2026-04-20 15:02:11 Database connection failed after retry 3. Timeout while connecting to db-primary. Subsequent requests returned 500 and stack trace references connection pool exhaustion.
+      text-summarization: |-
+        블로그 본문 예시입니다. 생산성을 높이는 습관과 협업 원칙을 설명합니다. 마지막에는 실천 팁을 정리합니다.
+      text-counting: 한글
+      graph-explanation: |-
+        {
+          "nodes": [
+            { "id": "input-node", "blockId": "json-input", "label": "Graph Input" },
+            { "id": "ai-node", "blockId": "ai-generate", "label": "Explain Graph" },
+            { "id": "view-node", "blockId": "view", "label": "Review Explanation" }
+          ],
+          "edges": [
+            { "sourceNodeId": "input-node", "targetNodeId": "ai-node", "label": "graph json" },
+            { "sourceNodeId": "ai-node", "targetNodeId": "view-node", "label": "markdown explanation" }
+          ]
+        }
+      json-generation: 샘플 입력
+      text-generation: 샘플 입력
+      unknown: 샘플 입력
+  systemPrompts:
+    blog-title-generation: You generate clear and catchy blog titles based on one keyword.
+    keyword-analysis: You extract representative keywords from the provided text and keep them distinct, relevant, and easy to review.
+    text-analysis: You analyze the provided text or logs, identify the core issue, explain likely causes, and suggest practical next steps.
+    text-summarization: You summarize the provided text faithfully and keep the requested line or sentence count stable.
+    text-counting: You count the requested text elements exactly and make the counting rule explicit.
+    graph-explanation: You explain graph-shaped JSON structures clearly in Korean markdown.
+    json-generation: You return concise structured output that can be safely parsed as JSON.
+    text-generation: You transform text requests into concise useful outputs.
+    unknown: You transform text requests into concise useful outputs.
+  aiNodeDefaults:
+    model: runtime-main-model
+  probeDefaults:
+    sampleConfig:
+      model: runtime-main-model
+    sampleInputs:
+      system: You generate clear and catchy blog titles based on one keyword.
+      prompt: 'User request: sample. Sample input: 샘플 입력. Return one result. Return plain text.'
+  taskTypeSelection:
+    jsonPreferredTaskTypeId: json-generation
+    plainTextFallbackTaskTypeId: text-generation
+knowledge:
+  sharedDraftNotes:
+    - Use only the blocks already available in the repository.
+    - Ground the design in graph-based preflight validation before building the flow.
+  conditionalDraftNotes:
+    - match:
+        taskTypes:
+          - blog-title-generation
+      notes:
+        - Prefer publishable title quality over generic keyword stuffing.
+    - match:
+        wantsJson: true
+      notes:
+        - Keep downstream output JSON-shaped and machine-readable.
+    - match:
+        wantsMultiple: true
+      notes:
+        - Make repeated outputs explicit in the prompt wording and keep the requested count stable.
+  reflectionNotes:
+    - Prefer deterministic sample execution before accepting the design.
+    - >-
+      If the request needs capabilities that available blocks do not provide, stop early instead of forcing an invalid
+      flow.
+  reflectionRules:
+    - id: short-title-output
+      match:
+        taskTypes:
+          - blog-title-generation
+        maxItemLength: 5
+      issue: The output did not look like usable blog titles.
+      suggestedImprovement: Make each result read like a publishable blog title.
+      taskGraphRefinement:
+        targetOperationPrefixes:
+          - generate
+        expectedOutputs:
+          - publishable blog titles
+        qualityHints:
+          - Prefer polished, publication-ready title wording.

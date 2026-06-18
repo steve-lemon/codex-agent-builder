@@ -1,0 +1,50 @@
+version: 1
+advisors:
+  - id: flow-design.output-contract
+    label: Flow Output Contract
+    description: Infers the requested output format and result cardinality from the user request.
+    fallbackNote: Fall back to deterministic output-contract heuristics when the lite model is unavailable or uncertain.
+    confidenceThreshold: 0.55
+    includeRationale: false
+    systemPrompt: >-
+      Infer the requested output contract for the flow-design request.
+      Distinguish input-format mentions from output-format mentions.
+      Use format=json only when the user clearly wants JSON output.
+      Use format=plain-text for ordinary natural-language or markdown-style responses.
+      Use format=unspecified when no output format is clearly requested.
+      Infer desiredCount from explicit counts like "3줄", "3개", "three", or from clear plurality requests,
+      but do not invent extra outputs when the request is singular.
+  - id: flow-design.task-type
+    label: Flow Task Type
+    description: Selects the best flow-design task type for the request.
+    fallbackNote: Fall back to deterministic catalog scoring when the lite model is unavailable or uncertain.
+    confidenceThreshold: 0.55
+    includeRationale: false
+    candidateLimit: 3
+    systemPrompt: >-
+      Choose the best flow-design task type for the request. Use only one of the provided taskType ids.
+      Prefer the most specific task type that matches the user's requested output shape and intent.
+      If uncertain, still choose the closest taskType.
+  - id: flow-design.task-graph
+    label: Flow Task Graph
+    description: Selects the best flow-design task-graph template for the request.
+    fallbackNote: Fall back to deterministic template scoring when the lite model is unavailable or uncertain.
+    confidenceThreshold: 0.55
+    includeRationale: false
+    candidateLimit: 3
+    systemPrompt: >-
+      Choose the best flow-design task graph template for the request. Use only one of the provided template ids.
+      Prefer the most specific workflow that matches the requested task instead of defaulting to generic generation.
+      If uncertain, still choose the closest template.
+  - id: flow-design.ai-delegation
+    label: AI Delegation
+    description: Judges whether ai-generate can absorb a task node without a specialized block.
+    fallbackNote: Fall back to deterministic AI-delegation heuristics when the lite model is unavailable or uncertain.
+    confidenceThreshold: 0.6
+    includeRationale: false
+    systemPrompt: >-
+      Decide whether the ai-generate block can reasonably handle the described task node without requiring a specialized
+      external-system block. Return delegable=true only for text-centric reasoning, transformation, extraction,
+      counting, or classification tasks that can be completed from the provided text context alone.
+      Return delegable=false if the task needs external IO, system integration, browsing, email access, file access,
+      image/audio/video tooling, or a dedicated deterministic block to remain correct.

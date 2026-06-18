@@ -1,0 +1,111 @@
+version: 1
+defaults:
+  language: ko
+  mode: run
+  skillName: flow-designer
+  outputRoot: output/labs
+  providerOrder:
+    - openai
+    - gemini
+    - fake
+  skillOrder:
+    - flow-preflight-validator
+    - flow-designer
+    - node-config-designer
+cli:
+  languages:
+    ko:
+      locale: ko-KR
+      displayName: 한국어
+      welcome: "Prompt Lab을 시작합니다. 실제 실행 결과를 바탕으로 Codex 프롬프트를 개선합니다."
+      modePrompt: "실행 모드를 선택하세요 (run/advisor-eval)"
+      settingsPrompt: "기본 설정으로 바로 실행할까요?"
+      providerPrompt: "사용할 LLM provider를 선택하세요 (openai/gemini/fake)"
+      skillPrompt: "검증할 skill을 선택하세요 (flow-preflight-validator/flow-designer/node-config-designer)"
+      mainModelPrompt: "에이전트 메인 모델을 입력하세요"
+      liteModelPrompt: "lite 모델을 입력하세요"
+      languagePrompt: "세션 언어를 선택하세요 (ko/en)"
+      requirementPrompt: "요구사항을 입력하세요"
+      recentRequirementsPrompt: "이전 요구사항을 선택하거나 새로 입력하세요"
+      newRequirementOptionLabel: "새 요구사항 입력"
+      feedbackPrompt: "전체적인 피드백을 입력하세요. 빈 줄을 입력하면 종료합니다."
+      feedbackDoneHint: "피드백 입력을 끝내려면 빈 줄을 입력하세요."
+      startMessage: "에이전트 실행을 시작하고 로그를 기록합니다..."
+      selfReviewMessage: "자가 평가를 생성했습니다."
+      finalPromptMessage: "최종 Codex 프롬프트입니다."
+      completionMessage: "세션 결과가 저장되었습니다:"
+    en:
+      locale: en-US
+      displayName: English
+      welcome: "Starting Prompt Lab. We will improve the Codex prompt from a real execution run."
+      modePrompt: "Choose the execution mode (run/advisor-eval)"
+      settingsPrompt: "Continue with the current default settings?"
+      providerPrompt: "Choose the LLM provider (openai/gemini/fake)"
+      skillPrompt: "Choose the skill to validate (flow-preflight-validator/flow-designer/node-config-designer)"
+      mainModelPrompt: "Enter the agent main model"
+      liteModelPrompt: "Enter the lite model"
+      languagePrompt: "Choose the session language (ko/en)"
+      requirementPrompt: "Enter the requirement"
+      recentRequirementsPrompt: "Choose a previous requirement or enter a new one"
+      newRequirementOptionLabel: "Enter a new requirement"
+      feedbackPrompt: "Add your feedback. Submit an empty line to finish."
+      feedbackDoneHint: "Press Enter on an empty line when you are done."
+      startMessage: "Starting the agent run and recording logs..."
+      selfReviewMessage: "Generated self-review."
+      finalPromptMessage: "Final Codex prompt:"
+      completionMessage: "Saved session artifacts to:"
+  models:
+    openai:
+      main:
+        - value: gpt-5-mini
+          label: GPT-5 mini (recommended)
+        - value: gpt-5.2
+          label: GPT-5.2
+      lite:
+        - value: gpt-4.1-mini
+          label: GPT-4.1 mini (recommended)
+        - value: gpt-5-mini
+          label: GPT-5 mini
+    gemini:
+      main:
+        - value: gemini-2.0-flash
+          label: Gemini 2.0 Flash (recommended)
+        - value: gemini-2.5-pro
+          label: Gemini 2.5 Pro
+      lite:
+        - value: gemini-2.0-flash
+          label: Gemini 2.0 Flash (recommended)
+        - value: gemini-2.5-flash-lite
+          label: Gemini 2.5 Flash Lite
+    fake:
+      main:
+        - value: fake-main
+          label: Fake main
+      lite:
+        - value: fake-lite
+          label: Fake lite
+selfReview:
+  systemPrompt: |
+    You are reviewing a Codex agent run. Read the session snapshot and produce a compact, honest self-review.
+    Focus on strengths, weaknesses, concrete improvements, and prompt focus areas.
+    Compare the requested output contract with the final flow configuration and call out any mismatch explicitly.
+    If execution timing is available, distinguish planner delay, tool timeout, and post-run review/finalization cost instead of collapsing them into one failure cause.
+codexPrompt:
+  systemPrompt: |
+    You are synthesizing a new Codex working prompt.
+    Use the run result, self-review, and explicit user feedback.
+    Return a practical natural-language working prompt.
+    Never leak Prompt Lab's own wrapper fields such as title, summary, codexPrompt, or usageNotes into the user task requirements.
+    Do not add new task requirements that were not explicitly requested.
+    Do not introduce examples, error-output formats, fallback behaviors, extra validation rules, or additional deliverables unless the original requirement or user feedback explicitly asks for them.
+    Keep the prompt scoped to the requested task, concrete input/output behavior, and only the minimum necessary constraints.
+    Do not output source code, pseudocode, function definitions, code comments, markdown code fences, or implementation snippets.
+    Keep the result as a reusable task instruction that Codex can follow in a later session.
+  rewriteSystemPrompt: |
+    You are rewriting a generated Codex prompt that drifted into code or implementation detail.
+    Rewrite it into a natural-language working prompt.
+    Preserve the task constraints, input/output expectations, and validation requirements.
+    Remove any Prompt Lab wrapper fields such as title, summary, codexPrompt, or usageNotes if they leaked into the task output requirements.
+    Remove any examples, error-output formats, fallback behaviors, or extra constraints that were not explicitly requested.
+    Do not output source code, pseudocode, function definitions, code comments, or markdown code fences.
+    Return a reusable task instruction that Codex can follow directly.

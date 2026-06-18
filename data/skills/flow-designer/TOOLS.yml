@@ -1,0 +1,81 @@
+id: flow-design
+version: 1
+owner: flow-designer
+scope: agent-owned
+name: Flow Design Tools
+description: Intent analysis, drafting, validation, probing, sample execution, and reflection tools.
+skills:
+  - flow-designer
+tools:
+  - name: analyzeFlowRequest
+    description: Analyze a user request into flow-design intent, constraints, and success criteria.
+    riskLevel: read-only
+    allowedSkills:
+      - flow-designer
+    requiresConfirmation: false
+    parallelSafe: true
+    executeId: flow-design.analyze-request
+  - name: listAvailableFlowBlocks
+    description: List the available flow blocks with ports and config schemas.
+    riskLevel: read-only
+    allowedSkills:
+      - flow-designer
+    requiresConfirmation: false
+    parallelSafe: true
+    executeId: flow-design.list-available-blocks
+  - name: assessFlowFeasibility
+    description: Check whether the current block set can satisfy the request, and report missing capabilities early.
+    riskLevel: read-only
+    allowedSkills:
+      - flow-designer
+    requiresConfirmation: false
+    parallelSafe: true
+    executeId: flow-design.assess-feasibility
+  - name: probeFlowBlock
+    description: Run a deterministic probe against one executable block to observe its actual runtime behavior.
+    riskLevel: read-only
+    allowedSkills:
+      - flow-designer
+    requiresConfirmation: false
+    parallelSafe: false
+    executeId: flow-design.probe-block
+  - name: designFlowDraft
+    description: Create a flow draft using only the available flow blocks, grounded by preflight validation and optional improvement notes.
+    riskLevel: read-only
+    allowedSkills:
+      - flow-designer
+    requiresConfirmation: false
+    parallelSafe: false
+    executeId: flow-design.design-draft
+  - name: validateFlowDraft
+    description: Validate a flow draft and confirm that it can be planned for execution.
+    riskLevel: read-only
+    allowedSkills:
+      - flow-designer
+    requiresConfirmation: false
+    parallelSafe: true
+    executeId: flow-design.validate-draft
+  - name: proposeBlockSpecUpdate
+    description: Propose a documentation patch for a block when observed behavior suggests the current block spec is incomplete.
+    riskLevel: read-only
+    allowedSkills:
+      - flow-designer
+    requiresConfirmation: false
+    parallelSafe: true
+    executeId: flow-design.propose-block-spec-update
+  - name: runFlowSample
+    description: Execute the flow draft with a deterministic mock runtime to validate expected output shape.
+    riskLevel: read-only
+    allowedSkills:
+      - flow-designer
+    requiresConfirmation: false
+    parallelSafe: false
+    executeId: flow-design.run-sample
+  - name: reflectFlowResult
+    description: Judge whether a sample flow result satisfies the original intent and describe improvements for the next design pass.
+    riskLevel: read-only
+    allowedSkills:
+      - flow-designer
+    requiresConfirmation: false
+    parallelSafe: true
+    executeId: flow-design.reflect-result

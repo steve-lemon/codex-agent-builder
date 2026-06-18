@@ -1,5 +1,5 @@
 // Buffered trace connection that emits trace batches over a WebSocket-like transport.
-import { now } from '../time/now';
+import { now } from '../tools/now';
 import type { TraceBatchMessage, TraceConnection, TraceEvent, TraceTransport } from './types';
 
 /** Runtime-tunable batching configuration for trace streaming. */

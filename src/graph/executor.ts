@@ -1,6 +1,6 @@
 // Graph execution engine that schedules planned components with branch delegation.
 import { AgentError } from '../errors/agent-error';
-import { now as defaultNow } from '../time/now';
+import { now as defaultNow } from '../tools/now';
 import { planGraphExecution } from './planner';
 import type {
     DirectedGraph,

@@ -11,7 +11,8 @@
         "typecheck": "tsc --noEmit",
         "test": "vitest run",
         "test:watch": "vitest watch",
-        "demo": "tsx src/demo.ts"
+        "demo": "tsx src/demo.ts",
+        "lab": "tsx src/prompt-lab/cli.ts"
     },
     "keywords": [
         "agent",
@@ -22,11 +23,13 @@
     "license": "MIT",
     "dependencies": {
         "@google/genai": "^1.28.0",
+        "js-yaml": "^4.1.1",
         "openai": "^6.27.0",
         "zod": "3.25.76",
         "zod-to-json-schema": "^3.24.6"
     },
     "devDependencies": {
+        "@types/js-yaml": "^4.0.9",
         "@types/node": "^24.6.1",
         "@typescript-eslint/eslint-plugin": "^5.22.0",
         "@typescript-eslint/parser": "^5.22.0",

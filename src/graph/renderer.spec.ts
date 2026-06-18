@@ -1,7 +1,12 @@
 // Vitest specs for graph rendering helpers.
 import { describe, expect, it } from 'vitest';
 import { planGraphExecution } from './planner';
-import { renderExecutionPlanAsMermaid, renderGraphAsMermaid, renderGraphAsReagraph } from './renderer';
+import {
+    renderExecutionPlanAsMermaid,
+    renderFlowDesignSnapshotAsReagraph,
+    renderGraphAsMermaid,
+    renderGraphAsReagraph,
+} from './renderer';
 import type { DirectedGraph } from './types';
 
 function makeGraph(nodeIds: string[], edges: Array<[string, string]>): DirectedGraph {
@@ -176,5 +181,87 @@ describe('graph renderer', () => {
         });
 
         expect(rendered.nodes).toEqual([{ id: 'A', label: 'A', icon: 'database', state: undefined }]);
+    });
+
+    it('converts a live flow-design snapshot into a reagraph payload with anchors and phases', () => {
+        const rendered = renderFlowDesignSnapshotAsReagraph({
+            nodes: [
+                {
+                    id: 'prompt-input',
+                    label: 'Prompt Input',
+                    blockId: 'input',
+                    phase: 'ready',
+                    state: 'user-prompt-ready',
+                },
+                {
+                    id: 'ai-node',
+                    label: 'AI Generate',
+                    blockId: 'ai-generate',
+                    phase: 'connected',
+                    state: 'generation-graph-wired',
+                },
+            ],
+            edges: [
+                {
+                    id: 'prompt-input:output->ai-node:prompt',
+                    source: 'prompt-input',
+                    target: 'ai-node',
+                    label: 'prompt text',
+                    flowHint: 'horizontal',
+                    sourceAnchor: {
+                        portId: 'prompt-input:output',
+                        portLocalId: 'output',
+                        side: 'right',
+                        offset: 0.25,
+                    },
+                    targetAnchor: {
+                        portId: 'ai-node:prompt',
+                        portLocalId: 'prompt',
+                        side: 'left',
+                        offset: 0.75,
+                    },
+                },
+            ],
+        });
+
+        expect(rendered).toEqual({
+            nodes: [
+                {
+                    id: 'prompt-input',
+                    label: 'Prompt Input',
+                    state: 'user-prompt-ready',
+                    blockId: 'input',
+                    phase: 'ready',
+                },
+                {
+                    id: 'ai-node',
+                    label: 'AI Generate',
+                    state: 'generation-graph-wired',
+                    blockId: 'ai-generate',
+                    phase: 'connected',
+                },
+            ],
+            edges: [
+                {
+                    id: 'prompt-input:output->ai-node:prompt',
+                    source: 'prompt-input',
+                    target: 'ai-node',
+                    label: 'prompt text',
+                    flowHint: 'horizontal',
+                    sourceAnchor: {
+                        portId: 'prompt-input:output',
+                        portLocalId: 'output',
+                        side: 'right',
+                        offset: 0.25,
+                    },
+                    targetAnchor: {
+                        portId: 'ai-node:prompt',
+                        portLocalId: 'prompt',
+                        side: 'left',
+                        offset: 0.75,
+                    },
+                },
+            ],
+        });
     });
 });

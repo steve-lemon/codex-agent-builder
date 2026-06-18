@@ -1,0 +1,70 @@
+id: sample-tools
+version: 1
+owner: sample-tools
+scope: sample-only
+name: Sample Tools
+description: Deterministic mock tools used by demos, tests, and local runtime flows.
+skills:
+  - customer-support-reviewer
+  - ops-automation-agent
+  - research-brief-generator
+tools:
+  - name: getCustomerById
+    description: Fetch customer profile by id
+    riskLevel: read-only
+    allowedSkills:
+      - customer-support-reviewer
+    requiresConfirmation: false
+    parallelSafe: true
+    executeId: mock.get-customer-by-id
+  - name: getOrdersByCustomer
+    description: List orders for customer
+    riskLevel: read-only
+    allowedSkills:
+      - customer-support-reviewer
+    requiresConfirmation: false
+    parallelSafe: true
+    executeId: mock.get-orders-by-customer
+  - name: getRefundPolicy
+    description: Return refund policy text
+    riskLevel: read-only
+    allowedSkills:
+      - customer-support-reviewer
+      - ops-automation-agent
+    requiresConfirmation: false
+    parallelSafe: true
+    executeId: mock.get-refund-policy
+  - name: webSearch
+    description: Deterministic web search mock
+    riskLevel: read-only
+    allowedSkills:
+      - research-brief-generator
+      - ops-automation-agent
+    requiresConfirmation: false
+    parallelSafe: true
+    executeId: mock.web-search
+  - name: createTicket
+    description: Create support ticket in ticketing system
+    riskLevel: side-effecting
+    allowedSkills:
+      - customer-support-reviewer
+      - ops-automation-agent
+    requiresConfirmation: true
+    parallelSafe: false
+    executeId: mock.create-ticket
+  - name: sendSlackMessage
+    description: Send operational Slack message
+    riskLevel: side-effecting
+    allowedSkills:
+      - ops-automation-agent
+    requiresConfirmation: true
+    parallelSafe: false
+    executeId: mock.send-slack-message
+  - name: refundOrder
+    description: Trigger refund for order
+    riskLevel: approval-required
+    allowedSkills:
+      - customer-support-reviewer
+    requiresConfirmation: true
+    parallelSafe: false
+    executeId: mock.refund-order

@@ -1,5 +1,5 @@
 // Structured tracing types and tracer implementation.
-import { now } from '../time/now';
+import { now } from '../tools/now';
 import { FileTraceStore } from './file-trace-store';
 import type { TraceConnection, TraceDocument, TraceEvent, TraceStage, TraceStore } from './types';
 
@@ -105,6 +105,7 @@ export class AgentTracer {
         if (type.startsWith('planner')) return 'planner';
         if (type.startsWith('step_')) return 'step';
         if (type.startsWith('tool_')) return 'tool';
+        if (type.startsWith('diagnostic_')) return type === 'diagnostic_error' ? 'error' : 'runtime';
         if (type.startsWith('approval')) return 'approval';
         if (type.startsWith('reflector')) return 'reflector';
         if (type.startsWith('finalizer')) return 'finalizer';
@@ -131,6 +132,8 @@ export class AgentTracer {
                 return `Calling tool ${String(data?.toolName ?? 'unknown')}`;
             case 'tool_end':
                 return `Tool ${String(data?.toolName ?? 'unknown')} completed`;
+            case 'tool_error':
+                return `Tool ${String(data?.toolName ?? 'unknown')} failed: ${String(data?.message ?? 'unknown')}`;
             case 'approval_wait':
                 return `Waiting for approval on ${String(data?.toolName ?? 'unknown')}`;
             case 'approval_decision':
@@ -139,6 +142,13 @@ export class AgentTracer {
                 return 'Reflector invoked';
             case 'finalizer_call':
                 return 'Finalizer invoked';
+            case 'diagnostic_debug':
+            case 'diagnostic_info':
+            case 'diagnostic_warn':
+            case 'diagnostic_error':
+                // TODO(observability): Consider richer formatting for diagnostic events so
+                // UIs can render scope/action separately instead of flattening into one message.
+                return `${String(data?.scope ?? 'diagnostic')}: ${String(data?.message ?? type)}`;
             case 'trace_flush':
                 return `Trace flushed to ${String(data?.path ?? 'unknown')}`;
             case 'error':

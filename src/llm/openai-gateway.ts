@@ -1,10 +1,8 @@
 // LLM gateway interfaces and implementations.
 import { z } from 'zod';
-import { createOpenAiPlanResponseSchema, parsePlanResponse, ReflectorOutputSchema } from '../agent/schemas';
-import { FinalResultSchema } from '../agent/types';
-import type { LlmGateway, PlannerInput, ReflectorInput, FinalizerInput } from './types';
+import type { LlmGateway, PlannerInput, ReflectorInput, FinalizerInput, StructuredGenerationInput } from './types';
 import { AgentError } from '../errors/agent-error';
-import { defineStructuredSchema, type StructuredSchema } from './structured-schema';
+import type { StructuredSchema } from './structured-schema';
 import {
     loadOpenAiSdk,
     loadOpenAiZodHelpers,
@@ -16,11 +14,19 @@ import {
     ProxyStructuredResponseParser,
     type StructuredResponseParser,
 } from './structured-response-parser';
+import {
+    buildFinalizeStructuredRequest,
+    buildPlanStructuredRequest,
+    buildReflectStructuredRequest,
+    parsePlanStructuredOutput,
+} from './structured-tasks';
+import { classifyStructuredGatewayError } from './structured-error-classifier';
 
 /** Configuration used to initialize the OpenAI-backed gateway. */
 export interface OpenAiGatewayOptions {
     apiKey?: string;
     model?: string;
+    liteModel?: string;
     proxyUrl?: string;
     fetchImpl?: typeof fetch;
     loadSdk?: OpenAiSdkLoader;
@@ -31,10 +37,12 @@ export interface OpenAiGatewayOptions {
 /** Real LLM gateway that delegates structured generation through a pluggable parser strategy. */
 export class OpenAiGateway implements LlmGateway {
     private readonly model: string;
+    private readonly liteModel: string;
     private readonly parser: StructuredResponseParser;
 
     constructor(options: OpenAiGatewayOptions = {}) {
         this.model = options.model ?? process.env.OPENAI_MODEL ?? 'gpt-4.1-mini';
+        this.liteModel = options.liteModel ?? process.env.OPENAI_LITE_MODEL ?? this.model;
         this.parser =
             options.parser ??
             (options.proxyUrl ?? process.env.OPENAI_STRUCTURED_PROXY_URL
@@ -50,68 +58,45 @@ export class OpenAiGateway implements LlmGateway {
     }
 
     async plan(input: PlannerInput) {
-        const planResponseSchema = createOpenAiPlanResponseSchema(input.toolDefinitions);
-        const parsed = await this.parseStructuredResponse(
-            [
-                {
-                    role: 'system',
-                    content:
-                        'Return a concise executable plan for an agent runtime. Use only provided tools and generate tool args that satisfy each tool parameter schema.',
-                },
-                {
-                    role: 'user',
-                    content: JSON.stringify({
-                        userInput: input.userInput,
-                        skillName: input.skillName,
-                        skillInstructions: input.skillInstructions,
-                        allowedTools: input.allowedTools,
-                        toolManifests: input.toolManifests,
-                    }),
-                },
-            ],
-            defineStructuredSchema('plan', planResponseSchema),
-        );
+        const parsed = await this.generateStructured(await buildPlanStructuredRequest(input));
 
-        return parsePlanResponse(parsed);
+        return parsePlanStructuredOutput(parsed);
     }
 
     async reflect(input: ReflectorInput) {
-        return this.parseStructuredResponse(
-            [
-                { role: 'system', content: 'Decide whether run is complete.' },
-                { role: 'user', content: JSON.stringify(input) },
-            ],
-            defineStructuredSchema('reflector_output', ReflectorOutputSchema),
-        );
+        return this.generateStructured(await buildReflectStructuredRequest(input));
     }
 
     async finalize(input: FinalizerInput) {
-        return this.parseStructuredResponse(
-            [
-                { role: 'system', content: 'Return final concise agent result.' },
-                { role: 'user', content: JSON.stringify(input) },
-            ],
-            defineStructuredSchema('final_result', FinalResultSchema),
-        );
+        return this.generateStructured(await buildFinalizeStructuredRequest(input));
+    }
+
+    async generateStructured<TSchema extends z.ZodTypeAny>(
+        request: StructuredGenerationInput<TSchema>,
+    ): Promise<z.output<TSchema>> {
+        return this.parseStructuredResponse(request.input, request.schema, request.purpose);
     }
 
     /** Normalizes parser errors and re-validates output against the requested schema. */
     private async parseStructuredResponse<TSchema extends z.ZodTypeAny>(
         input: Array<{ role: 'system' | 'user'; content: string }>,
         schema: StructuredSchema<TSchema>,
+        purpose: 'main' | 'lite' = 'main',
     ): Promise<z.output<TSchema>> {
         try {
             const output = await this.parser.parse({
-                model: this.model,
+                model: purpose === 'lite' ? this.liteModel : this.model,
                 input,
                 schema,
             });
 
             return schema.parse(output);
         } catch (error) {
-            throw new AgentError(`Structured response parsing failed for ${schema.name}`, {
-                cause: AgentError.rootCause(error),
-                code: 'OPENAI_STRUCTURED_PARSE_FAILED',
+            throw classifyStructuredGatewayError({
+                provider: 'openai',
+                model: purpose === 'lite' ? this.liteModel : this.model,
+                schemaName: schema.name,
+                error,
             });
         }
     }

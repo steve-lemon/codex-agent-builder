@@ -1,7 +1,7 @@
 // Agent runtime flow and data contracts.
 import type { PlanStep } from './schemas';
 import type { AgentTracer } from '../observability/tracer';
-import type { ToolRegistry } from '../tools/registry';
+import type { ToolRegistry } from '../tools';
 import type { MultiSkillRouter } from './skill-router';
 import { resolveToolExecutionPolicy } from '../policy/tool-policy';
 import { resilientExecute } from '../resilience/resilient-execute';
@@ -9,7 +9,8 @@ import { CircuitBreaker } from '../resilience/circuit-breaker';
 import type { ExecuteStepContext, PendingApproval, StepResult } from './types';
 import { buildPendingApproval } from './approval';
 import { AgentError } from '../errors/agent-error';
-import { now } from '../time/now';
+import { now } from '../tools/now';
+import { resolveStepReferences } from './step-references';
 
 export interface StepExecutorResult {
     stepResult?: StepResult;
@@ -71,39 +72,52 @@ export class StepExecutor {
                 throw new AgentError(`Tool ${toolName} not found`);
             }
 
+            const runState = await context.runState.get();
+            const resolvedArgs = resolveStepReferences(args, runState.stepResults);
+
             if (tool.requiresConfirmation) {
-                return { pendingApproval: buildPendingApproval(context.stepIndex, toolName, args) };
+                return { pendingApproval: buildPendingApproval(context.stepIndex, toolName, resolvedArgs) };
             }
 
             const policy = resolveToolExecutionPolicy(tool);
             this.tracer.log(runId, 'tool_start', { toolName, riskLevel: tool.riskLevel });
+            try {
+                const result = await resilientExecute({
+                    key: toolName,
+                    timeoutMs: policy.timeoutMs,
+                    retry: { maxAttempts: policy.maxAttempts, baseDelayMs: 50 },
+                    circuitBreaker: this.circuitBreaker,
+                    enableCircuitBreaker: policy.useCircuitBreaker,
+                    execute: async () => {
+                        const execution = await this.registry.execute(
+                            { toolName, args: resolvedArgs },
+                            {
+                                runId,
+                                now: now(),
+                                runState: context.runState,
+                                designConnection: context.designConnection,
+                                llm: context.llm,
+                            },
+                        );
+                        if (!execution.ok) {
+                            throw new AgentError(execution.error ?? 'Tool execution failed', {
+                                transient: /timeout|temporar|network/i.test(execution.error ?? ''),
+                            });
+                        }
+                        return execution;
+                    },
+                });
 
-            const result = await resilientExecute({
-                key: toolName,
-                timeoutMs: policy.timeoutMs,
-                retry: { maxAttempts: policy.maxAttempts, baseDelayMs: 50 },
-                circuitBreaker: this.circuitBreaker,
-                enableCircuitBreaker: policy.useCircuitBreaker,
-                execute: async () => {
-                    const execution = await this.registry.execute(
-                        { toolName, args },
-                        {
-                            runId,
-                            now: now(),
-                            runState: context.runState,
-                        },
-                    );
-                    if (!execution.ok) {
-                        throw new AgentError(execution.error ?? 'Tool execution failed', {
-                            transient: /timeout|temporar|network/i.test(execution.error ?? ''),
-                        });
-                    }
-                    return execution;
-                },
-            });
-
-            this.tracer.log(runId, 'tool_end', { toolName, ok: true });
-            return { result };
+                this.tracer.log(runId, 'tool_end', { toolName, ok: true });
+                return { result };
+            } catch (error) {
+                this.tracer.log(runId, 'tool_error', {
+                    toolName,
+                    stepId: step.id,
+                    message: error instanceof Error ? error.message : String(error),
+                });
+                throw error;
+            }
         };
 
         if (step.mode === 'single-tool') {
@@ -173,8 +187,9 @@ export class StepExecutor {
         toolName: string;
         args: Record<string, unknown>;
         runState: ExecuteStepContext['runState'];
+        llm?: ExecuteStepContext['llm'];
     }): Promise<StepResult> {
-        const { runId, skillName, stepId, toolName, args, runState } = params;
+        const { runId, skillName, stepId, toolName, args, runState, llm } = params;
         const allowedToolNames = new Set(this.skillRouter.toolNamesForSkill(skillName as never));
 
         if (!allowedToolNames.has(toolName)) {
@@ -187,33 +202,43 @@ export class StepExecutor {
         }
 
         const policy = resolveToolExecutionPolicy(tool);
-        const result = await resilientExecute({
-            key: toolName,
-            timeoutMs: policy.timeoutMs,
-            retry: { maxAttempts: policy.maxAttempts, baseDelayMs: 50 },
-            circuitBreaker: this.circuitBreaker,
-            enableCircuitBreaker: policy.useCircuitBreaker,
-            execute: async () => {
-                const execution = await this.registry.execute(
-                    { toolName, args },
-                    {
-                        runId,
-                        now: now(),
-                        runState,
-                    },
-                );
-                if (!execution.ok) {
-                    throw new AgentError(execution.error ?? 'Tool execution failed');
-                }
-                return execution;
-            },
-        });
+        try {
+            const result = await resilientExecute({
+                key: toolName,
+                timeoutMs: policy.timeoutMs,
+                retry: { maxAttempts: policy.maxAttempts, baseDelayMs: 50 },
+                circuitBreaker: this.circuitBreaker,
+                enableCircuitBreaker: policy.useCircuitBreaker,
+                execute: async () => {
+                    const execution = await this.registry.execute(
+                        { toolName, args },
+                        {
+                            runId,
+                            now: now(),
+                            runState,
+                            llm,
+                        },
+                    );
+                    if (!execution.ok) {
+                        throw new AgentError(execution.error ?? 'Tool execution failed');
+                    }
+                    return execution;
+                },
+            });
 
-        return {
-            stepId,
-            mode: 'single-tool',
-            output: { resumedAfterApproval: true },
-            toolResults: [result],
-        };
+            return {
+                stepId,
+                mode: 'single-tool',
+                output: { resumedAfterApproval: true },
+                toolResults: [result],
+            };
+        } catch (error) {
+            this.tracer.log(runId, 'tool_error', {
+                toolName,
+                stepId,
+                message: error instanceof Error ? error.message : String(error),
+            });
+            throw error;
+        }
     }
 }

@@ -2,7 +2,7 @@
 import type { RunState, RunStateResult, StepResult } from '../agent/types';
 import type { RunStatePatch, RunStateStore } from './types';
 import { AgentError } from '../errors/agent-error';
-import { now } from '../time/now';
+import { now } from '../tools/now';
 
 /** In-memory implementation of the run store for local execution and tests. */
 export class InMemoryRunStateStore implements RunStateStore {

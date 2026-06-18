@@ -1,13 +1,13 @@
 // Runtime factory and public exports.
-import { AgentRuntime, AgentRuntimeOptions } from './agent/runtime';
-import { FakeLlmGateway } from './llm/fake-gateway';
-import { GeminiGateway } from './llm/gemini-gateway';
-import { OpenAiGateway } from './llm/openai-gateway';
+import { AgentRuntime, type AgentRuntimeOptions } from './agent';
+import { ensureProjectEnvLoaded } from './env/project-env';
+import { FakeLlmGateway, GeminiGateway, OpenAiGateway } from './llm';
 import { InMemoryRunStateStore } from './state/memory-store';
 import { buildDefaultToolRegistry } from './tools';
 
 /** Creates the default runtime with fake, OpenAI, or Gemini-backed LLM wiring. */
-export function createRuntime(options?: Partial<AgentRuntimeOptions>) {
+export async function createRuntime(options?: Partial<AgentRuntimeOptions>) {
+    ensureProjectEnvLoaded();
     const provider = String(process.env.LLM_PROVIDER ?? '').toLowerCase();
     const useRealOpenAi = String(process.env.USE_REAL_OPENAI ?? 'false').toLowerCase() === 'true';
     const useRealGemini = String(process.env.USE_REAL_GEMINI ?? 'false').toLowerCase() === 'true';
@@ -19,7 +19,7 @@ export function createRuntime(options?: Partial<AgentRuntimeOptions>) {
             ? new OpenAiGateway()
             : new FakeLlmGateway());
     const store = options?.store ?? new InMemoryRunStateStore();
-    const toolRegistry = options?.toolRegistry ?? buildDefaultToolRegistry();
+    const toolRegistry = options?.toolRegistry ?? (await buildDefaultToolRegistry());
 
     return new AgentRuntime({
         llm,
@@ -28,8 +28,16 @@ export function createRuntime(options?: Partial<AgentRuntimeOptions>) {
     });
 }
 
-export * from './agent/runtime';
-export * from './agent/types';
+// Shared runtime and result contracts.
+export * from './agent';
+// Flow graph/document runtime plus nested flow extensions.
+export * from './flow';
 export * from './graph';
-export * from './llm/gemini-gateway';
-export * from './llm/structured-schema';
+// LLM gateways plus deterministic fake adapters.
+export * from './llm';
+// Product-facing facade APIs.
+export * from './product';
+// Observability and live runtime monitoring.
+export * from './observability';
+// Prompt improvement lab with interactive CLI-oriented product workflow.
+export * from './prompt-lab';

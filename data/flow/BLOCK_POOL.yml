@@ -1,0 +1,226 @@
+version: 1
+matching:
+  categoryPriority:
+    - input
+    - ai
+    - process
+    - view
+  blockPriority:
+    - input
+    - ai-generate
+    - buffer
+    - view
+    - text-input
+capabilities:
+  - id: text-input
+    category: input
+    label: Text Input
+    description: Accepts human-authored plain text.
+  - id: json-input
+    category: input
+    label: JSON Input
+    description: Accepts structured JSON payloads from upstream sources.
+  - id: image-input
+    category: input
+    label: Image Input
+    description: Accepts image payloads such as URLs or base64-encoded image data.
+  - id: text-output
+    category: process
+    label: Text Output
+    description: Emits plain text suitable for downstream processing.
+  - id: delay
+    category: process
+    label: Delay
+    description: Waits before forwarding or continuing execution.
+  - id: view-log
+    category: view
+    label: View Log
+    description: Exposes values to operators through logs or inspection output.
+  - id: ai-generation
+    category: ai
+    label: Mock AI Generation
+    description: Produces deterministic AI-style output for concept validation.
+  - id: structured-output
+    category: ai
+    label: Structured Output
+    description: Produces machine-readable output for downstream structured handling.
+blocks:
+  - id: text-input
+    label: Text Input
+    description: Accepts user text and emits it through a single output port.
+    capabilities:
+      - text-input
+    nodeConfigStrategyId: generic-text-input
+    nodeConfigGuidance:
+      sharedNotes:
+        - Keep text-input labels descriptive so upstream intent is obvious in the editor.
+    configs:
+      - id: label
+        label: Prompt Label
+        hint: text
+        defaultValue: User Input
+      - id: multiline
+        label: Multiline
+        hint: checkbox
+        defaultValue: "false"
+    inputs: []
+    outputs:
+      - localId: text
+        label: Text
+        direction: output
+        dataType: text
+        description: User-entered text payload.
+  - id: json-input
+    label: JSON Input
+    description: Accepts structured JSON text and emits it as a JSON packet for downstream processing.
+    capabilities:
+      - json-input
+    nodeConfigStrategyId: generic-text-input
+    nodeConfigGuidance:
+      sharedNotes:
+        - Keep JSON input labels descriptive so the upstream payload shape is obvious in the editor.
+    configs:
+      - id: label
+        label: Prompt Label
+        hint: text
+        defaultValue: JSON Input
+      - id: input
+        label: JSON Payload
+        hint: text
+        required: true
+        defaultValue: "{}"
+    inputs: []
+    outputs:
+      - localId: json
+        label: JSON
+        direction: output
+        dataType: json
+        description: Structured JSON payload.
+  - id: input
+    label: Input
+    description: Emits the configured input string as a packet on the output port.
+    capabilities:
+      - text-input
+    nodeConfigStrategyId: prompt-input-family
+    nodeConfigGuidance:
+      sharedNotes:
+        - Input blocks should carry explicit user-facing wording instead of placeholder text.
+      strategyDirectives:
+        - strategyId: system-input
+          note: Use this block to encode stable global instructions for downstream AI behavior.
+        - strategyId: prompt-input
+          note: Use this block to encode request-specific wording, count, and output format expectations.
+    configs:
+      - id: input
+        label: Input
+        hint: text
+        required: true
+    inputs: []
+    outputs:
+      - localId: output
+        label: Output
+        direction: output
+        dataType: text
+  - id: buffer
+    label: Buffer
+    description: Waits for the configured duration, then forwards the input packet.
+    capabilities:
+      - delay
+    nodeConfigStrategyId: buffer-timing
+    nodeConfigGuidance:
+      sharedNotes:
+        - Buffer blocks should make timing explicit so retries stay deterministic.
+      strategyDirectives:
+        - strategyId: buffer-timing
+          note: Prefer small explicit wait values over implicit timing assumptions.
+    configs:
+      - id: wait
+        label: Wait (ms)
+        hint: number
+        required: true
+        defaultValue: "0"
+    inputs:
+      - localId: input
+        label: Input
+        direction: input
+        dataType: any
+    outputs:
+      - localId: output
+        label: Output
+        direction: output
+        dataType: any
+  - id: view
+    label: View
+    description: Logs the current input packet value.
+    capabilities:
+      - view-log
+      - text-output
+    nodeConfigStrategyId: view-observer
+    nodeConfigGuidance:
+      sharedNotes:
+        - View blocks are for observability, so keep them placed where final output remains visible.
+      strategyDirectives:
+        - strategyId: view-observer
+          note: Use this block to preserve operator visibility into final or intermediate outputs.
+    inputs:
+      - localId: input
+        label: Input
+        direction: input
+        dataType: any
+    outputs: []
+  - id: ai-generate
+    label: AI Generate
+    description: Consumes system and prompt text, then emits a model response.
+    capabilities:
+      - ai-generation
+      - structured-output
+      - text-output
+    nodeConfigStrategyId: ai-generation
+    nodeConfigGuidance:
+      sharedNotes:
+        - AI blocks should align model profile, prompt wording, and output mode with the request intent.
+      strategyDirectives:
+        - strategyId: ai-generation
+          note: Prefer structured-output capable models when the flow expects JSON-shaped downstream handling.
+        - strategyId: ai-generation
+          note: Keep system and prompt wording consistent with the chosen model profile.
+    configs:
+      - id: model
+        label: Model
+        hint: text
+        required: true
+        defaultValue: runtime-main-model
+      - id: systemPrompt
+        label: System Prompt
+        hint: text
+        defaultValue: ""
+      - id: promptTemplate
+        label: Prompt Template
+        hint: text
+        defaultValue: ""
+      - id: outputSchema
+        label: Output Schema
+        hint: text
+        defaultValue: ""
+      - id: jsonOutput
+        label: JSON Output
+        hint: checkbox
+        defaultValue: "false"
+    inputs:
+      - localId: system
+        label: System
+        direction: input
+        dataType: text
+      - localId: prompt
+        label: Prompt
+        direction: input
+        dataType: text
+      - localId: schema
+        label: Schema
+        direction: input
+        dataType: text
+    outputs:
+      - localId: output
+        label: Output
+        direction: output
+        dataType: any
